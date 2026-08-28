@@ -1,0 +1,44 @@
+신규 구현시
+
+/task "월드 아이템 상호작용 시스템을 위한 UInteractionComponent를 구현해줘.
+
+1. 클래스 명세:
+   - Base Class: UActorComponent
+   - 위치: Source/MyGame/Interaction/
+   - 변수: TargetInteractable (TWeakObjectPtr<AActor>), InteractionDistance (기본값 250.0f)
+   - 이벤트: FOnInteractableFound (발견 시 UI 프롬프트 표시용), FOnInteractionCompleted
+
+2. 멀티플레이 요구사항:
+   - 클라이언트는 카메라 레이캐스트를 통해 상호작용 가능한 대상을 로컬 탐색.
+   - 상호작용 키 입력 시 Server_InteractWith(AActor* TargetActor) RPC(WithValidation 포함) 호출.
+   - 서버는 캐릭터와 대상 사이의 실제 거리(InteractionDistance + 유예 오차)를 검증한 뒤 대상의 Interact() 인터페이스 실행.
+   - UI 위젯 코드는 컴포넌트에 포함하지 말고 반드시 FOnInteractableFound 델리게이트로만 브로드캐스트.
+
+3. 검증 지시:
+   - build_harness.py와 verify_replication.py를 실행하여 오류 없이 통과할 때까지 루프를 수행해줘."
+
+
+
+리펙토링 시
+
+/task "Source/MyGame/Character/MyCharacter.cpp 내의 대미지 처리 로직을 멀티플레이-레디 구조로 리팩토링해줘.
+
+1. 리팩토링 요구사항:
+   - 기존 TakeDamage()에서 직접 HUD를 갱신하던 코드를 제거.
+   - Health 변수를 ReplicatedUsing = OnRep_Health로 변경하고 GetLifetimeReplicatedProps에 DOREPLIFETIME_CONDITION 등록.
+   - OnRep_Health 내부에서 OnHealthChanged 델리게이트를 호출하도록 수정하여 로컬 UI가 감지하도록 분리.
+   - 피격 파티클/사운드는 Multicast_PlayHitEffects(FVector HitLocation) RPC로 분리하여 시각 효과만 전달.
+
+2. 검증 지시:
+   - 수정 후 build_harness.py와 verify_replication.py를 실행해 네트워크 위반 사항이 없는지 확인해줘."
+
+
+버그 수정시
+
+/task "현재 빌드에서 발생하는 컴파일 및 리플리케이션 에러를 해결해줘.
+
+1. 작업 내용:
+   - Scripts/build_harness.py를 실행하여 현재 발생하는 컴파일 에러의 JSON을 확인.
+   - 에러가 발생한 원본 파일의 라인을 열어 수정.
+   - 수정 후 Scripts/verify_replication.py를 실행하여 매크로/권한 누락이 없는지 2차 점검.
+   - 통과할 때까지 최대 5회 자율 루프를 수행하고, 해결된 내용의 diff 요약을 출력해줘."
