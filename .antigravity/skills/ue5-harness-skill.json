@@ -1,7 +1,7 @@
 {
   "name": "ue5-harness",
-  "version": "1.0.0",
-  "description": "Unreal Engine 5.8 Build, Replication Verification, and Automation Testing Harness",
+  "version": "1.1.0",
+  "description": "Unreal Engine 5.8 Build, Replication Verification, GAS Compliance, Bandwidth Audit, TTK Simulation, and Automation Testing Harness",
   "commands": {
     "ue5_build": {
       "command": "python Scripts/build_harness.py --pretty",
@@ -9,7 +9,23 @@
     },
     "ue5_verify_replication": {
       "command": "python Scripts/verify_replication.py --pretty",
-      "description": "Performs static AST/pattern analysis on C++ files in Source/ for multiplayer and replication violations."
+      "description": "Performs static pattern analysis on C++ files in Source/ for multiplayer and replication violations."
+    },
+    "ue5_verify_gas": {
+      "command": "python Scripts/verify_gas.py --pretty",
+      "description": "Statically inspects C++ headers and source files in Source/ for Gameplay Ability System (GAS) and AttributeSet compliance."
+    },
+    "ue5_audit_bandwidth": {
+      "command": "python Scripts/audit_bandwidth.py --pretty",
+      "description": "Scans Source/ for network performance anti-patterns, raw TArray replication, and missing COND_* filters."
+    },
+    "ue5_simulate_ttk": {
+      "command": "python Scripts/simulate_ttk_balance.py --pretty",
+      "description": "Executes mathematical Time-to-Kill (TTK) simulations and combat balance benchmarks."
+    },
+    "ue5_simulate_net_pie": {
+      "command": "python Scripts/simulate_net_pie.py --pretty",
+      "description": "Executes headless network degradation PIE simulations with latency, loss, and duplication injection."
     },
     "ue5_run_tests": {
       "command": "python Scripts/run_tests.py --pretty",

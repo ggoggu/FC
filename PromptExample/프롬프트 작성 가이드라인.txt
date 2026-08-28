@@ -1,4 +1,4 @@
-신규 구현시
+1. 신규 기능
 
 /task "월드 아이템 상호작용 시스템을 위한 UInteractionComponent를 구현해줘.
 
@@ -18,8 +18,7 @@
    - build_harness.py와 verify_replication.py를 실행하여 오류 없이 통과할 때까지 루프를 수행해줘."
 
 
-
-리펙토링 시
+2. 리펙토링 
 
 /task "Source/MyGame/Character/MyCharacter.cpp 내의 대미지 처리 로직을 멀티플레이-레디 구조로 리팩토링해줘.
 
@@ -33,7 +32,7 @@
    - 수정 후 build_harness.py와 verify_replication.py를 실행해 네트워크 위반 사항이 없는지 확인해줘."
 
 
-버그 수정시
+3. 버그수정
 
 /task "현재 빌드에서 발생하는 컴파일 및 리플리케이션 에러를 해결해줘.
 

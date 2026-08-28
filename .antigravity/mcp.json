@@ -13,7 +13,23 @@
         },
         "ue5_verify_replication": {
           "command": "python Scripts/verify_replication.py --pretty",
-          "description": "Run static AST analysis to verify replication rules, WithValidation on Server RPCs, and UI decoupling."
+          "description": "Run static AST/pattern analysis to verify replication rules, WithValidation on Server RPCs, and UI decoupling."
+        },
+        "ue5_verify_gas": {
+          "command": "python Scripts/verify_gas.py --pretty",
+          "description": "Statically inspect C++ headers and source files in Source/ for Gameplay Ability System (GAS) and AttributeSet compliance."
+        },
+        "ue5_audit_bandwidth": {
+          "command": "python Scripts/audit_bandwidth.py --pretty",
+          "description": "Scan Source/ for network performance anti-patterns, raw TArray replication, and missing COND_* filters."
+        },
+        "ue5_simulate_ttk": {
+          "command": "python Scripts/simulate_ttk_balance.py --pretty",
+          "description": "Execute mathematical Time-to-Kill (TTK) simulations and combat balance benchmarks."
+        },
+        "ue5_simulate_net_pie": {
+          "command": "python Scripts/simulate_net_pie.py --pretty",
+          "description": "Execute headless network degradation PIE simulations with latency, loss, and duplication injection."
         },
         "ue5_run_tests": {
           "command": "python Scripts/run_tests.py --pretty",
