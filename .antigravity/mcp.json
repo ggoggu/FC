@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "ue5-harness": {
+      "command": "python",
+      "args": ["Scripts/build_harness.py"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      },
+      "tools": {
+        "ue5_build": {
+          "command": "python Scripts/build_harness.py --pretty",
+          "description": "Compile the Unreal Engine 5.8 project with UBT and return structured JSON diagnostic errors."
+        },
+        "ue5_verify_replication": {
+          "command": "python Scripts/verify_replication.py --pretty",
+          "description": "Run static AST analysis to verify replication rules, WithValidation on Server RPCs, and UI decoupling."
+        },
+        "ue5_run_tests": {
+          "command": "python Scripts/run_tests.py --pretty",
+          "description": "Execute headless automation specs via UnrealEditor-Cmd in null-rhi mode and return test status JSON."
+        }
+      }
+    }
+  }
+}

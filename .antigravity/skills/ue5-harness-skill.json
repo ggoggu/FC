@@ -1,0 +1,19 @@
+{
+  "name": "ue5-harness",
+  "version": "1.0.0",
+  "description": "Unreal Engine 5.8 Build, Replication Verification, and Automation Testing Harness",
+  "commands": {
+    "ue5_build": {
+      "command": "python Scripts/build_harness.py --pretty",
+      "description": "Compiles the Unreal Engine project via UBT and returns parsed JSON errors/warnings."
+    },
+    "ue5_verify_replication": {
+      "command": "python Scripts/verify_replication.py --pretty",
+      "description": "Performs static AST/pattern analysis on C++ files in Source/ for multiplayer and replication violations."
+    },
+    "ue5_run_tests": {
+      "command": "python Scripts/run_tests.py --pretty",
+      "description": "Executes headless automation tests via UnrealEditor-Cmd in null-rhi mode and returns JSON results."
+    }
+  }
+}
