@@ -82,9 +82,35 @@ All code and assets must adhere strictly to the following four-tier authority se
 
 ---
 
-## 3. Loop Engineering Lifecycle
+## 3. Combat, Ability & Networking Architecture
 
-When implementing features, fixing bugs, or refactoring code, follow this standardized autonomous development cycle:
+### 1. Combat & Ability Framework (Gameplay Ability System)
+- **Mandatory GAS Adoption**: All abilities, melee/ranged combat actions, status effects (Buffs/Debuffs), and stamina/resource systems must be authored using the Unreal Gameplay Ability System (`UGameplayAbility`, `UAbilitySystemComponent`, `UAttributeSet`, `UGameplayEffect`).
+- **Gameplay Attributes & RepNotify**:
+  - All gameplay attributes must inherit from `UAttributeSet` and declare accessors using the standard `ATTRIBUTE_ACCESSORS(ClassName, PropertyName)` macro.
+  - Attribute replication must utilize `GAMEPLAYATTRIBUTE_REPNOTIFY(ClassName, PropertyName, OldValue)` inside `OnRep_*` callbacks and `DOREPLIFETIME_CONDITION_NOTIFY(ClassName, PropertyName, COND_None, REPNOTIFY_Always)` in `GetLifetimeReplicatedProps`.
+  - Enforce attribute clamp logic inside `PreAttributeChange` and authoritative attribute modification inside `PostGameplayEffectExecute`.
+- **Client Prediction vs. Authoritative Resolution**:
+  - Attack startup animations, montages, and client movement feedback must use client-side prediction (`FPredictionKey`).
+  - Hit detection, line traces, sphere sweeps, damage application, and gameplay tag grants/removals are strictly authoritative on the server.
+  - Cosmetic cues (VFX, SFX, screen shake) must be dispatched via Gameplay Cues (`UGameplayCueNotify_*`) rather than Multicast RPCs.
+
+### 2. Bandwidth Optimization & Inventory Networking
+- **Fast Array Serialization**:
+  - Dynamic item lists, weapon loadouts, and active inventory slots **MUST** implement `FFastArraySerializer` / `FFastArraySerializerItem` instead of standard replicated `TArray<...>`.
+  - Item structs must implement `PostReplicatedAdd`, `PostReplicatedChange`, and `PreReplicatedRemove` to invoke minimal UI/gameplay state updates without full-array network resends.
+  - The container struct must implement `NetDeltaSerialize` and register via `FNetDeltaSerializeInfo`.
+- **Bandwidth-Conscious Replication Conditions**:
+  - Replicated properties must use optimal conditional filters:
+    - `COND_OwnerOnly`: Inventory items, private stats (stamina, ammo, quest progress), ability cooldown details.
+    - `COND_SkipOwner`: Visuals, weapon holsters, and montage state already predicted locally on the autonomous client.
+    - `COND_SimulatedOnly`: Interpolation helper state required solely by simulated proxies.
+
+---
+
+## 4. Loop Engineering & Verification Protocols
+
+When implementing features, fixing bugs, refactoring code, or authoring combat systems, follow this standardized autonomous development cycle:
 
 ```
 [ Step 1: Specs & Architecture ]
@@ -93,51 +119,81 @@ When implementing features, fixing bugs, or refactoring code, follow this standa
 [ Step 2: Write C++ Code & Headers ]
                |
                v
-[ Step 3: Compile via UBT (Scripts/build_harness.py) ] <----+
-               |                                           | (Self-Correction Loop:
-          Compilation                                      |  Parse JSON & Patch)
-           Succeeded? ---- NO (Max 5 attempts) ------------+
-               |
-              YES
-               v
-[ Step 4: Verify Replication (Scripts/verify_replication.py) ] <---+
+[ Step 3: GAS Static Verification (Scripts/verify_gas.py) ] <-------+
                |                                                   | (Self-Correction:
-          Replication                                              |  Fix Violations)
-           Compliant? ---- NO -------------------------------------+
+          GAS Clean? ----- NO -------------------------------------+  Fix Macro/RepNotify)
                |
               YES
                v
-[ Step 5: (Optional) Headless Specs (Scripts/run_tests.py) ]
+[ Step 4: Bandwidth Audit (Scripts/audit_bandwidth.py) ] <----------+
+               |                                                   | (Self-Correction:
+          Bandwidth Clean? - NO -----------------------------------+  FastArray/COND_*)
+               |
+              YES
+               v
+[ Step 5: Compile via UBT (Scripts/build_harness.py) ] <------------+
+               |                                                   | (Self-Correction Loop:
+          Compilation                                              |  Parse JSON & Patch)
+           Succeeded? ---- NO (Max 5 attempts) --------------------+
+               |
+              YES
+               v
+[ Step 6: Replication Static Verification (Scripts/verify_replication.py) ] <---+
+               |                                                                | (Self-Correction:
+          Replication                                                           |  Fix Violations)
+           Compliant? ---- NO --------------------------------------------------+
+               |
+              YES
+               v
+[ Step 7: (Optional) TTK Simulation (Scripts/simulate_ttk_balance.py) ]
                |
                v
-[ Step 6: Present Clean Diffs & Architectural Summary ]
+[ Step 8: Network Latency / Headless Specs (Scripts/simulate_net_pie.py / run_tests.py) ]
+               |
+               v
+[ Step 9: Automatic Git Commit ]
+               |
+               v
+[ Step 10: Present Clean Diffs & Architectural Summary ]
 ```
 
-### Protocol Steps:
+### Protocol Execution Steps:
 
 1. **Step 1: Specifications & Architecture**:
-   - Analyze requirements against single-player/multiplayer authority boundaries.
-   - Identify which properties require replication and choose the optimal replication condition (`COND_OwnerOnly`, etc.).
+   - Analyze requirements against single-player/multiplayer authority boundaries and GAS requirements.
+   - Choose optimal replication conditions (`COND_OwnerOnly`, `COND_SkipOwner`) and Fast Array structures.
 
 2. **Step 2: C++ Implementation**:
    - Apply Unreal Engine 5.8 coding standards (C++20, `TObjectPtr`, IWYU, PascalCase).
-   - Write headers with clean forward declarations and implement `.cpp` logic with strict authority checks.
+   - Author GAS classes, `UAttributeSet`, `UGameplayAbility`, and Fast Array items.
 
-3. **Step 3: Build Harness Execution (`Scripts/build_harness.py`)**:
+3. **Step 3: GAS Verification (`Scripts/verify_gas.py`)**:
+   - Statically inspect attributes for accessor macros, RepNotify signatures, and UI decoupling.
+
+4. **Step 4: Bandwidth Audit (`Scripts/audit_bandwidth.py`)**:
+   - Ensure dynamic arrays use `FFastArraySerializer`, primitive properties use replication conditions, and heavy structs avoid uncompressed replication.
+
+5. **Step 5: Build Harness Execution (`Scripts/build_harness.py`)**:
    - Execute the build harness to invoke UBT and UHT.
-   - If errors occur, parse the JSON diagnostic output (`error_count`, `file`, `line`, `message`) and autonomously patch the code.
-   - Iterate up to **5 cycles**. If still failing, present full diagnostic logs and articulate the blocker.
+   - If errors occur, parse the JSON diagnostic output (`error_count`, `file`, `line`, `message`) and autonomously patch the code up to **5 cycles**.
 
-4. **Step 4: Replication Static Verification (`Scripts/verify_replication.py`)**:
-   - Run the replication analyzer to verify:
-     - `GetLifetimeReplicatedProps` implementation and `#include "Net/UnrealNetwork.h"`.
-     - Mandatory `WithValidation` on all `Server_*` RPCs.
-     - `bReplicates = true` in constructor of replicated actors.
-     - Zero UI/UMG header leaks in server gameplay actor headers.
-   - Autonomously resolve any reported violations.
+6. **Step 6: Replication Static Verification (`Scripts/verify_replication.py`)**:
+   - Run the replication analyzer to verify `GetLifetimeReplicatedProps`, `WithValidation` on Server RPCs, `bReplicates = true`, and zero UI header leaks.
 
-5. **Step 5: Automated Testing (`Scripts/run_tests.py`)**:
-   - Execute headless automation tests to verify runtime behavior and regression prevention.
+7. **Step 7: Mathematical TTK & Balance Tuning (`Scripts/simulate_ttk_balance.py`)**:
+   - Run combat balance simulations to verify damage curves, effective DPS, and hit-to-kill metrics across target armor tiers.
 
-6. **Step 6: Summary & Handoff**:
-   - Provide a concise summary of the architectural changes and verified diffs.
+8. **Step 8: Automated & Networked Testing (`Scripts/simulate_net_pie.py` / `Scripts/run_tests.py`)**:
+   - Execute network degradation headless PIE simulations and automation tests to guarantee zero desyncs, RPC drops, or assertion failures.
+
+9. **Step 9: Automatic Git Commit**:
+   - Once all verifications, build harness, and tests succeed cleanly, stage the modified/added project files and create a Git commit automatically.
+   - Use Conventional Commits formatting:
+     - `feat(<module>): <description>` for new features or capabilities.
+     - `fix(<module>): <description>` for bug fixes or compilation patches.
+     - `refactor(<module>): <description>` for architectural or cleanup changes.
+     - `test(<module>): <description>` for testing suites or balance scripts.
+   - Avoid committing temporary build artifacts, intermediate files, or unstaged unwanted binaries.
+
+10. **Step 10: Summary & Handoff**:
+    - Provide a concise summary of the architectural changes, verified diffs, and the created Git commit hash/message.
