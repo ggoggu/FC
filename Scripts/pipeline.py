@@ -94,18 +94,24 @@ def run_script_json(script_name: str, extra_args: list[str] = None) -> tuple[int
     parsed_json["_duration"] = round(elapsed, 2)
     return proc.returncode, parsed_json, stdout
 
-def run_static_checks(json_output: bool = False) -> tuple[bool, dict]:
-    """Runs GAS, Bandwidth, and Replication static verification."""
+def run_static_checks(json_output: bool = False, skip_gas: bool = False, gas_only: bool = False, repl_only: bool = False) -> tuple[bool, dict]:
+    """Runs GAS, Bandwidth, and Replication static verification modularly."""
     results = {}
     total_errors = 0
     total_warnings = 0
     all_passed = True
 
-    checks = [
-        ("GAS Static Verification", "verify_gas.py"),
-        ("Bandwidth & Net Audit", "audit_bandwidth.py"),
-        ("Replication Architecture", "verify_replication.py"),
-    ]
+    checks = []
+    if gas_only:
+        checks.append(("GAS Static Verification", "verify_gas.py"))
+    elif repl_only:
+        checks.append(("Bandwidth & Net Audit", "audit_bandwidth.py"))
+        checks.append(("Replication Architecture", "verify_replication.py"))
+    else:
+        if not skip_gas:
+            checks.append(("GAS Static Verification", "verify_gas.py"))
+        checks.append(("Bandwidth & Net Audit", "audit_bandwidth.py"))
+        checks.append(("Replication Architecture", "verify_replication.py"))
 
     for label, script in checks:
         retcode, data, _ = run_script_json(script)
@@ -130,7 +136,7 @@ def run_static_checks(json_output: bool = False) -> tuple[bool, dict]:
         }
 
     summary = {
-        "mode": "static",
+        "mode": "gas" if gas_only else ("replication" if repl_only else "static"),
         "passed": all_passed,
         "total_errors": total_errors,
         "total_warnings": total_warnings,
@@ -237,8 +243,9 @@ def print_compact_summary(summary: dict):
     passed = summary.get("passed", False)
     badge = "PASS" if passed else "FAIL"
 
-    if mode == "static":
-        print(f"[{badge}] Static Verification Summary:")
+    if mode in ["static", "gas", "replication"]:
+        mode_title = "GAS Verification" if mode == "gas" else ("Replication & Bandwidth Audit" if mode == "replication" else "Static Verification Summary")
+        print(f"[{badge}] {mode_title}:")
         for name, item in summary.get("checks", {}).items():
             item_badge = "PASS" if item["passed"] else "FAIL"
             print(f"  - [{item_badge}] {name}: {item['errors']} err, {item['warnings']} warn ({item['duration']}s)")
@@ -300,16 +307,19 @@ def main():
         "mode",
         nargs="?",
         default="static",
-        choices=["static", "build", "balance", "test", "net", "full"],
+        choices=["static", "gas", "replication", "build", "balance", "test", "net", "full"],
         help="Pipeline mode to execute:\n"
-             "  static  : Fast static GAS, Bandwidth, and Replication checks (Default)\n"
-             "  build   : UBT compile harness with diagnostic extraction\n"
-             "  balance : Mathematical TTK and balance benchmark simulation\n"
-             "  test    : Automation test execution\n"
-             "  net     : Headless PIE multiplayer network degradation simulation\n"
-             "  full    : Sequential full pipeline (static -> build -> test)"
+             "  static      : Fast static checks (Bandwidth, Replication, GAS)\n"
+             "  gas         : Focused GAS static verification (verify_gas.py)\n"
+             "  replication : Focused Replication & Bandwidth audit\n"
+             "  build       : UBT compile harness with diagnostic extraction\n"
+             "  balance     : Mathematical TTK and balance benchmark simulation\n"
+             "  test        : Automation test execution\n"
+             "  net         : Headless PIE multiplayer network degradation simulation\n"
+             "  full        : Sequential full pipeline (static -> build -> test)"
     )
     parser.add_argument("--json", action="store_true", help="Emit output strictly as aggregated JSON")
+    parser.add_argument("--skip-gas", action="store_true", help="Skip GAS static check in static/full mode (useful for non-GAS tasks)")
     parser.add_argument("--clean", action="store_true", help="Clean build before compiling (build/full mode)")
     parser.add_argument("--auto-commit", "-c", action="store_true", help="Automatically git commit on successful run")
     parser.add_argument("--message", "-m", type=str, default=None, help="Custom commit message for --auto-commit")
@@ -320,7 +330,13 @@ def main():
     aggregated_report = {}
 
     if args.mode == "static":
-        overall_passed, aggregated_report = run_static_checks(args.json)
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, skip_gas=args.skip_gas)
+
+    elif args.mode == "gas":
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, gas_only=True)
+
+    elif args.mode == "replication":
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, repl_only=True)
 
     elif args.mode == "build":
         overall_passed, aggregated_report = run_build_check(clean=args.clean)
@@ -337,7 +353,7 @@ def main():
     elif args.mode == "full":
         steps = []
         # Step 1: Static
-        passed_static, static_data = run_static_checks()
+        passed_static, static_data = run_static_checks(skip_gas=args.skip_gas)
         steps.append(static_data)
         if not passed_static:
             overall_passed = False

@@ -214,7 +214,7 @@ class ReplicationVerifier:
                             severity="WARNING",
                             message=f"Actor constructor '{class_name}::{class_name}' does not explicitly set 'bReplicates = true;' or 'SetReplicates(true)' despite replicating properties."
                         )
-                elif class_name.startswith('U'): # Component
+                elif class_name.startswith('U') and class_name.endswith('Component'): # Actor Component
                     has_comp_rep = bool(re.search(r'SetIsReplicatedByDefault\s*\(\s*true\s*\)|bReplicates\s*=\s*true', ctor_body))
                     if not has_comp_rep:
                         self.add_violation(
