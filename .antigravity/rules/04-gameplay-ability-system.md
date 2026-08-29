@@ -1,6 +1,6 @@
 # Gameplay Ability System (GAS) Standards & Architecture
 
-All combat systems, character abilities, status effects (buffs/debuffs), and combat resource attributes must strictly adhere to the Gameplay Ability System (GAS) architectural standards in Unreal Engine 5.8.
+When implementing combat abilities, status effects (buffs/debuffs), or resource attributes using Unreal Engine 5.8 Gameplay Ability System (GAS), strictly adhere to the following standards:
 
 ---
 

@@ -82,33 +82,7 @@ All code and assets must adhere strictly to the following four-tier authority se
 
 ---
 
-## 3. Combat, Ability & Networking Architecture
-
-### 1. Combat & Ability Framework (Gameplay Ability System)
-- **Mandatory GAS Adoption**: All abilities, melee/ranged combat actions, status effects (Buffs/Debuffs), and stamina/resource systems must be authored using the Unreal Gameplay Ability System (`UGameplayAbility`, `UAbilitySystemComponent`, `UAttributeSet`, `UGameplayEffect`).
-- **Gameplay Attributes & RepNotify**:
-  - All gameplay attributes must inherit from `UAttributeSet` and declare accessors using the standard `ATTRIBUTE_ACCESSORS(ClassName, PropertyName)` macro.
-  - Attribute replication must utilize `GAMEPLAYATTRIBUTE_REPNOTIFY(ClassName, PropertyName, OldValue)` inside `OnRep_*` callbacks and `DOREPLIFETIME_CONDITION_NOTIFY(ClassName, PropertyName, COND_None, REPNOTIFY_Always)` in `GetLifetimeReplicatedProps`.
-  - Enforce attribute clamp logic inside `PreAttributeChange` and authoritative attribute modification inside `PostGameplayEffectExecute`.
-- **Client Prediction vs. Authoritative Resolution**:
-  - Attack startup animations, montages, and client movement feedback must use client-side prediction (`FPredictionKey`).
-  - Hit detection, line traces, sphere sweeps, damage application, and gameplay tag grants/removals are strictly authoritative on the server.
-  - Cosmetic cues (VFX, SFX, screen shake) must be dispatched via Gameplay Cues (`UGameplayCueNotify_*`) rather than Multicast RPCs.
-
-### 2. Bandwidth Optimization & Inventory Networking
-- **Fast Array Serialization**:
-  - Dynamic item lists, weapon loadouts, and active inventory slots **MUST** implement `FFastArraySerializer` / `FFastArraySerializerItem` instead of standard replicated `TArray<...>`.
-  - Item structs must implement `PostReplicatedAdd`, `PostReplicatedChange`, and `PreReplicatedRemove` to invoke minimal UI/gameplay state updates without full-array network resends.
-  - The container struct must implement `NetDeltaSerialize` and register via `FNetDeltaSerializeInfo`.
-- **Bandwidth-Conscious Replication Conditions**:
-  - Replicated properties must use optimal conditional filters:
-    - `COND_OwnerOnly`: Inventory items, private stats (stamina, ammo, quest progress), ability cooldown details.
-    - `COND_SkipOwner`: Visuals, weapon holsters, and montage state already predicted locally on the autonomous client.
-    - `COND_SimulatedOnly`: Interpolation helper state required solely by simulated proxies.
-
----
-
-## 4. Modular Pipeline & Verification Protocols
+## 3. Modular Pipeline & Verification Protocols
 
 To maintain high development velocity and optimize AI token consumption, the project utilizes a **Tiered On-Demand Pipeline Runner** (`Scripts/pipeline.py`).
 
@@ -141,4 +115,16 @@ To maintain high development velocity and optimize AI token consumption, the pro
 
 3. **Compact Reporting**:
    - The runner provides fail-fast, ultra-compact outputs. If errors occur, inspect the targeted `file:line` details and resolve them autonomously before proceeding.
+
+---
+
+## 4. Modular Domain Rules (.antigravity/rules/)
+
+Feature-specific standards are modularized in `.antigravity/rules/` and applied **on-demand** only when implementing relevant features:
+
+- **General C++20 Coding Standards**: Refer to `.antigravity/rules/01-ue58-coding-standards.md` (TObjectPtr, IWYU, PascalCase).
+- **Multiplayer Conventions**: Refer to `.antigravity/rules/02-multiplayer-conventions.md` (RPC validation, Server Authority).
+- **Gameplay Ability System (GAS)**: When implementing GAS-based attributes, abilities, or effects, refer to `.antigravity/rules/04-gameplay-ability-system.md` (Attribute accessors, RepNotify, Gameplay Cues). Standard C++ components can be used for features where GAS is not required.
+- **Fast Array & Inventory Networking**: When implementing dynamic replicated item lists or inventories, refer to `.antigravity/rules/05-combat-and-inventory-networking.md` (FFastArraySerializer, COND_OwnerOnly).
+
 
