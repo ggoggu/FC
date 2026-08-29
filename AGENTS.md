@@ -126,5 +126,6 @@ Feature-specific standards are modularized in `.antigravity/rules/` and applied 
 - **Multiplayer Conventions**: Refer to `.antigravity/rules/02-multiplayer-conventions.md` (RPC validation, Server Authority).
 - **Gameplay Ability System (GAS)**: When implementing GAS-based attributes, abilities, or effects, refer to `.antigravity/rules/04-gameplay-ability-system.md` (Attribute accessors, RepNotify, Gameplay Cues). Standard C++ components can be used for features where GAS is not required.
 - **Fast Array & Inventory Networking**: When implementing dynamic replicated item lists or inventories, refer to `.antigravity/rules/05-combat-and-inventory-networking.md` (FFastArraySerializer, COND_OwnerOnly).
+- **UMG Model-View-ViewModel (MVVM)**: When implementing UI presentation models, viewmodel collections, or field notification bindings, refer to `.antigravity/rules/06-umg-mvvm-standards.md` (UMVVMViewModelBase, FieldNotify, UE_MVVM_SET_PROPERTY_VALUE).
 
 
