@@ -6,7 +6,8 @@
 
 class USpringArmComponent;
 class UCameraComponent;
-class UInputMappingContext;
+class UInputAction;
+struct FInputActionValue;
 
 UCLASS()
 class FC_API AFCPlayerCharacter : public AFCCharacterBase
@@ -24,9 +25,21 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void InitAbilityActorInfo();
 
+	/** Enhanced Input handlers */
+	void Move(const FInputActionValue& Value);
+	void Look(const FInputActionValue& Value);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USpringArmComponent> SpringArmComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> CameraComponent;
+
+	/** Move Input Action (WASD) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> MoveAction;
+
+	/** Look Input Action (Mouse Look) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> LookAction;
 };
