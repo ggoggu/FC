@@ -18,7 +18,9 @@ public class FC : ModuleRules
 			"GameplayTags", 
 			"GameplayTasks",
 			"UMG",
-			"ModelViewViewModel"
+			"ModelViewViewModel",
+			"Niagara",
+			"NetCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 

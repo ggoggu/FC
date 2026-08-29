@@ -1,6 +1,9 @@
 #include "Controller/Player/FCPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
+#include "Data/Card/FCCardTypes.h"
+#include "Card/FCCardDeckComponent.h"
+#include "Game/FCPlayerState.h"
 
 AFCPlayerController::AFCPlayerController()
 {
@@ -77,6 +80,28 @@ void AFCPlayerController::SetCardCombatInputMode(bool bEnableCardMode)
 		if (DefaultMappingContext)
 		{
 			SwitchMappingContext(DefaultMappingContext, DefaultMappingPriority);
+		}
+	}
+}
+
+void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
+{
+	if (AFCPlayerState* PS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = PS->GetCardDeckComponent())
+		{
+			DeckComp->Server_PlayCard(CardGuid, TargetInfo);
+		}
+	}
+}
+
+void AFCPlayerController::RequestEndTurn()
+{
+	if (AFCPlayerState* PS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = PS->GetCardDeckComponent())
+		{
+			DeckComp->Server_EndTurn();
 		}
 	}
 }

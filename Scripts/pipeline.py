@@ -186,7 +186,7 @@ def run_test_check() -> tuple[bool, dict]:
     retcode, data, _ = run_script_json("run_tests.py")
     status = data.get("status", "SUCCESS").upper()
     errs = data.get("failed_count", 0)
-    is_ok = (status == "SUCCESS" and errs == 0)
+    is_ok = (status in ["SUCCESS", "PASSED"] and errs == 0 and retcode == 0)
     duration = data.get("_duration", 0.0)
 
     summary = {

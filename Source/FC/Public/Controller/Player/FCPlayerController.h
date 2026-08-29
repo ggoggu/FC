@@ -5,6 +5,7 @@
 #include "FCPlayerController.generated.h"
 
 class UInputMappingContext;
+struct FFCCardTargetInfo;
 
 /**
  * AFCPlayerController
@@ -27,6 +28,14 @@ public:
 	/** Configures input mode and mouse cursor for Card Combat or UI interaction */
 	UFUNCTION(BlueprintCallable, Category = "Input|CardCombat")
 	void SetCardCombatInputMode(bool bEnableCardMode);
+
+	/** Submits a request to play a card through the authoritative DeckComponent */
+	UFUNCTION(BlueprintCallable, Category = "Card|Actions")
+	void RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo);
+
+	/** Submits an end turn request to the authoritative DeckComponent */
+	UFUNCTION(BlueprintCallable, Category = "Card|Actions")
+	void RequestEndTurn();
 
 protected:
 	virtual void BeginPlay() override;
