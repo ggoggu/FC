@@ -19,49 +19,44 @@ This document specifies the operational protocols for autonomous agents executin
 
 ---
 
-## 2. Execution Sequence
+## 2. Execution Sequence & Tiered Modes
 
-For every code generation or modification task:
+- **Default (Fast Mode)**: Regular coding and Q&A run with zero script overhead.
+- **On-Demand Pipelines**: When verification is requested, invoke the master runner `Scripts/pipeline.py`:
 
 ```
-[ Step 1: Write Code ]
+[ Step 1: Write Code / Refactor ]
           |
           v
-[ Step 2: Build Harness ] ------------> FAILED (Parse JSON errors -> Apply targeted fix -> Re-run)
-          |                                (Max 5 cycles)
-       SUCCESS
-          |
-          v
-[ Step 3: Verify Replication ] -------> FAILED (Review violations -> Fix replication -> Re-run)
-          |
-       SUCCESS
-          |
-          v
-[ Step 4: Run Automation Specs ] -----> FAILED (Identify failing spec -> Adjust logic -> Re-run)
-          |
-       SUCCESS
-          |
-          v
-[ Step 5: Final Clean Summary & Diff Presentation ]
+[ On-Demand: python Scripts/pipeline.py <mode> ]
+  - 'static'  : GAS, Bandwidth, Replication Static Verification (~0.4s)
+  - 'build'   : UBT compile harness + JSON self-healing loop (Max 5 cycles)
+  - 'balance' : Mathematical TTK and effective DPS curve simulation (~0.2s)
+  - 'test'    : Headless automation specs
+  - 'full'    : Static -> Build -> Test -> [Auto-Commit]
 ```
 
 ---
 
 ## 3. Tool Invocations
 
-Subagents and harness scripts interface through the following standardized entry points:
+The project provides a unified master runner for all verification tasks:
 
-- **Build Harness**:
+- **Static Verification**:
   ```powershell
-  python Scripts/build_harness.py --json
+  python Scripts/pipeline.py static
   ```
-- **Replication Static Analysis**:
+- **UBT Build & Patch Loop**:
   ```powershell
-  python Scripts/verify_replication.py --json
+  python Scripts/pipeline.py build
   ```
-- **Automated Tests**:
+- **Combat / TTK Balance**:
   ```powershell
-  python Scripts/run_tests.py --json
+  python Scripts/pipeline.py balance
+  ```
+- **Full Release Pipeline**:
+  ```powershell
+  python Scripts/pipeline.py full --auto-commit -m "<conventional_commit_msg>"
   ```
 
 ---

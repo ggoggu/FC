@@ -108,92 +108,37 @@ All code and assets must adhere strictly to the following four-tier authority se
 
 ---
 
-## 4. Loop Engineering & Verification Protocols
+## 4. Modular Pipeline & Verification Protocols
 
-When implementing features, fixing bugs, refactoring code, or authoring combat systems, follow this standardized autonomous development cycle:
+To maintain high development velocity and optimize AI token consumption, the project utilizes a **Tiered On-Demand Pipeline Runner** (`Scripts/pipeline.py`).
+
+### Autonomous Execution Modes:
 
 ```
-[ Step 1: Specs & Architecture ]
-               |
-               v
-[ Step 2: Write C++ Code & Headers ]
-               |
-               v
-[ Step 3: GAS Static Verification (Scripts/verify_gas.py) ] <-------+
-               |                                                   | (Self-Correction:
-          GAS Clean? ----- NO -------------------------------------+  Fix Macro/RepNotify)
-               |
-              YES
-               v
-[ Step 4: Bandwidth Audit (Scripts/audit_bandwidth.py) ] <----------+
-               |                                                   | (Self-Correction:
-          Bandwidth Clean? - NO -----------------------------------+  FastArray/COND_*)
-               |
-              YES
-               v
-[ Step 5: Compile via UBT (Scripts/build_harness.py) ] <------------+
-               |                                                   | (Self-Correction Loop:
-          Compilation                                              |  Parse JSON & Patch)
-           Succeeded? ---- NO (Max 5 attempts) --------------------+
-               |
-              YES
-               v
-[ Step 6: Replication Static Verification (Scripts/verify_replication.py) ] <---+
-               |                                                                | (Self-Correction:
-          Replication                                                           |  Fix Violations)
-           Compliant? ---- NO --------------------------------------------------+
-               |
-              YES
-               v
-[ Step 7: (Optional) TTK Simulation (Scripts/simulate_ttk_balance.py) ]
-               |
-               v
-[ Step 8: Network Latency / Headless Specs (Scripts/simulate_net_pie.py / run_tests.py) ]
-               |
-               v
-[ Step 9: Automatic Git Commit ]
-               |
-               v
-[ Step 10: Present Clean Diffs & Architectural Summary ]
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                              PIPELINE EXECUTION MODES                                │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. [Default] Fast Mode        : Direct C++ coding & Q&A (Zero script overhead)       │
+│ 2. Static Audit (`static`)    : GAS, Bandwidth, Replication checks (~1s, low tokens) │
+│ 3. Build Harness (`build`)    : UBT compile & JSON error auto-correction loop        │
+│ 4. Combat Balance (`balance`) : Mathematical TTK & effective DPS curves (~1s)        │
+│ 5. Automation Test (`test`)   : Headless Unreal automation tests                     │
+│ 6. Full Release (`full`)      : Sequential (Static -> Build -> Test -> [Auto-Commit])│
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Protocol Execution Steps:
+### Protocol Guidelines:
 
-1. **Step 1: Specifications & Architecture**:
-   - Analyze requirements against single-player/multiplayer authority boundaries and GAS requirements.
-   - Choose optimal replication conditions (`COND_OwnerOnly`, `COND_SkipOwner`) and Fast Array structures.
+1. **Default Mode (Fast Track)**:
+   - For regular code edits, refactorings, or explanations, do **not** run verification scripts automatically. Provide clean C++ code and explanations directly.
 
-2. **Step 2: C++ Implementation**:
-   - Apply Unreal Engine 5.8 coding standards (C++20, `TObjectPtr`, IWYU, PascalCase).
-   - Author GAS classes, `UAttributeSet`, `UGameplayAbility`, and Fast Array items.
+2. **On-Demand Verification (Single Tool Call)**:
+   - When verification is requested by the user, execute the unified runner in a **single command**:
+     - **Static Checks**: `python Scripts/pipeline.py static`
+     - **Compilation & Patching**: `python Scripts/pipeline.py build` (Parse JSON diagnostics, auto-patch up to 5 cycles)
+     - **Combat Balance**: `python Scripts/pipeline.py balance`
+     - **Full Validation & Commit**: `python Scripts/pipeline.py full --auto-commit -m "<conventional_commit_msg>"`
 
-3. **Step 3: GAS Verification (`Scripts/verify_gas.py`)**:
-   - Statically inspect attributes for accessor macros, RepNotify signatures, and UI decoupling.
+3. **Compact Reporting**:
+   - The runner provides fail-fast, ultra-compact outputs. If errors occur, inspect the targeted `file:line` details and resolve them autonomously before proceeding.
 
-4. **Step 4: Bandwidth Audit (`Scripts/audit_bandwidth.py`)**:
-   - Ensure dynamic arrays use `FFastArraySerializer`, primitive properties use replication conditions, and heavy structs avoid uncompressed replication.
-
-5. **Step 5: Build Harness Execution (`Scripts/build_harness.py`)**:
-   - Execute the build harness to invoke UBT and UHT.
-   - If errors occur, parse the JSON diagnostic output (`error_count`, `file`, `line`, `message`) and autonomously patch the code up to **5 cycles**.
-
-6. **Step 6: Replication Static Verification (`Scripts/verify_replication.py`)**:
-   - Run the replication analyzer to verify `GetLifetimeReplicatedProps`, `WithValidation` on Server RPCs, `bReplicates = true`, and zero UI header leaks.
-
-7. **Step 7: Mathematical TTK & Balance Tuning (`Scripts/simulate_ttk_balance.py`)**:
-   - Run combat balance simulations to verify damage curves, effective DPS, and hit-to-kill metrics across target armor tiers.
-
-8. **Step 8: Automated & Networked Testing (`Scripts/simulate_net_pie.py` / `Scripts/run_tests.py`)**:
-   - Execute network degradation headless PIE simulations and automation tests to guarantee zero desyncs, RPC drops, or assertion failures.
-
-9. **Step 9: Automatic Git Commit**:
-   - Once all verifications, build harness, and tests succeed cleanly, stage the modified/added project files and create a Git commit automatically.
-   - Use Conventional Commits formatting:
-     - `feat(<module>): <description>` for new features or capabilities.
-     - `fix(<module>): <description>` for bug fixes or compilation patches.
-     - `refactor(<module>): <description>` for architectural or cleanup changes.
-     - `test(<module>): <description>` for testing suites or balance scripts.
-   - Avoid committing temporary build artifacts, intermediate files, or unstaged unwanted binaries.
-
-10. **Step 10: Summary & Handoff**:
-    - Provide a concise summary of the architectural changes, verified diffs, and the created Git commit hash/message.
