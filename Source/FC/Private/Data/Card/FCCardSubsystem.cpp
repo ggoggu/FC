@@ -1,5 +1,6 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
+#include "AbilitySystem/Abilities/FCGA_Fireball.h"
 #include "Engine/AssetManager.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
@@ -51,6 +52,25 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 				return CardAsset;
 			}
 		}
+	}
+
+	// Fallback dynamic creation for built-in cards (e.g. Card_Fireball)
+	if (CardId == FName("Card_Fireball"))
+	{
+		UFCCardDataAsset* FireballAsset = NewObject<UFCCardDataAsset>(const_cast<UFCCardSubsystem*>(this));
+		FireballAsset->GameplayData.CardId = FName("Card_Fireball");
+		FireballAsset->GameplayData.BaseManaCost = 1;
+		FireballAsset->GameplayData.CardType = EFCCardType::Attack;
+		FireballAsset->GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
+		FireballAsset->GameplayData.BaseValue = 1.0f;
+		FireballAsset->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
+
+		FireballAsset->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
+		FireballAsset->DisplayData.CardDescription = FText::FromString(TEXT("전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다."));
+		FireballAsset->DisplayData.Rarity = EFCCardRarity::Common;
+
+		const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(FireballAsset);
+		return FireballAsset;
 	}
 
 	return nullptr;
