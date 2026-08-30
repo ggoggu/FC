@@ -40,6 +40,12 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("AttackBuff Base Value should be 1.0"), AttackBuffAsset->GameplayData.BaseValue, 1.0f);
 				TestTrue(TEXT("AttackBuff should have UFCGE_AttackBuff effect class"), AttackBuffAsset->GameplayData.CardEffectClasses.Contains(UFCGE_AttackBuff::StaticClass()));
 				TestEqual(TEXT("AttackBuff Card Name should match"), AttackBuffAsset->DisplayData.CardName.ToString(), FString(TEXT("공격력 강화")));
+
+				// Neutral Class & Trait Check
+				TestEqual(TEXT("AttackBuff RequiredClass must be Neutral"), (uint8)AttackBuffAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Neutral);
+				TestTrue(TEXT("AttackBuff must be Neutral"), AttackBuffAsset->GameplayData.IsNeutral());
+				TestFalse(TEXT("Neutral card cannot hold elements"), AttackBuffAsset->GameplayData.CanHaveElements());
+				TestTrue(TEXT("AttackBuff must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(AttackBuffAsset->GameplayData.RequiredClass, EFCCharacterClass::Mage));
 			}
 
 			// Verify Attack Card: Card_Fireball (Direct projectile damage)

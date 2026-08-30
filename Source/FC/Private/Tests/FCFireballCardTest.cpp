@@ -36,6 +36,14 @@ bool FFCFireballCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Fireball Card Type should be Attack"), (uint8)FireballAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
 				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.CardAbilityClass == UFCGA_Fireball::StaticClass());
 				TestEqual(TEXT("Fireball Card Name should match"), FireballAsset->DisplayData.CardName.ToString(), FString(TEXT("파이어 볼")));
+
+				// Class & Multi-Element Affinities (Mage: Fire + Earth)
+				TestEqual(TEXT("Fireball RequiredClass must be Mage"), (uint8)FireballAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Mage);
+				TestTrue(TEXT("Fireball must be able to hold elements"), FireballAsset->GameplayData.CanHaveElements());
+				TestTrue(TEXT("Fireball must have Fire element"), FireballAsset->GameplayData.HasElement(EFCElement::Fire));
+				TestTrue(TEXT("Fireball must have Earth element"), FireballAsset->GameplayData.HasElement(EFCElement::Earth));
+				TestFalse(TEXT("Fireball must not be Neutral"), FireballAsset->GameplayData.IsNeutral());
+				TestEqual(TEXT("Fireball trait text should format properly"), FireballAsset->GameplayData.GetFormattedTraitText().ToString(), FString(TEXT("화염 / 대지")));
 			}
 		}
 	}

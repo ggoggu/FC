@@ -65,6 +65,8 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		FireballAsset->GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
 		FireballAsset->GameplayData.BaseValue = 1.0f;
 		FireballAsset->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
+		FireballAsset->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+		FireballAsset->GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
 
 		FireballAsset->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
 		FireballAsset->DisplayData.CardDescription = FText::FromString(TEXT("전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다."));
@@ -82,6 +84,8 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		AttackBuffAsset->GameplayData.TargetType = EFCCardTargetType::Self;
 		AttackBuffAsset->GameplayData.BaseValue = 1.0f;
 		AttackBuffAsset->GameplayData.CardEffectClasses.Add(UFCGE_AttackBuff::StaticClass());
+		AttackBuffAsset->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+		AttackBuffAsset->GameplayData.Elements.Empty();
 
 		AttackBuffAsset->DisplayData.CardName = FText::FromString(TEXT("공격력 강화"));
 		AttackBuffAsset->DisplayData.CardDescription = FText::FromString(TEXT("1분 동안 자신의 공격력을 1 증가시킵니다."));

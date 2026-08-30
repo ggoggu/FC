@@ -2,6 +2,7 @@
 #include "Card/FCCardDeckComponent.h"
 #include "Character/FCCharacterBase.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Game/FCPlayerState.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
@@ -121,6 +122,11 @@ bool UFCPlayerPersistenceSubsystem::SaveFromPlayer(APlayerController* PC)
 
 	FFCPlayerStatSaveData StatData;
 	bool bHasStatData = false;
+	if (AFCPlayerState* FCPS = PC->GetPlayerState<AFCPlayerState>())
+	{
+		StatData.CharacterClass = FCPS->GetCharacterClass();
+	}
+
 	if (APawn* Pawn = PC->GetPawn())
 	{
 		if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(Pawn))
@@ -128,6 +134,10 @@ bool UFCPlayerPersistenceSubsystem::SaveFromPlayer(APlayerController* PC)
 			if (UFCAttributeSet* AttrSet = Char->GetAttributeSet())
 			{
 				StatData = AttrSet->ExportStatSaveData();
+				if (AFCPlayerState* FCPS = PC->GetPlayerState<AFCPlayerState>())
+				{
+					StatData.CharacterClass = FCPS->GetCharacterClass();
+				}
 				bHasStatData = true;
 			}
 		}
@@ -158,9 +168,10 @@ bool UFCPlayerPersistenceSubsystem::RestoreToPlayer(APlayerController* PC)
 		return false;
 	}
 
-	if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
+	if (AFCPlayerState* FCPS = PC->GetPlayerState<AFCPlayerState>())
 	{
-		if (UFCCardDeckComponent* DeckComp = PS->FindComponentByClass<UFCCardDeckComponent>())
+		FCPS->SetCharacterClass(StatData.CharacterClass);
+		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
 		{
 			DeckComp->RestoreFromDeckSaveData(DeckData);
 		}

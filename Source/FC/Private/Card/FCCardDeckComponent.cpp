@@ -1,6 +1,7 @@
 #include "Card/FCCardDeckComponent.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardSubsystem.h"
+#include "Data/Class/FCClassSubsystem.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystem/FCAttributeSet.h"
@@ -53,6 +54,26 @@ void UFCCardDeckComponent::InitializeDeck(const TArray<FName>& StartingDeck)
 	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = 0;
 	ExhaustPileCount = 0;
+}
+
+void UFCCardDeckComponent::InitializeDeckForClass(EFCCharacterClass InClass)
+{
+	if (!GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	TArray<FName> ClassStarterDeck;
+	if (UFCClassSubsystem* ClassSubsystem = UFCClassSubsystem::GetClassSubsystem(this))
+	{
+		ClassStarterDeck = ClassSubsystem->GetStartingDeckForClass(InClass);
+	}
+	else
+	{
+		ClassStarterDeck = { FName("Card_Fireball"), FName("Card_AttackBuff") };
+	}
+
+	InitializeDeck(ClassStarterDeck);
 }
 
 void UFCCardDeckComponent::DrawCards(int32 Count)

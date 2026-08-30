@@ -64,6 +64,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void InitializeDeck(const TArray<FName>& StartingDeck);
 
+	/** Initializes deck using starter deck configured for the given character class */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
+	void InitializeDeckForClass(EFCCharacterClass InClass);
+
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void DrawCards(int32 Count = 1);
 

@@ -56,6 +56,28 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	EFCCardRarity Rarity = EFCCardRarity::Common;
 
+	// --- Class & Trait Properties ---
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	EFCCharacterClass RequiredClass = EFCCharacterClass::Neutral;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	TArray<EFCElement> Elements;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	bool bHasClassTrait = false;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	bool bIsNeutral = true;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	FText FormattedClassText;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	FText ClassTraitTypeName;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	FText ClassTraitFormattedText;
+
 	// --- Interaction State ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	bool bIsPlayable = true;
@@ -78,6 +100,13 @@ public:
 	void SetCardIcon(TSoftObjectPtr<UTexture2D> InIcon) { UE_MVVM_SET_PROPERTY_VALUE(CardIcon, InIcon); }
 	void SetCardType(EFCCardType InType) { UE_MVVM_SET_PROPERTY_VALUE(CardType, InType); }
 	void SetRarity(EFCCardRarity InRarity) { UE_MVVM_SET_PROPERTY_VALUE(Rarity, InRarity); }
+	void SetRequiredClass(EFCCharacterClass InClass) { UE_MVVM_SET_PROPERTY_VALUE(RequiredClass, InClass); }
+	void SetElements(const TArray<EFCElement>& InElements) { UE_MVVM_SET_PROPERTY_VALUE(Elements, InElements); }
+	void SetHasClassTrait(bool bInHasTrait) { UE_MVVM_SET_PROPERTY_VALUE(bHasClassTrait, bInHasTrait); }
+	void SetIsNeutral(bool bInNeutral) { UE_MVVM_SET_PROPERTY_VALUE(bIsNeutral, bInNeutral); }
+	void SetFormattedClassText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(FormattedClassText, InText); }
+	void SetClassTraitTypeName(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(ClassTraitTypeName, InText); }
+	void SetClassTraitFormattedText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(ClassTraitFormattedText, InText); }
 	void SetIsPlayable(bool bInPlayable);
 	void SetIsSelected(bool bInSelected) { UE_MVVM_SET_PROPERTY_VALUE(bIsSelected, bInSelected); }
 	void SetIsHovered(bool bInHovered) { UE_MVVM_SET_PROPERTY_VALUE(bIsHovered, bInHovered); }

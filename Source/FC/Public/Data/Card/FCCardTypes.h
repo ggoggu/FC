@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "Engine/NetSerialization.h"
+#include "Data/Class/FCClassTypes.h"
 #include "FCCardTypes.generated.h"
 
 class UGameplayAbility;
@@ -114,6 +115,42 @@ struct FC_API FFCCardGameplayData
 	/** Base numerical value (damage, shield, heal amount) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	float BaseValue = 10.0f;
+
+	/** Character class required to play/deck this card (Neutral = all classes) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	EFCCharacterClass RequiredClass = EFCCharacterClass::Neutral;
+
+	/** Elemental affinities (Active for Mage cards) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	TArray<EFCElement> Elements;
+
+	/** Helper to check if card has a specific elemental affinity */
+	bool HasElement(EFCElement InElement) const
+	{
+		return Elements.Contains(InElement);
+	}
+
+	/** Helper to check if card is Neutral */
+	bool IsNeutral() const
+	{
+		return RequiredClass == EFCCharacterClass::Neutral;
+	}
+
+	/** Helper to check if card can hold elemental affinities */
+	bool CanHaveElements() const
+	{
+		return RequiredClass == EFCCharacterClass::Mage;
+	}
+
+	/** Helper to format class trait text via adapter */
+	FText GetFormattedTraitText() const
+	{
+		if (RequiredClass == EFCCharacterClass::Mage)
+		{
+			return FCClassTraitUtils::FormatMageElementsText(Elements);
+		}
+		return FText::GetEmpty();
+	}
 };
 
 /**

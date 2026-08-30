@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Data/Card/FCCardHandContainer.h"
+#include "Data/Class/FCClassTypes.h"
 #include "FCPlayerPersistenceTypes.generated.h"
 
 /**
@@ -35,13 +36,16 @@ struct FC_API FFCCardDeckSaveData
 /**
  * FFCPlayerStatSaveData
  * 
- * Snapshot of player combat attributes (Health, Mana)
+ * Snapshot of player combat attributes (Health, Mana) and character class
  * preserved across level loads and respawns.
  */
 USTRUCT(BlueprintType)
 struct FC_API FFCPlayerStatSaveData
 {
 	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Class")
+	EFCCharacterClass CharacterClass = EFCCharacterClass::Mage;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Stats")
 	float Health = 100.0f;

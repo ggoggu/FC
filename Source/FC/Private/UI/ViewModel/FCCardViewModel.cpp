@@ -55,10 +55,26 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 		SetCardType(InDataAsset->GameplayData.CardType);
 		SetRarity(InDataAsset->DisplayData.Rarity);
 		SetManaCost(InDataAsset->GameplayData.BaseManaCost);
+		SetRequiredClass(InDataAsset->GameplayData.RequiredClass);
+		SetElements(InDataAsset->GameplayData.Elements);
+		SetIsNeutral(InDataAsset->GameplayData.IsNeutral());
+		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(InDataAsset->GameplayData.RequiredClass));
+		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(InDataAsset->GameplayData.RequiredClass));
+
+		const FText FormattedTrait = InDataAsset->GameplayData.GetFormattedTraitText();
+		SetClassTraitFormattedText(FormattedTrait);
+		SetHasClassTrait(!FormattedTrait.IsEmpty());
 	}
 	else
 	{
 		SetCardName(FText::FromName(InItem.CardId));
+		SetRequiredClass(EFCCharacterClass::Neutral);
+		SetElements({});
+		SetIsNeutral(true);
+		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(EFCCharacterClass::Neutral));
+		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(EFCCharacterClass::Neutral));
+		SetClassTraitFormattedText(FText::GetEmpty());
+		SetHasClassTrait(false);
 	}
 }
 

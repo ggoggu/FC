@@ -13,6 +13,8 @@ AFCPlayerState::AFCPlayerState()
 void AFCPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AFCPlayerState, CharacterClass);
 }
 
 void AFCPlayerState::CopyProperties(APlayerState* NewPlayerState)
@@ -21,10 +23,31 @@ void AFCPlayerState::CopyProperties(APlayerState* NewPlayerState)
 
 	if (AFCPlayerState* NewFCPlayerState = Cast<AFCPlayerState>(NewPlayerState))
 	{
+		NewFCPlayerState->CharacterClass = CharacterClass;
+
 		if (CardDeckComponent && NewFCPlayerState->CardDeckComponent)
 		{
 			FFCCardDeckSaveData DeckData = CardDeckComponent->ExportDeckSaveData();
 			NewFCPlayerState->CardDeckComponent->RestoreFromDeckSaveData(DeckData);
 		}
 	}
+}
+
+void AFCPlayerState::SetCharacterClass(EFCCharacterClass NewClass)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	if (CharacterClass != NewClass)
+	{
+		CharacterClass = NewClass;
+		OnPlayerClassChanged.Broadcast(this, CharacterClass);
+	}
+}
+
+void AFCPlayerState::OnRep_CharacterClass()
+{
+	OnPlayerClassChanged.Broadcast(this, CharacterClass);
 }
