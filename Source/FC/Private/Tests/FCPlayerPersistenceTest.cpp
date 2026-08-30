@@ -96,6 +96,7 @@ bool FFCPlayerPersistenceTest::RunTest(const FString& Parameters)
 			InitialData.Health = 85.0f;
 			InitialData.MaxMana = 80.0f;
 			InitialData.Mana = 35.0f;
+			InitialData.AttackPower = 5.0f;
 			SourceAttrSet->RestoreFromStatSaveData(InitialData);
 
 			FFCPlayerStatSaveData StatSnapshot = SourceAttrSet->ExportStatSaveData();
@@ -103,6 +104,7 @@ bool FFCPlayerPersistenceTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("Snapshot Health should be 85"), StatSnapshot.Health, 85.0f);
 			TestEqual(TEXT("Snapshot MaxMana should be 80"), StatSnapshot.MaxMana, 80.0f);
 			TestEqual(TEXT("Snapshot Mana should be 35"), StatSnapshot.Mana, 35.0f);
+			TestEqual(TEXT("Snapshot AttackPower should be 5"), StatSnapshot.AttackPower, 5.0f);
 
 			// Restore into new AttributeSet
 			AActor* TargetActor = NewObject<AActor>();
@@ -113,6 +115,7 @@ bool FFCPlayerPersistenceTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("Restored Health should match"), TargetAttrSet->GetHealth(), 85.0f);
 			TestEqual(TEXT("Restored MaxMana should match"), TargetAttrSet->GetMaxMana(), 80.0f);
 			TestEqual(TEXT("Restored Mana should match"), TargetAttrSet->GetMana(), 35.0f);
+			TestEqual(TEXT("Restored AttackPower should match"), TargetAttrSet->GetAttackPower(), 5.0f);
 		}
 	}
 
@@ -141,6 +144,7 @@ bool FFCPlayerPersistenceTest::RunTest(const FString& Parameters)
 				StatData.MaxHealth = 120.0f;
 				StatData.Mana = 40.0f;
 				StatData.MaxMana = 60.0f;
+				StatData.AttackPower = 2.0f;
 
 				Subsystem->SavePlayerData(TestPlayerKey, DeckData, StatData);
 				TestTrue(TEXT("Should have data after save"), Subsystem->HasPlayerData(TestPlayerKey));
@@ -153,6 +157,7 @@ bool FFCPlayerPersistenceTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Loaded draw count should be 2"), LoadedDeck.DrawPile.Num(), 2);
 				TestEqual(TEXT("Loaded Health should be 60"), LoadedStats.Health, 60.0f);
 				TestEqual(TEXT("Loaded MaxHealth should be 120"), LoadedStats.MaxHealth, 120.0f);
+				TestEqual(TEXT("Loaded AttackPower should be 2"), LoadedStats.AttackPower, 2.0f);
 
 				// Test Clear
 				Subsystem->ClearPlayerData(TestPlayerKey);

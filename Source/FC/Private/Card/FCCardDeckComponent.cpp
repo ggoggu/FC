@@ -347,6 +347,34 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 			FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
 			ASC->TryActivateAbility(Handle);
 		}
+
+		// Apply direct Gameplay Effects if assigned
+		if (DataAsset)
+		{
+			for (const TSubclassOf<UGameplayEffect>& EffectClass : DataAsset->GameplayData.CardEffectClasses)
+			{
+				if (EffectClass)
+				{
+					FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+					Context.AddInstigator(GetOwner(), GetOwner());
+					FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, Item->UpgradeLevel + 1, Context);
+					if (SpecHandle.IsValid())
+					{
+						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self || !TargetInfo.TargetActor.IsValid())
+						{
+							ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+						}
+						else if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetInfo.TargetActor.Get()))
+						{
+							if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
+							{
+								TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Move played card to discard pile and remove from hand

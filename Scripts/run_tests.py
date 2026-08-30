@@ -88,8 +88,8 @@ def parse_automation_output(raw_output: str) -> tuple[list[dict], int, int, int]
     test_map = {}
     
     # Patterns for Automation Logs
-    test_start_pat = re.compile(r"Test\s+'(?P<name>[^']+)'\s+Started", re.IGNORECASE)
-    test_finish_pat = re.compile(r"Test\s+'(?P<name>[^']+)'\s+Completed\.\s*Result\s*=\s*(?P<result>Passed|Failed|Warning)", re.IGNORECASE)
+    test_start_pat = re.compile(r"(?:Test\s+'(?P<name1>[^']+)'\s+Started|Test\s+Started\.\s+Name=\{(?P<name2>[^}]+)\}\s+Path=\{(?P<path2>[^}]+)\})", re.IGNORECASE)
+    test_finish_pat = re.compile(r"(?:Test\s+'(?P<name1>[^']+)'\s+Completed\.\s*Result\s*=\s*(?P<result1>Passed|Failed|Warning)|Test\s+Completed\.\s+Result=\{(?P<result2>[^}]+)\}\s+Name=\{(?P<name2>[^}]+)\}\s+Path=\{(?P<path2>[^}]+)\})", re.IGNORECASE)
     test_result_alt = re.compile(r"Automation:\s+(?P<status>Passed|Failed)\s+(?P<name>[^\r\n]+)", re.IGNORECASE)
     error_line_pat = re.compile(r"Error:\s*(?P<msg>.+)", re.IGNORECASE)
 
@@ -100,7 +100,7 @@ def parse_automation_output(raw_output: str) -> tuple[list[dict], int, int, int]
         
         start_match = test_start_pat.search(line_str)
         if start_match:
-            test_name = start_match.group("name")
+            test_name = start_match.group("path2") or start_match.group("name1") or start_match.group("name2")
             current_test = test_name
             if test_name not in test_map:
                 test_map[test_name] = {
@@ -112,9 +112,9 @@ def parse_automation_output(raw_output: str) -> tuple[list[dict], int, int, int]
 
         finish_match = test_finish_pat.search(line_str)
         if finish_match:
-            test_name = finish_match.group("name")
-            res_str = finish_match.group("result").upper()
-            status = "PASSED" if res_str == "PASSED" else "FAILED"
+            test_name = finish_match.group("path2") or finish_match.group("name1") or finish_match.group("name2")
+            res_str = (finish_match.group("result1") or finish_match.group("result2") or "").upper()
+            status = "PASSED" if res_str in ("PASSED", "SUCCESS") else "FAILED"
             if test_name in test_map:
                 test_map[test_name]["status"] = status
             else:
@@ -265,7 +265,7 @@ def main():
         sys.exit(1)
 
     project_name = uproject_path.stem
-    filter_name = args.filter if args.filter else project_name
+    filter_name = args.filter if args.filter else (project_name + ".")
 
     result = run_tests(
         uproject_path=uproject_path,

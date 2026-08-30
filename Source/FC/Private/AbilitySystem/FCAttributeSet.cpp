@@ -8,6 +8,7 @@ UFCAttributeSet::UFCAttributeSet()
 	InitMaxHealth(100.f);
 	InitMana(50.f);
 	InitMaxMana(50.f);
+	InitAttackPower(0.f);
 }
 
 FFCPlayerStatSaveData UFCAttributeSet::ExportStatSaveData() const
@@ -17,6 +18,7 @@ FFCPlayerStatSaveData UFCAttributeSet::ExportStatSaveData() const
 	StatData.MaxHealth = GetMaxHealth();
 	StatData.Mana = GetMana();
 	StatData.MaxMana = GetMaxMana();
+	StatData.AttackPower = GetAttackPower();
 	return StatData;
 }
 
@@ -26,6 +28,7 @@ void UFCAttributeSet::RestoreFromStatSaveData(const FFCPlayerStatSaveData& InSta
 	InitHealth(FMath::Clamp(InStatData.Health, 0.0f, GetMaxHealth()));
 	InitMaxMana(InStatData.MaxMana >= 0.0f ? InStatData.MaxMana : 50.0f);
 	InitMana(FMath::Clamp(InStatData.Mana, 0.0f, GetMaxMana()));
+	InitAttackPower(FMath::Max(InStatData.AttackPower, 0.0f));
 }
 
 void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -36,6 +39,7 @@ void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Mana, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, AttackPower, COND_None, REPNOTIFY_Always);
 }
 
 void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -50,6 +54,10 @@ void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, fl
 	{
 		NewValue = FMath::Clamp(NewValue, 0.f, GetMaxMana());
 	}
+	else if (Attribute == GetAttackPowerAttribute())
+	{
+		NewValue = FMath::Max(NewValue, 0.f);
+	}
 }
 
 void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
@@ -63,6 +71,10 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 	else if (Data.EvaluatedData.Attribute == GetManaAttribute())
 	{
 		SetMana(FMath::Clamp(GetMana(), 0.f, GetMaxMana()));
+	}
+	else if (Data.EvaluatedData.Attribute == GetAttackPowerAttribute())
+	{
+		SetAttackPower(FMath::Max(GetAttackPower(), 0.f));
 	}
 }
 
@@ -84,4 +96,9 @@ void UFCAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana)
 void UFCAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(UFCAttributeSet, MaxMana, OldMaxMana);
+}
+
+void UFCAttributeSet::OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(UFCAttributeSet, AttackPower, OldAttackPower);
 }

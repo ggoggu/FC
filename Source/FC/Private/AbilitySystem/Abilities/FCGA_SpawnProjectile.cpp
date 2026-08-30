@@ -1,5 +1,8 @@
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Combat/Projectile/FCProjectileBase.h"
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/FCAttributeSet.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
@@ -68,7 +71,26 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 
 			if (Projectile)
 			{
-				Projectile->SetDamage(BaseDamage);
+				float ScaledDamage = BaseDamage;
+				if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Avatar))
+				{
+					if (UAbilitySystemComponent* SourceASC = ASI->GetAbilitySystemComponent())
+					{
+						if (const UFCAttributeSet* AttrSet = SourceASC->GetSet<UFCAttributeSet>())
+						{
+							ScaledDamage += AttrSet->GetAttackPower();
+						}
+					}
+				}
+				else if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+				{
+					if (const UFCAttributeSet* AttrSet = ActorInfo->AbilitySystemComponent->GetSet<UFCAttributeSet>())
+					{
+						ScaledDamage += AttrSet->GetAttackPower();
+					}
+				}
+
+				Projectile->SetDamage(ScaledDamage);
 
 				if (UProjectileMovementComponent* MoveComp = Projectile->GetProjectileMovement())
 				{

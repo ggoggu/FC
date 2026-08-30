@@ -1,6 +1,7 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "AbilitySystem/Abilities/FCGA_Fireball.h"
+#include "AbilitySystem/Effects/FCGE_AttackBuff.h"
 #include "Engine/AssetManager.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
@@ -54,7 +55,7 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		}
 	}
 
-	// Fallback dynamic creation for built-in cards (e.g. Card_Fireball)
+	// Fallback dynamic creation for built-in cards (e.g. Card_Fireball, Card_AttackBuff)
 	if (CardId == FName("Card_Fireball"))
 	{
 		UFCCardDataAsset* FireballAsset = NewObject<UFCCardDataAsset>(const_cast<UFCCardSubsystem*>(this));
@@ -71,6 +72,23 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 
 		const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(FireballAsset);
 		return FireballAsset;
+	}
+	else if (CardId == FName("Card_AttackBuff"))
+	{
+		UFCCardDataAsset* AttackBuffAsset = NewObject<UFCCardDataAsset>(const_cast<UFCCardSubsystem*>(this));
+		AttackBuffAsset->GameplayData.CardId = FName("Card_AttackBuff");
+		AttackBuffAsset->GameplayData.BaseManaCost = 1;
+		AttackBuffAsset->GameplayData.CardType = EFCCardType::Skill;
+		AttackBuffAsset->GameplayData.TargetType = EFCCardTargetType::Self;
+		AttackBuffAsset->GameplayData.BaseValue = 1.0f;
+		AttackBuffAsset->GameplayData.CardEffectClasses.Add(UFCGE_AttackBuff::StaticClass());
+
+		AttackBuffAsset->DisplayData.CardName = FText::FromString(TEXT("공격력 강화"));
+		AttackBuffAsset->DisplayData.CardDescription = FText::FromString(TEXT("1분 동안 자신의 공격력을 1 증가시킵니다."));
+		AttackBuffAsset->DisplayData.Rarity = EFCCardRarity::Common;
+
+		const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(AttackBuffAsset);
+		return AttackBuffAsset;
 	}
 
 	return nullptr;

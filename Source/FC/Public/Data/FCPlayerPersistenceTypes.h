@@ -54,6 +54,9 @@ struct FC_API FFCPlayerStatSaveData
 
 	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Stats")
 	float MaxMana = 50.0f;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Stats")
+	float AttackPower = 0.0f;
 };
 
 /**
