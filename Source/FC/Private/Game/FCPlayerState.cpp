@@ -14,3 +14,17 @@ void AFCPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 }
+
+void AFCPlayerState::CopyProperties(APlayerState* NewPlayerState)
+{
+	Super::CopyProperties(NewPlayerState);
+
+	if (AFCPlayerState* NewFCPlayerState = Cast<AFCPlayerState>(NewPlayerState))
+	{
+		if (CardDeckComponent && NewFCPlayerState->CardDeckComponent)
+		{
+			FFCCardDeckSaveData DeckData = CardDeckComponent->ExportDeckSaveData();
+			NewFCPlayerState->CardDeckComponent->RestoreFromDeckSaveData(DeckData);
+		}
+	}
+}

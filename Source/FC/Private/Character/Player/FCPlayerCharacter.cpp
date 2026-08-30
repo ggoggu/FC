@@ -4,6 +4,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Data/FCPlayerPersistenceSubsystem.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "EnhancedInputComponent.h"
 #include "InputActionValue.h"
@@ -91,6 +93,26 @@ void AFCPlayerCharacter::PossessedBy(AController* NewController)
 	Super::PossessedBy(NewController);
 	// Init info on the server
 	InitAbilityActorInfo();
+
+	if (HasAuthority())
+	{
+		if (APlayerController* PC = Cast<APlayerController>(NewController))
+		{
+			if (UFCPlayerPersistenceSubsystem* PersistenceSubsystem = UFCPlayerPersistenceSubsystem::Get(this))
+			{
+				const FString Key = PersistenceSubsystem->GetPlayerKey(PC);
+				FFCCardDeckSaveData DeckData;
+				FFCPlayerStatSaveData StatData;
+				if (PersistenceSubsystem->LoadPlayerData(Key, DeckData, StatData))
+				{
+					if (AttributeSet)
+					{
+						AttributeSet->RestoreFromStatSaveData(StatData);
+					}
+				}
+			}
+		}
+	}
 }
 
 void AFCPlayerCharacter::OnRep_PlayerState()

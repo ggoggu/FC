@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Data/FCPlayerPersistenceTypes.h"
 #include "FCAttributeSet.generated.h"
 
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
@@ -22,6 +23,14 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
+
+	/** Exports current health/mana attribute snapshot for persistence */
+	UFUNCTION(BlueprintCallable, Category = "Attributes|Persistence")
+	FFCPlayerStatSaveData ExportStatSaveData() const;
+
+	/** Restores health/mana attribute snapshot from persistence */
+	UFUNCTION(BlueprintCallable, Category = "Attributes|Persistence")
+	void RestoreFromStatSaveData(const FFCPlayerStatSaveData& InStatData);
 
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Attributes|Health")
 	FGameplayAttributeData Health;

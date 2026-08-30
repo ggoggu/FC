@@ -208,6 +208,82 @@ void UFCCardDeckComponent::DiscardEntireHand()
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 }
 
+bool UFCCardDeckComponent::AddCardToDeck(FName CardId, EFCCardAddDestination Destination, bool bShuffleIfDrawPile)
+{
+	if (!GetOwner()->HasAuthority() || CardId.IsNone())
+	{
+		return false;
+	}
+
+	UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
+	if (!Subsystem || !Subsystem->GetCardDataAsset(CardId))
+	{
+		return false;
+	}
+
+	switch (Destination)
+	{
+	case EFCCardAddDestination::DrawPile:
+		ServerDrawPile.Add(CardId);
+		if (bShuffleIfDrawPile)
+		{
+			const int32 NumCards = ServerDrawPile.Num();
+			for (int32 i = 0; i < NumCards; ++i)
+			{
+				int32 SwapIdx = FMath::RandRange(0, NumCards - 1);
+				ServerDrawPile.Swap(i, SwapIdx);
+			}
+		}
+		DrawPileCount = ServerDrawPile.Num();
+		break;
+
+	case EFCCardAddDestination::DiscardPile:
+		ServerDiscardPile.Add(CardId);
+		DiscardPileCount = ServerDiscardPile.Num();
+		break;
+
+	case EFCCardAddDestination::Hand:
+		HandContainer.AddCard(CardId);
+		OnCardHandUpdated.Broadcast();
+		break;
+	}
+
+	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
+	return true;
+}
+
+FFCCardDeckSaveData UFCCardDeckComponent::ExportDeckSaveData() const
+{
+	FFCCardDeckSaveData SaveData;
+	SaveData.HandCards = HandContainer.Items;
+	SaveData.DrawPile = ServerDrawPile;
+	SaveData.DiscardPile = ServerDiscardPile;
+	SaveData.ExhaustPile = ServerExhaustPile;
+	return SaveData;
+}
+
+void UFCCardDeckComponent::RestoreFromDeckSaveData(const FFCCardDeckSaveData& SaveData)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	ServerDrawPile = SaveData.DrawPile;
+	ServerDiscardPile = SaveData.DiscardPile;
+	ServerExhaustPile = SaveData.ExhaustPile;
+
+	HandContainer.Items = SaveData.HandCards;
+	HandContainer.MarkArrayDirty();
+
+	DrawPileCount = ServerDrawPile.Num();
+	DiscardPileCount = ServerDiscardPile.Num();
+	ExhaustPileCount = ServerExhaustPile.Num();
+
+	OnCardHandUpdated.Broadcast();
+	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
+}
+
 bool UFCCardDeckComponent::Server_PlayCard_Validate(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
 	if (!CardGuid.IsValid())

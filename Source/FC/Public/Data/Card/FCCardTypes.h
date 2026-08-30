@@ -65,6 +65,17 @@ enum class EFCCardZone : uint8
 };
 
 /**
+ * Card destination when dynamically adding cards into deck
+ */
+UENUM(BlueprintType)
+enum class EFCCardAddDestination : uint8
+{
+	DrawPile    UMETA(DisplayName = "Draw Pile"),
+	DiscardPile UMETA(DisplayName = "Discard Pile"),
+	Hand        UMETA(DisplayName = "Hand")
+};
+
+/**
  * Gameplay / Server Authoritative Card Definition Data
  */
 USTRUCT(BlueprintType)

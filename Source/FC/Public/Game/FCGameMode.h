@@ -21,6 +21,10 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
 
+	/** Saves all connected player states to persistence and transitions to the target level */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "FC|GameMode")
+	void TransitionToLevel(const FString& MapURL, bool bSeamless = false);
+
 protected:
 	virtual void BeginPlay() override;
 };

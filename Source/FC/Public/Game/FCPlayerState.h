@@ -21,6 +21,7 @@ public:
 	AFCPlayerState();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual void CopyProperties(APlayerState* NewPlayerState) override;
 
 	UFUNCTION(BlueprintPure, Category = "Card")
 	UFCCardDeckComponent* GetCardDeckComponent() const { return CardDeckComponent; }

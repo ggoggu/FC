@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Card/FCCardHandContainer.h"
+#include "Data/FCPlayerPersistenceTypes.h"
 #include "FCCardDeckComponent.generated.h"
 
 class UFCCardDataAsset;
@@ -83,6 +84,18 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void DiscardEntireHand();
+
+	/** Dynamically adds a card to the deck, discard pile, or hand */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
+	bool AddCardToDeck(FName CardId, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile, bool bShuffleIfDrawPile = true);
+
+	/** Exports full deck and hand snapshot for level persistence */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Persistence")
+	FFCCardDeckSaveData ExportDeckSaveData() const;
+
+	/** Restores full deck and hand snapshot after level transition */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Persistence")
+	void RestoreFromDeckSaveData(const FFCCardDeckSaveData& SaveData);
 
 	/** Client-side helper called by FastArray callbacks */
 	void NotifyHandChanged();
