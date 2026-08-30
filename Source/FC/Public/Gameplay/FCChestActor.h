@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "AbilitySystemInterface.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Data/Class/FCClassTypes.h"
 #include "FCChestActor.generated.h"
 
 class UStaticMeshComponent;
@@ -11,6 +12,7 @@ class UBoxComponent;
 class UAbilitySystemComponent;
 class UFCAttributeSet;
 class AFCCardPickupActor;
+class UFCCardSubsystem;
 class USoundBase;
 class UNiagaraSystem;
 
@@ -44,6 +46,47 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
 	void DestroyAndSpawnDrops(AController* InstigatorController = nullptr, AActor* DamageCauser = nullptr);
 
+	// --- Drops & Class Filtering Settings ---
+	/** Cards dropped into the world when chest is broken */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	TArray<FName> RewardCardIds;
+
+	/** Whether cards matching the opener's class are allowed to drop (Default: true) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	bool bAllowOpenerClass = true;
+
+	/** Whether Neutral cards are allowed in drops (Default: false, Class cards only) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	bool bAllowNeutralCards = false;
+
+	/** Specific other classes individually allowed to drop (e.g. Warrior, Rogue) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	TArray<EFCCharacterClass> AllowedOtherClasses;
+
+	/** If true, all other classes are allowed regardless of AllowedOtherClasses (Default: false) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	bool bAllowAllOtherClasses = false;
+
+	/** Fallback class used if no player instigator can be resolved */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
+	EFCCharacterClass FallbackClass = EFCCharacterClass::Mage;
+
+	/** Class of the collectible card drop actor to spawn */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chest|Drops")
+	TSubclassOf<AFCCardPickupActor> CardPickupClass;
+
+	/** Resolves the character class of the actor/controller that opened/damaged this chest */
+	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
+	EFCCharacterClass GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const;
+
+	/** Checks whether a specific card is allowed to drop based on opener class and filter settings */
+	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
+	bool IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
+
+	/** Returns filtered reward cards matching opener class and drop filter settings */
+	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
+	TArray<FName> GetFilteredRewardCardIds(EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -64,21 +107,13 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Chest|Abilities", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFCAttributeSet> AttributeSet;
 
-	// --- Gameplay & Drops ---
+	// --- Gameplay & State ---
 	UPROPERTY(ReplicatedUsing = OnRep_IsOpened, BlueprintReadOnly, Category = "Chest|State")
 	bool bIsOpened = false;
 
 	/** Minimum damage required to break the chest open */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Gameplay", meta = (ClampMin = "0.0"))
 	float DamageThreshold = 1.0f;
-
-	/** Cards dropped into the world when chest is broken */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
-	TArray<FName> RewardCardIds;
-
-	/** Class of the collectible card drop actor to spawn */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chest|Drops")
-	TSubclassOf<AFCCardPickupActor> CardPickupClass;
 
 	// --- Presentation ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chest|Presentation")

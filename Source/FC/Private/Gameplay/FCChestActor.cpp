@@ -4,6 +4,13 @@
 #include "Components/BoxComponent.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Data/Card/FCCardSubsystem.h"
+#include "Data/Card/FCCardDataAsset.h"
+#include "Data/Class/FCClassSubsystem.h"
+#include "Game/FCPlayerState.h"
+#include "GameFramework/PlayerState.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Net/UnrealNetwork.h"
@@ -41,7 +48,14 @@ AFCChestActor::AFCChestActor()
 
 	// Gameplay Defaults
 	DamageThreshold = 1.0f;
+	bAllowOpenerClass = true;
+	bAllowNeutralCards = false;
+	AllowedOtherClasses.Empty();
+	bAllowAllOtherClasses = false;
+	FallbackClass = EFCCharacterClass::Mage;
+
 	RewardCardIds.Add(FName("Card_Fireball"));
+	RewardCardIds.Add(FName("Card_AttackBuff"));
 	CardPickupClass = AFCCardPickupActor::StaticClass();
 }
 
@@ -84,6 +98,104 @@ float AFCChestActor::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 	return ActualDamage;
 }
 
+EFCCharacterClass AFCChestActor::GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const
+{
+	// 1. Try resolving from InstigatorController
+	if (InstigatorController)
+	{
+		if (AFCPlayerState* FCPS = InstigatorController->GetPlayerState<AFCPlayerState>())
+		{
+			return FCPS->GetCharacterClass();
+		}
+	}
+
+	// 2. Try resolving from DamageCauser (Pawn or Projectile)
+	if (DamageCauser)
+	{
+		if (APawn* CauserPawn = Cast<APawn>(DamageCauser))
+		{
+			if (AFCPlayerState* FCPS = CauserPawn->GetPlayerState<AFCPlayerState>())
+			{
+				return FCPS->GetCharacterClass();
+			}
+		}
+		else if (AController* CauserController = DamageCauser->GetInstigatorController())
+		{
+			if (AFCPlayerState* FCPS = CauserController->GetPlayerState<AFCPlayerState>())
+			{
+				return FCPS->GetCharacterClass();
+			}
+		}
+	}
+
+	return FallbackClass;
+}
+
+bool AFCChestActor::IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
+{
+	const UFCCardSubsystem* CardSubsystem = InCardSubsystem ? InCardSubsystem : UFCCardSubsystem::GetCardSubsystem(this);
+	if (!CardSubsystem)
+	{
+		return true; // Fallback if no subsystem
+	}
+
+	UFCCardDataAsset* CardAsset = CardSubsystem->GetCardDataAsset(CardId);
+	if (!CardAsset)
+	{
+		return true;
+	}
+
+	const EFCCharacterClass CardClass = CardAsset->GameplayData.RequiredClass;
+
+	// 1. Neutral cards
+	if (CardClass == EFCCharacterClass::Neutral)
+	{
+		return bAllowNeutralCards;
+	}
+
+	// 2. Opener's class cards
+	if (CardClass == OpenerClass)
+	{
+		return bAllowOpenerClass;
+	}
+
+	// 3. Other class cards
+	if (bAllowAllOtherClasses)
+	{
+		return true;
+	}
+
+	return AllowedOtherClasses.Contains(CardClass);
+}
+
+TArray<FName> AFCChestActor::GetFilteredRewardCardIds(EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
+{
+	TArray<FName> FilteredCards;
+
+	for (const FName& CardId : RewardCardIds)
+	{
+		if (IsCardAllowedToDrop(CardId, OpenerClass, InCardSubsystem))
+		{
+			FilteredCards.Add(CardId);
+		}
+	}
+
+	// Fallback safety: if no cards passed filter and opener class is allowed, provide starter card
+	if (FilteredCards.Num() == 0 && bAllowOpenerClass)
+	{
+		if (UFCClassSubsystem* ClassSubsystem = UFCClassSubsystem::GetClassSubsystem(this))
+		{
+			TArray<FName> StarterDeck = ClassSubsystem->GetStartingDeckForClass(OpenerClass);
+			if (StarterDeck.Num() > 0)
+			{
+				FilteredCards.Add(StarterDeck[0]);
+			}
+		}
+	}
+
+	return FilteredCards;
+}
+
 void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AActor* DamageCauser)
 {
 	if (!HasAuthority() || bIsOpened)
@@ -98,11 +210,14 @@ void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AAct
 		CollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 
+	const EFCCharacterClass OpenerClass = GetOpenerClass(InstigatorController, DamageCauser);
+	const TArray<FName> DropsToSpawn = GetFilteredRewardCardIds(OpenerClass);
+
 	UWorld* World = GetWorld();
 	if (World)
 	{
 		TSubclassOf<AFCCardPickupActor> SpawnClass = CardPickupClass ? CardPickupClass : TSubclassOf<AFCCardPickupActor>(AFCCardPickupActor::StaticClass());
-		const int32 NumRewards = RewardCardIds.Num();
+		const int32 NumRewards = DropsToSpawn.Num();
 
 		for (int32 i = 0; i < NumRewards; ++i)
 		{
@@ -116,7 +231,7 @@ void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AAct
 
 			if (AFCCardPickupActor* DropActor = World->SpawnActor<AFCCardPickupActor>(SpawnClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams))
 			{
-				DropActor->SetDropCardId(RewardCardIds[i]);
+				DropActor->SetDropCardId(DropsToSpawn[i]);
 			}
 		}
 	}

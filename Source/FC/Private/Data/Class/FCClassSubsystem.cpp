@@ -24,6 +24,28 @@ UFCClassSubsystem* UFCClassSubsystem::GetClassSubsystem(const UObject* WorldCont
 	}
 
 	UGameInstance* GI = UGameplayStatics::GetGameInstance(WorldContextObject);
+	if (!GI)
+	{
+		for (const UObject* Curr = WorldContextObject; Curr; Curr = Curr->GetOuter())
+		{
+			if (const UGameInstance* OuterGI = Cast<UGameInstance>(Curr))
+			{
+				return const_cast<UGameInstance*>(OuterGI)->GetSubsystem<UFCClassSubsystem>();
+			}
+		}
+
+		if (GEngine)
+		{
+			for (const FWorldContext& Context : GEngine->GetWorldContexts())
+			{
+				if (Context.OwningGameInstance)
+				{
+					return Context.OwningGameInstance->GetSubsystem<UFCClassSubsystem>();
+				}
+			}
+		}
+	}
+
 	return GI ? GI->GetSubsystem<UFCClassSubsystem>() : nullptr;
 }
 

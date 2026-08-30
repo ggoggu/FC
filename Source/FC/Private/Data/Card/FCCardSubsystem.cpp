@@ -26,6 +26,28 @@ UFCCardSubsystem* UFCCardSubsystem::GetCardSubsystem(const UObject* WorldContext
 	}
 
 	UGameInstance* GI = UGameplayStatics::GetGameInstance(WorldContextObject);
+	if (!GI)
+	{
+		for (const UObject* Curr = WorldContextObject; Curr; Curr = Curr->GetOuter())
+		{
+			if (const UGameInstance* OuterGI = Cast<UGameInstance>(Curr))
+			{
+				return const_cast<UGameInstance*>(OuterGI)->GetSubsystem<UFCCardSubsystem>();
+			}
+		}
+
+		if (GEngine)
+		{
+			for (const FWorldContext& Context : GEngine->GetWorldContexts())
+			{
+				if (Context.OwningGameInstance)
+				{
+					return Context.OwningGameInstance->GetSubsystem<UFCCardSubsystem>();
+				}
+			}
+		}
+	}
+
 	return GI ? GI->GetSubsystem<UFCCardSubsystem>() : nullptr;
 }
 
