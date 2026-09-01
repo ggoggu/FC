@@ -10,7 +10,7 @@ class UFCHandViewModel;
  * UFCHUDViewModel
  * 
  * Top-level HUD presentation ViewModel holding player stats (Health, Mana),
- * pile counters, turn phase, and child HandViewModel.
+ * pile counters, and child HandViewModel.
  */
 UCLASS(BlueprintType)
 class FC_API UFCHUDViewModel : public UMVVMViewModelBase
@@ -41,12 +41,6 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Deck")
 	int32 ExhaustPileCount = 0;
 
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Turn")
-	FText TurnPhaseText;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Turn")
-	bool bIsPlayerTurn = true;
-
 	// --- Sub-ViewModel ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Hand")
 	TObjectPtr<UFCHandViewModel> HandViewModel;
@@ -63,8 +57,6 @@ public:
 	void SetDrawPileCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(DrawPileCount, InCount); }
 	void SetDiscardPileCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(DiscardPileCount, InCount); }
 	void SetExhaustPileCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(ExhaustPileCount, InCount); }
-	void SetTurnPhaseText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(TurnPhaseText, InText); }
-	void SetIsPlayerTurn(bool bInTurn) { UE_MVVM_SET_PROPERTY_VALUE(bIsPlayerTurn, bInTurn); }
 
 	// --- Computed FieldNotify Getters ---
 	UFUNCTION(BlueprintPure, FieldNotify)

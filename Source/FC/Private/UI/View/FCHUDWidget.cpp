@@ -15,20 +15,3 @@ void UFCHUDWidget::SetHUDViewModel(UFCHUDViewModel* InViewModel)
 	HUDViewModel = InViewModel;
 	OnHUDViewModelAssigned(InViewModel);
 }
-
-void UFCHUDWidget::RequestEndTurn()
-{
-	APlayerController* PC = GetOwningPlayer();
-	if (!PC)
-	{
-		return;
-	}
-
-	if (APlayerState* PS = PC->GetPlayerState<APlayerState>())
-	{
-		if (UFCCardDeckComponent* DeckComp = PS->FindComponentByClass<UFCCardDeckComponent>())
-		{
-			DeckComp->Server_EndTurn();
-		}
-	}
-}

@@ -29,10 +29,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HUD|ViewModel")
 	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
 
-	/** Dispatches an End Turn request to the owning PlayerController */
-	UFUNCTION(BlueprintCallable, Category = "HUD|Actions")
-	void RequestEndTurn();
-
 protected:
 	/** Blueprint hook triggered whenever a new ViewModel is bound */
 	UFUNCTION(BlueprintImplementableEvent, Category = "HUD|Events")

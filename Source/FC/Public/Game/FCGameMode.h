@@ -8,7 +8,7 @@
  * AFCGameMode
  * 
  * Authoritative server-side game mode managing multiplayer card match lifecycle,
- * round progression, turn management, and player spawning/assignment.
+ * round progression, and player spawning/assignment.
  */
 UCLASS()
 class FC_API AFCGameMode : public AGameModeBase

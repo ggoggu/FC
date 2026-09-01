@@ -35,6 +35,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Hand|Interaction")
 	virtual void HandleCardClicked(UFCCardWidget* ClickedCardWidget);
 
+	/** Helper to instantiate and populate child card widgets inside a UMG panel (e.g. HorizontalBox or Overlay) */
+	UFUNCTION(BlueprintCallable, Category = "Hand|View")
+	void RefreshCardWidgets(class UPanelWidget* TargetPanel);
+
 	// --- Hand Interaction Delegates ---
 	UPROPERTY(BlueprintAssignable, Category = "Hand|Interaction")
 	FOnHandCardSelectedSignature OnHandCardSelected;

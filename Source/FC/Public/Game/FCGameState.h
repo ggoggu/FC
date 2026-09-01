@@ -8,7 +8,7 @@
  * AFCGameState
  * 
  * Replicated game state synchronized across all clients for match-wide data,
- * card combat phase, turn timers, and global board state.
+ * card combat state, and global match progression.
  */
 UCLASS()
 class FC_API AFCGameState : public AGameStateBase
