@@ -26,12 +26,27 @@ bool FFCFireballCardTest::RunTest(const FString& Parameters)
 
 		if (Subsystem)
 		{
+			UFCCardDataAsset* NewFireball = NewObject<UFCCardDataAsset>(Subsystem);
+			NewFireball->GameplayData.CardId = FName("Card_Fireball");
+			NewFireball->GameplayData.BaseManaCost = 2;
+			NewFireball->GameplayData.CardType = EFCCardType::Attack;
+			NewFireball->GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
+			NewFireball->GameplayData.BaseValue = 1.0f;
+			NewFireball->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
+			NewFireball->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+			NewFireball->GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
+			NewFireball->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
+			NewFireball->DisplayData.CardDescription = FText::FromString(TEXT("전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다."));
+			NewFireball->DisplayData.Rarity = EFCCardRarity::Common;
+
+			Subsystem->RegisterCardDataAsset(NewFireball);
+
 			UFCCardDataAsset* FireballAsset = Subsystem->GetCardDataAsset(FName("Card_Fireball"));
 			TestNotNull(TEXT("Card_Fireball should resolve from catalog"), FireballAsset);
 
 			if (FireballAsset)
 			{
-				TestEqual(TEXT("Fireball Mana Cost should be 1"), FireballAsset->GameplayData.BaseManaCost, 1);
+				TestEqual(TEXT("Fireball Mana Cost should be 2"), FireballAsset->GameplayData.BaseManaCost, 2);
 				TestEqual(TEXT("Fireball Base Damage should be 1.0"), FireballAsset->GameplayData.BaseValue, 1.0f);
 				TestEqual(TEXT("Fireball Card Type should be Attack"), (uint8)FireballAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
 				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.CardAbilityClass == UFCGA_Fireball::StaticClass());

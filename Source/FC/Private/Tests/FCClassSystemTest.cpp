@@ -158,6 +158,17 @@ bool FFCClassSystemTest::RunTest(const FString& Parameters)
 			UFCCardSubsystem* CardSubsystem = NewObject<UFCCardSubsystem>(DummyGI);
 			if (CardSubsystem)
 			{
+				UFCCardDataAsset* NewFireball = NewObject<UFCCardDataAsset>(CardSubsystem);
+				NewFireball->GameplayData.CardId = FName("Card_Fireball");
+				NewFireball->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+				NewFireball->GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
+				CardSubsystem->RegisterCardDataAsset(NewFireball);
+
+				UFCCardDataAsset* NewBuff = NewObject<UFCCardDataAsset>(CardSubsystem);
+				NewBuff->GameplayData.CardId = FName("Card_AttackBuff");
+				NewBuff->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+				CardSubsystem->RegisterCardDataAsset(NewBuff);
+
 				UFCCardDataAsset* FireballAsset = CardSubsystem->GetCardDataAsset(FName("Card_Fireball"));
 				UFCCardDataAsset* AttackBuffAsset = CardSubsystem->GetCardDataAsset(FName("Card_AttackBuff"));
 

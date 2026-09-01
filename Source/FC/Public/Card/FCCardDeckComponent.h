@@ -57,9 +57,6 @@ public:
 	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Network")
 	void Server_DrawCards(int32 Count);
 
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Network")
-	void Server_EndTurn();
-
 	// --- Server Authority APIs ---
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void InitializeDeck(const TArray<FName>& StartingDeck);

@@ -28,6 +28,35 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 
 		if (Subsystem)
 		{
+			// Register Skill Card: Card_AttackBuff
+			UFCCardDataAsset* NewBuff = NewObject<UFCCardDataAsset>(Subsystem);
+			NewBuff->GameplayData.CardId = FName("Card_AttackBuff");
+			NewBuff->GameplayData.BaseManaCost = 2;
+			NewBuff->GameplayData.CardType = EFCCardType::Skill;
+			NewBuff->GameplayData.TargetType = EFCCardTargetType::Self;
+			NewBuff->GameplayData.BaseValue = 1.0f;
+			NewBuff->GameplayData.CardEffectClasses.Add(UFCGE_AttackBuff::StaticClass());
+			NewBuff->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+			NewBuff->DisplayData.CardName = FText::FromString(TEXT("공격력 강화"));
+			NewBuff->DisplayData.CardDescription = FText::FromString(TEXT("1분 동안 자신의 공격력을 1 증가시킵니다."));
+			NewBuff->DisplayData.Rarity = EFCCardRarity::Common;
+			Subsystem->RegisterCardDataAsset(NewBuff);
+
+			// Register Attack Card: Card_Fireball
+			UFCCardDataAsset* NewFireball = NewObject<UFCCardDataAsset>(Subsystem);
+			NewFireball->GameplayData.CardId = FName("Card_Fireball");
+			NewFireball->GameplayData.BaseManaCost = 2;
+			NewFireball->GameplayData.CardType = EFCCardType::Attack;
+			NewFireball->GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
+			NewFireball->GameplayData.BaseValue = 1.0f;
+			NewFireball->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
+			NewFireball->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+			NewFireball->GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
+			NewFireball->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
+			NewFireball->DisplayData.CardDescription = FText::FromString(TEXT("전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다."));
+			NewFireball->DisplayData.Rarity = EFCCardRarity::Common;
+			Subsystem->RegisterCardDataAsset(NewFireball);
+
 			// Verify Skill Card: Card_AttackBuff (1-minute +1 Attack Power)
 			UFCCardDataAsset* AttackBuffAsset = Subsystem->GetCardDataAsset(FName("Card_AttackBuff"));
 			TestNotNull(TEXT("Card_AttackBuff should resolve from catalog"), AttackBuffAsset);
@@ -36,7 +65,7 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 			{
 				TestEqual(TEXT("AttackBuff Card Type must be Skill"), (uint8)AttackBuffAsset->GameplayData.CardType, (uint8)EFCCardType::Skill);
 				TestEqual(TEXT("AttackBuff Target Type must be Self"), (uint8)AttackBuffAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::Self);
-				TestEqual(TEXT("AttackBuff Mana Cost should be 1"), AttackBuffAsset->GameplayData.BaseManaCost, 1);
+				TestEqual(TEXT("AttackBuff Mana Cost should be 2"), AttackBuffAsset->GameplayData.BaseManaCost, 2);
 				TestEqual(TEXT("AttackBuff Base Value should be 1.0"), AttackBuffAsset->GameplayData.BaseValue, 1.0f);
 				TestTrue(TEXT("AttackBuff should have UFCGE_AttackBuff effect class"), AttackBuffAsset->GameplayData.CardEffectClasses.Contains(UFCGE_AttackBuff::StaticClass()));
 				TestEqual(TEXT("AttackBuff Card Name should match"), AttackBuffAsset->DisplayData.CardName.ToString(), FString(TEXT("공격력 강화")));

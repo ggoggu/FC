@@ -419,16 +419,6 @@ void UFCCardDeckComponent::Server_DrawCards_Implementation(int32 Count)
 	DrawCards(Count);
 }
 
-bool UFCCardDeckComponent::Server_EndTurn_Validate()
-{
-	return true;
-}
-
-void UFCCardDeckComponent::Server_EndTurn_Implementation()
-{
-	DiscardEntireHand();
-}
-
 void UFCCardDeckComponent::NotifyHandChanged()
 {
 	OnCardHandUpdated.Broadcast();

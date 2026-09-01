@@ -61,13 +61,20 @@ UFCClassDataAsset* UFCClassSubsystem::GetClassDataAsset(EFCCharacterClass ClassT
 	{
 		FString ClassName = StaticEnum<EFCCharacterClass>()->GetNameStringByValue((int64)ClassType);
 		FPrimaryAssetId AssetId(FPrimaryAssetType("CharacterClass"), FName(*ClassName));
-		if (UObject* LoadedObj = AssetManager->GetPrimaryAssetObject(AssetId))
+		UObject* LoadedObj = AssetManager->GetPrimaryAssetObject(AssetId);
+		if (!LoadedObj)
 		{
-			if (UFCClassDataAsset* ClassAsset = Cast<UFCClassDataAsset>(LoadedObj))
+			FSoftObjectPath AssetPath = AssetManager->GetPrimaryAssetPath(AssetId);
+			if (AssetPath.IsValid())
 			{
-				const_cast<UFCClassSubsystem*>(this)->RegisterClassDataAsset(ClassAsset);
-				return ClassAsset;
+				LoadedObj = AssetPath.TryLoad();
 			}
+		}
+
+		if (UFCClassDataAsset* ClassAsset = Cast<UFCClassDataAsset>(LoadedObj))
+		{
+			const_cast<UFCClassSubsystem*>(this)->RegisterClassDataAsset(ClassAsset);
+			return ClassAsset;
 		}
 	}
 
@@ -160,12 +167,19 @@ void UFCClassSubsystem::LoadClassCatalog()
 
 		for (const FPrimaryAssetId& AssetId : AssetIdList)
 		{
-			if (UObject* LoadedObj = AssetManager->GetPrimaryAssetObject(AssetId))
+			UObject* LoadedObj = AssetManager->GetPrimaryAssetObject(AssetId);
+			if (!LoadedObj)
 			{
-				if (UFCClassDataAsset* ClassAsset = Cast<UFCClassDataAsset>(LoadedObj))
+				FSoftObjectPath AssetPath = AssetManager->GetPrimaryAssetPath(AssetId);
+				if (AssetPath.IsValid())
 				{
-					RegisterClassDataAsset(ClassAsset);
+					LoadedObj = AssetPath.TryLoad();
 				}
+			}
+
+			if (UFCClassDataAsset* ClassAsset = Cast<UFCClassDataAsset>(LoadedObj))
+			{
+				RegisterClassDataAsset(ClassAsset);
 			}
 		}
 	}

@@ -6,6 +6,5 @@ UFCCardDataAsset::UFCCardDataAsset()
 
 FPrimaryAssetId UFCCardDataAsset::GetPrimaryAssetId() const
 {
-	FName AssetName = GameplayData.CardId.IsNone() ? GetFName() : GameplayData.CardId;
-	return FPrimaryAssetId(FPrimaryAssetType("Card"), AssetName);
+	return FPrimaryAssetId(FPrimaryAssetType("Card"), GetFName());
 }

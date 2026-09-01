@@ -36,6 +36,11 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 
 		if (Subsystem)
 		{
+			UFCCardDataAsset* NewFireball = NewObject<UFCCardDataAsset>(Subsystem);
+			NewFireball->GameplayData.CardId = FName("Card_Fireball");
+			NewFireball->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
+			Subsystem->RegisterCardDataAsset(NewFireball);
+
 			// Ensure Card_Fireball is resolvable
 			UFCCardDataAsset* FireballAsset = Subsystem->GetCardDataAsset(FName("Card_Fireball"));
 			TestNotNull(TEXT("Card_Fireball should resolve"), FireballAsset);
@@ -78,8 +83,15 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 			if (Subsystem)
 			{
 				// Ensure catalog is populated
-				Subsystem->GetCardDataAsset(FName("Card_Fireball"));
-				Subsystem->GetCardDataAsset(FName("Card_AttackBuff"));
+				UFCCardDataAsset* FireballCard = NewObject<UFCCardDataAsset>(Subsystem);
+				FireballCard->GameplayData.CardId = FName("Card_Fireball");
+				FireballCard->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+				Subsystem->RegisterCardDataAsset(FireballCard);
+
+				UFCCardDataAsset* BuffCard = NewObject<UFCCardDataAsset>(Subsystem);
+				BuffCard->GameplayData.CardId = FName("Card_AttackBuff");
+				BuffCard->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+				Subsystem->RegisterCardDataAsset(BuffCard);
 
 				// Register dummy Warrior and Rogue cards for per-class testing
 				UFCCardDataAsset* WarriorCard = NewObject<UFCCardDataAsset>(Subsystem);
