@@ -29,7 +29,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HUD|ViewModel")
 	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
 
+	/** Gets the child hand widget */
+	UFUNCTION(BlueprintPure, Category = "HUD|Widgets")
+	UFCHandWidget* GetHandWidget() const { return HandWidget; }
+
+	/** Sets the child hand widget */
+	UFUNCTION(BlueprintCallable, Category = "HUD|Widgets")
+	void SetHandWidget(UFCHandWidget* InHandWidget) { HandWidget = InHandWidget; }
+
 protected:
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+	/** Optional child hand widget (named HandWidget in Blueprint) automatically linked to HUDViewModel's HandViewModel */
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
+	TObjectPtr<UFCHandWidget> HandWidget;
+
 	/** Blueprint hook triggered whenever a new ViewModel is bound */
 	UFUNCTION(BlueprintImplementableEvent, Category = "HUD|Events")
 	void OnHUDViewModelAssigned(UFCHUDViewModel* NewViewModel);

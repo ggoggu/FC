@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/NetSerialization.h"
+#include "Data/Card/FCCardTypes.h"
 #include "FCProjectileBase.generated.h"
 
 class USphereComponent;
@@ -12,6 +13,7 @@ class UNiagaraSystem;
 class UProjectileMovementComponent;
 class USoundBase;
 class UGameplayEffect;
+class UFCProjectileDataAsset;
 
 /**
  * AFCProjectileBase
@@ -21,6 +23,7 @@ class UGameplayEffect;
  * - Configurable visual mesh (sphere, arrow, knife, bomb, etc.) and Niagara flight trail
  * - Configurable impact behaviors (direct damage, radial AoE explosion, piercing, spawn actor on impact)
  * - Soft/hard references for impact audio cues and particle effects
+ * - Data-driven dynamic parameter initialization from UFCProjectileDataAsset
  */
 UCLASS()
 class FC_API AFCProjectileBase : public AActor
@@ -29,6 +32,13 @@ class FC_API AFCProjectileBase : public AActor
 
 public:
 	AFCProjectileBase();
+
+	/** Initializes all motion, combat, collision, and presentation parameters from a data asset */
+	UFUNCTION(BlueprintCallable, Category = "Projectile|Data")
+	virtual void InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset);
+
+	const UFCProjectileDataAsset* GetProjectileDataAsset() const { return ProjectileDataAsset; }
+	void SetProjectileDataAsset(const UFCProjectileDataAsset* InDataAsset) { ProjectileDataAsset = InDataAsset; }
 
 	// --- Getters & Setters ---
 	USphereComponent* GetCollisionComponent() const { return CollisionComponent; }
@@ -42,6 +52,15 @@ public:
 	void SetExplosionRadius(float InRadius) { ExplosionRadius = InRadius; }
 
 	void SetDamageEffectClass(TSubclassOf<UGameplayEffect> InClass) { DamageEffectClass = InClass; }
+
+	const TArray<EFCElement>& GetProjectileElements() const { return ProjectileElements; }
+	void SetProjectileElements(const TArray<EFCElement>& InElements) { ProjectileElements = InElements; }
+
+	EFCCharacterClass GetSourceClass() const { return SourceClass; }
+	void SetSourceClass(EFCCharacterClass InClass) { SourceClass = InClass; }
+
+	EFCCardType GetSourceCardType() const { return SourceCardType; }
+	void SetSourceCardType(EFCCardType InType) { SourceCardType = InType; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -58,6 +77,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Projectile|Movement", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
+
+	// --- Data-Driven Configuration ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Data")
+	TObjectPtr<const UFCProjectileDataAsset> ProjectileDataAsset;
 
 	// --- Gameplay & Impact Configuration ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay", meta = (ClampMin = "0.0"))
@@ -77,6 +100,18 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
 	TSubclassOf<AActor> SpawnActorOnImpact;
+
+	/** Elemental affinities carried by this projectile to apply on hit */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
+	TArray<EFCElement> ProjectileElements;
+
+	/** Character class associated with this projectile */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
+	EFCCharacterClass SourceClass = EFCCharacterClass::Mage;
+
+	/** Source card functional type */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
+	EFCCardType SourceCardType = EFCCardType::Attack;
 
 	// --- Presentation (Audio & Visuals) ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Presentation")

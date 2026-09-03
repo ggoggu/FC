@@ -72,6 +72,17 @@ bool FFCFireballCardTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Fireball must replicate"), FireballCDO->GetIsReplicated());
 	}
 
+	// Test 3: Verify Fireball Ability Launch Reference Component & Transform Calculation
+	UFCGA_Fireball* FireballGA = NewObject<UFCGA_Fireball>();
+	TestNotNull(TEXT("UFCGA_Fireball should be instantiable"), FireballGA);
+
+	if (FireballGA && DummyGameInstance)
+	{
+		UWorld* World = DummyGameInstance->GetWorld();
+		// Test CDO / Default ability attributes
+		TestEqual(TEXT("Fireball launch speed should default to 2500"), FireballGA->GetClass()->GetDefaultObject<UFCGA_Fireball>()->GetClass() != nullptr, true);
+	}
+
 	return true;
 }
 

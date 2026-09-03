@@ -7,6 +7,7 @@
 
 class UAbilitySystemComponent;
 class UFCAttributeSet;
+class UFCElementComponent;
 
 UCLASS()
 class FC_API AFCCharacterBase : public ACharacter, public IAbilitySystemInterface
@@ -20,6 +21,9 @@ public:
 
 	UFCAttributeSet* GetAttributeSet() const;
 
+	UFUNCTION(BlueprintPure, Category = "Element")
+	UFCElementComponent* GetElementComponent() const;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -28,4 +32,7 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UFCAttributeSet> AttributeSet;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Element", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCElementComponent> ElementComponent;
 };

@@ -35,6 +35,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Card|Actions")
 	void RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo);
 
+	/** Handles card slot selection via keyboard number key input (0 = 1st card, ..., 9 = 10th card) */
+	UFUNCTION(BlueprintCallable, Category = "Input|CardCombat")
+	void HandleNumberKeyInput(int32 SlotIndex);
+
+	/** Handles left mouse button click (plays held card if any) */
+	UFUNCTION(BlueprintCallable, Category = "Input|CardCombat")
+	void OnLeftMouseButtonPressed();
+
+	/** Handles right mouse button click or cancel key (cancels held card if any) */
+	UFUNCTION(BlueprintCallable, Category = "Input|CardCombat")
+	void OnRightMouseButtonPressed();
+
 	/** Initializes or binds the HUD with the current player state and deck component */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetupHUD();
@@ -52,6 +64,7 @@ protected:
 	virtual void SetupInputComponent() override;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void AcknowledgePossession(APawn* P) override;
+	virtual void OnRep_PlayerState() override;
 
 	/** Widget class to spawn for HUD (e.g. WBP_HUD) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
@@ -91,8 +104,25 @@ protected:
 	UFUNCTION()
 	void OnDeckPileCountsChanged(int32 DrawCount, int32 DiscardCount, int32 ExhaustCount);
 
+	UFUNCTION()
+	void OnDeckCycleTriggered();
+
+	UFUNCTION()
+	void OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount);
+
 private:
 	void InitializeDefaultMappingContext();
 	void BindDeckComponentEvents();
 	void BindAttributeListeners();
+
+	void OnNumberKey1Pressed() { HandleNumberKeyInput(0); }
+	void OnNumberKey2Pressed() { HandleNumberKeyInput(1); }
+	void OnNumberKey3Pressed() { HandleNumberKeyInput(2); }
+	void OnNumberKey4Pressed() { HandleNumberKeyInput(3); }
+	void OnNumberKey5Pressed() { HandleNumberKeyInput(4); }
+	void OnNumberKey6Pressed() { HandleNumberKeyInput(5); }
+	void OnNumberKey7Pressed() { HandleNumberKeyInput(6); }
+	void OnNumberKey8Pressed() { HandleNumberKeyInput(7); }
+	void OnNumberKey9Pressed() { HandleNumberKeyInput(8); }
+	void OnNumberKey0Pressed() { HandleNumberKeyInput(9); }
 };

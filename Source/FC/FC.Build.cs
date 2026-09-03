@@ -20,7 +20,9 @@ public class FC : ModuleRules
 			"UMG",
 			"ModelViewViewModel",
 			"Niagara",
-			"NetCore"
+			"NetCore",
+			"AIModule",
+			"NavigationSystem"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 

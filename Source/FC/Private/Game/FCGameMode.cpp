@@ -14,6 +14,24 @@ AFCGameMode::AFCGameMode()
 	PlayerStateClass = AFCPlayerState::StaticClass();
 	PlayerControllerClass = AFCPlayerController::StaticClass();
 	DefaultPawnClass = AFCPlayerCharacter::StaticClass();
+
+	StartingHandSize = 5;
+	DefaultCycleInterval = 30.0f;
+	DefaultCycleDrawCount = 5;
+	bEnableAutoHandCycle = true;
+	bUseClassStartingDeck = false;
+	DefaultStartingDeck = {
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff")
+	};
 }
 
 void AFCGameMode::BeginPlay()
@@ -36,20 +54,61 @@ void AFCGameMode::PostLogin(APlayerController* NewPlayer)
 		if (PersistenceSubsystem->HasPlayerData(Key))
 		{
 			PersistenceSubsystem->RestoreToPlayer(NewPlayer);
-		}
-		else
-		{
-			// Initialize default starting deck if new player session
+
 			if (AFCPlayerState* PS = NewPlayer->GetPlayerState<AFCPlayerState>())
 			{
 				if (UFCCardDeckComponent* DeckComp = PS->GetCardDeckComponent())
 				{
-					const TArray<FName> DefaultStartingDeck = {
-						FName("Card_Fireball"),
-						FName("Card_Fireball"),
-						FName("Card_Fireball")
-					};
-					DeckComp->InitializeDeck(DefaultStartingDeck);
+					DeckComp->SetCycleInterval(DefaultCycleInterval);
+					DeckComp->SetCycleDrawCount(DefaultCycleDrawCount);
+					DeckComp->SetAutoCycleEnabled(bEnableAutoHandCycle);
+					if (bEnableAutoHandCycle)
+					{
+						DeckComp->StartCycleTimer();
+					}
+				}
+			}
+		}
+		else
+		{
+			// Initialize starting deck and hand if new player session
+			if (AFCPlayerState* PS = NewPlayer->GetPlayerState<AFCPlayerState>())
+			{
+				if (UFCCardDeckComponent* DeckComp = PS->GetCardDeckComponent())
+				{
+					// Configure cycle parameters
+					DeckComp->SetCycleInterval(DefaultCycleInterval);
+					DeckComp->SetCycleDrawCount(DefaultCycleDrawCount);
+					DeckComp->SetAutoCycleEnabled(bEnableAutoHandCycle);
+
+					// Initialize deck: Use Class starting deck if configured, otherwise use GameMode DefaultStartingDeck
+					if (bUseClassStartingDeck)
+					{
+						DeckComp->InitializeDeckForClass(PS->GetCharacterClass());
+						if (DeckComp->GetDrawPileCount() == 0 && DefaultStartingDeck.Num() > 0)
+						{
+							DeckComp->InitializeDeck(DefaultStartingDeck);
+						}
+					}
+					else
+					{
+						if (DefaultStartingDeck.Num() > 0)
+						{
+							DeckComp->InitializeDeck(DefaultStartingDeck);
+						}
+						else
+						{
+							DeckComp->InitializeDeckForClass(PS->GetCharacterClass());
+						}
+					}
+
+					// Draw starting hand (5 cards)
+					DeckComp->DrawCards(StartingHandSize);
+
+					if (bEnableAutoHandCycle)
+					{
+						DeckComp->StartCycleTimer();
+					}
 				}
 			}
 		}

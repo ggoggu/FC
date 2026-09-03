@@ -1,5 +1,7 @@
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
+#include "Data/Card/FCCardDataAsset.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
@@ -8,10 +10,43 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/ArrowComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
 UFCGA_SpawnProjectile::UFCGA_SpawnProjectile()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
+	ProjectileClass = AFCProjectileBase::StaticClass();
+}
+
+USceneComponent* UFCGA_SpawnProjectile::GetLaunchReferenceComponent(AActor* Avatar) const
+{
+	if (!Avatar)
+	{
+		return nullptr;
+	}
+
+	// 1. Search for scene components named "Arrow" or containing "Arrow" (case-insensitive)
+	TInlineComponentArray<USceneComponent*> SceneComponents;
+	Avatar->GetComponents(SceneComponents);
+	for (USceneComponent* Comp : SceneComponents)
+	{
+		if (Comp && Comp->GetName().Contains(TEXT("Arrow"), ESearchCase::IgnoreCase))
+		{
+			return Comp;
+		}
+	}
+
+	// 2. Fallback to any UArrowComponent found by class
+	if (UArrowComponent* ArrowComp = Avatar->FindComponentByClass<UArrowComponent>())
+	{
+		return ArrowComp;
+	}
+
+	return nullptr;
 }
 
 FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActorInfo* ActorInfo) const
@@ -22,16 +57,48 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 	}
 
 	AActor* Avatar = ActorInfo->AvatarActor.Get();
-	const FVector ForwardVector = Avatar->GetActorForwardVector();
-	const FVector RightVector = Avatar->GetActorRightVector();
-	const FVector UpVector = Avatar->GetActorUpVector();
 
-	const FVector SpawnLocation = Avatar->GetActorLocation()
+	FVector ForwardVector = Avatar->GetActorForwardVector();
+	FVector RightVector = Avatar->GetActorRightVector();
+	FVector UpVector = Avatar->GetActorUpVector();
+	FRotator SpawnRotation = Avatar->GetActorRotation();
+	FVector BaseLocation = Avatar->GetActorLocation();
+
+	if (const ACharacter* Character = Cast<ACharacter>(Avatar))
+	{
+		// 1. 발사 방향: 캐릭터 캡슐의 정면 (이동 방향 설정에 따라 메시가 바라보는 실제 시각적 정면과 100% 일치함)
+		SpawnRotation = Avatar->GetActorRotation();
+		ForwardVector = Avatar->GetActorForwardVector();
+		RightVector = Avatar->GetActorRightVector();
+		UpVector = Avatar->GetActorUpVector();
+
+		// 2. 발사 위치: 바닥(Capsule Z=0) 착시를 방지하기 위해 가슴(spine_03) 높이를 기준으로 설정
+		if (const USkeletalMeshComponent* Mesh = Character->GetMesh())
+		{
+			if (Mesh->DoesSocketExist(FName("spine_03")))
+			{
+				BaseLocation = Mesh->GetSocketLocation(FName("spine_03"));
+			}
+			else
+			{
+				BaseLocation = Avatar->GetActorLocation() + FVector(0.f, 0.f, 50.f);
+			}
+		}
+	}
+	// Fallback to Arrow Component if explicitly requested
+	else if (const USceneComponent* LaunchRefComp = GetLaunchReferenceComponent(Avatar))
+	{
+		ForwardVector = LaunchRefComp->GetForwardVector();
+		RightVector = LaunchRefComp->GetRightVector();
+		UpVector = LaunchRefComp->GetUpVector();
+		SpawnRotation = LaunchRefComp->GetComponentRotation();
+		BaseLocation = LaunchRefComp->GetComponentLocation();
+	}
+
+	const FVector SpawnLocation = BaseLocation
 		+ (ForwardVector * MuzzleOffset.X)
 		+ (RightVector * MuzzleOffset.Y)
 		+ (UpVector * MuzzleOffset.Z);
-
-	const FRotator SpawnRotation = Avatar->GetActorRotation();
 
 	return FTransform(SpawnRotation, SpawnLocation);
 }
@@ -48,12 +115,63 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		return;
 	}
 
+	// 1. Resolve Effective Projectile Data Asset
+	const UFCProjectileDataAsset* EffectiveDataAsset = ProjectileDataAsset.Get();
+	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+	{
+		if (const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle))
+		{
+			if (const UFCCardDataAsset* CardAsset = Cast<UFCCardDataAsset>(Spec->SourceObject.Get()))
+			{
+				if (CardAsset->GameplayData.ProjectileDataAsset)
+				{
+					EffectiveDataAsset = CardAsset->GameplayData.ProjectileDataAsset;
+				}
+			}
+		}
+	}
+
+	// 2. Synchronize effective flight and presentation parameters if data asset exists
+	float EffectiveLaunchSpeed = LaunchSpeed;
+	float EffectiveBaseDamage = BaseDamage;
+	TArray<EFCElement> EffectiveElements = ProjectileElements;
+	EFCCharacterClass EffectiveClass = CharacterClass;
+	EFCCardType EffectiveCardType = CardType;
+	USoundBase* EffectiveCastSound = CastSound;
+	UNiagaraSystem* EffectiveCastVFX = CastVFX;
+
+	if (EffectiveDataAsset)
+	{
+		EffectiveLaunchSpeed = EffectiveDataAsset->LaunchSpeed;
+		EffectiveBaseDamage = EffectiveDataAsset->Damage;
+		EffectiveElements = EffectiveDataAsset->ProjectileElements;
+		EffectiveClass = EffectiveDataAsset->SourceClass;
+		EffectiveCardType = EffectiveDataAsset->SourceCardType;
+
+		if (USoundBase* LoadedCastSound = EffectiveDataAsset->CastSound.LoadSynchronous())
+		{
+			EffectiveCastSound = LoadedCastSound;
+		}
+		if (UNiagaraSystem* LoadedCastVFX = EffectiveDataAsset->CastVFX.LoadSynchronous())
+		{
+			EffectiveCastVFX = LoadedCastVFX;
+		}
+	}
+
 	const FTransform LaunchTransform = GetLaunchTransform(ActorInfo);
 	const FVector SpawnLocation = LaunchTransform.GetLocation();
 	const FRotator SpawnRotation = LaunchTransform.Rotator();
 
-	// Authoritative Projectile Spawning on Server
-	if (HasAuthority(&ActivationInfo) && ProjectileClass)
+	// 3. Authoritative Projectile Spawning on Server
+	TSubclassOf<AFCProjectileBase> ClassToSpawn = (EffectiveDataAsset && EffectiveDataAsset->ProjectileClass)
+		? EffectiveDataAsset->ProjectileClass
+		: ProjectileClass;
+
+	if (!ClassToSpawn)
+	{
+		ClassToSpawn = AFCProjectileBase::StaticClass();
+	}
+	if (HasAuthority(&ActivationInfo) && ClassToSpawn)
 	{
 		UWorld* World = GetWorld();
 		if (World && ActorInfo->AvatarActor.IsValid())
@@ -62,7 +180,7 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 			APawn* InstigatorPawn = Cast<APawn>(Avatar);
 
 			AFCProjectileBase* Projectile = World->SpawnActorDeferred<AFCProjectileBase>(
-				ProjectileClass,
+				ClassToSpawn,
 				LaunchTransform,
 				ActorInfo->OwnerActor.Get(),
 				InstigatorPawn,
@@ -71,7 +189,12 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 
 			if (Projectile)
 			{
-				float ScaledDamage = BaseDamage;
+				if (EffectiveDataAsset)
+				{
+					Projectile->InitializeFromDataAsset(EffectiveDataAsset);
+				}
+
+				float ScaledDamage = EffectiveBaseDamage;
 				if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Avatar))
 				{
 					if (UAbilitySystemComponent* SourceASC = ASI->GetAbilitySystemComponent())
@@ -91,13 +214,20 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 				}
 
 				Projectile->SetDamage(ScaledDamage);
+				if (EffectiveElements.Num() > 0)
+				{
+					Projectile->SetProjectileElements(EffectiveElements);
+				}
+				Projectile->SetSourceClass(EffectiveClass);
+				Projectile->SetSourceCardType(EffectiveCardType);
 
 				if (UProjectileMovementComponent* MoveComp = Projectile->GetProjectileMovement())
 				{
-					MoveComp->InitialSpeed = LaunchSpeed;
-					MoveComp->MaxSpeed = LaunchSpeed;
-					MoveComp->ProjectileGravityScale = 0.0f; // Maintain straight-line flight
-					MoveComp->Velocity = LaunchTransform.GetRotation().GetForwardVector() * LaunchSpeed;
+					MoveComp->InitialSpeed = EffectiveLaunchSpeed;
+					MoveComp->MaxSpeed = EffectiveLaunchSpeed;
+					MoveComp->ProjectileGravityScale = EffectiveDataAsset ? EffectiveDataAsset->GravityScale : 0.0f;
+					MoveComp->Velocity = LaunchTransform.GetRotation().GetForwardVector() * EffectiveLaunchSpeed;
+					MoveComp->bInitialVelocityInLocalSpace = false;
 				}
 
 				UGameplayStatics::FinishSpawningActor(Projectile, LaunchTransform);
@@ -105,15 +235,15 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		}
 	}
 
-	// Presentation Audio & Visuals
-	if (CastSound)
+	// 4. Presentation Audio & Visuals
+	if (EffectiveCastSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, CastSound, SpawnLocation);
+		UGameplayStatics::PlaySoundAtLocation(this, EffectiveCastSound, SpawnLocation);
 	}
 
-	if (CastVFX)
+	if (EffectiveCastVFX)
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, CastVFX, SpawnLocation, SpawnRotation);
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, EffectiveCastVFX, SpawnLocation, SpawnRotation);
 	}
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);

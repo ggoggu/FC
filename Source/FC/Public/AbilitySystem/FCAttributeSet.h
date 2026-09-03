@@ -32,6 +32,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Attributes|Persistence")
 	void RestoreFromStatSaveData(const FFCPlayerStatSaveData& InStatData);
 
+	/** Refreshes current mana to MaxMana */
+	UFUNCTION(BlueprintCallable, Category = "Attributes|Mana")
+	void RefreshMana();
+
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Attributes|Health")
 	FGameplayAttributeData Health;
 	ATTRIBUTE_ACCESSORS(UFCAttributeSet, Health)
@@ -52,6 +56,14 @@ public:
 	FGameplayAttributeData AttackPower;
 	ATTRIBUTE_ACCESSORS(UFCAttributeSet, AttackPower)
 
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Shield, Category = "Attributes|Shield")
+	FGameplayAttributeData Shield;
+	ATTRIBUTE_ACCESSORS(UFCAttributeSet, Shield)
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxShield, Category = "Attributes|Shield")
+	FGameplayAttributeData MaxShield;
+	ATTRIBUTE_ACCESSORS(UFCAttributeSet, MaxShield)
+
 protected:
 	UFUNCTION()
 	virtual void OnRep_Health(const FGameplayAttributeData& OldHealth);
@@ -67,4 +79,10 @@ protected:
 
 	UFUNCTION()
 	virtual void OnRep_AttackPower(const FGameplayAttributeData& OldAttackPower);
+
+	UFUNCTION()
+	virtual void OnRep_Shield(const FGameplayAttributeData& OldShield);
+
+	UFUNCTION()
+	virtual void OnRep_MaxShield(const FGameplayAttributeData& OldMaxShield);
 };

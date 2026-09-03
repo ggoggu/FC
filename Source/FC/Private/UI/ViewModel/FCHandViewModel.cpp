@@ -47,6 +47,16 @@ void UFCHandViewModel::SyncFromHandContainer(const FFCCardHandContainer& Contain
 	CardsInHand = MoveTemp(NewList);
 	UE_MVVM_SET_PROPERTY_VALUE(CurrentHandCount, CardsInHand.Num());
 
+	// Update HandIndex and TotalCardsInHand for each child ViewModel
+	for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+	{
+		if (UFCCardViewModel* CardVM = CardsInHand[Index])
+		{
+			CardVM->SetHandIndex(Index);
+			CardVM->SetTotalCardsInHand(CardsInHand.Num());
+		}
+	}
+
 	// Revalidate selection
 	if (SelectedCardIndex >= CardsInHand.Num() || SelectedCardIndex < 0)
 	{
@@ -57,7 +67,18 @@ void UFCHandViewModel::SyncFromHandContainer(const FFCCardHandContainer& Contain
 		SelectCardByIndex(SelectedCardIndex);
 	}
 
+	// Revalidate hover
+	if (HoveredCardIndex >= CardsInHand.Num() || HoveredCardIndex < 0)
+	{
+		ClearHover();
+	}
+	else
+	{
+		HoverCardByIndex(HoveredCardIndex);
+	}
+
 	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(CardsInHand);
+	OnCardsUpdated.Broadcast();
 }
 
 void UFCHandViewModel::UpdateCardItem(const FFCCardItem& InItem, UFCCardSubsystem* DataSubsystem)
@@ -68,6 +89,7 @@ void UFCHandViewModel::UpdateCardItem(const FFCCardItem& InItem, UFCCardSubsyste
 		{
 			UFCCardDataAsset* DataAsset = DataSubsystem ? DataSubsystem->GetCardDataAsset(InItem.CardId) : nullptr;
 			CardVM->InitializeFromCardItem(InItem, DataAsset);
+			OnCardsUpdated.Broadcast();
 			break;
 		}
 	}
@@ -137,6 +159,70 @@ UFCCardViewModel* UFCHandViewModel::GetSelectedCard() const
 	return nullptr;
 }
 
+void UFCHandViewModel::HoverCardByGuid(const FGuid& InGuid)
+{
+	int32 FoundIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+	{
+		UFCCardViewModel* CardVM = CardsInHand[Index];
+		if (CardVM)
+		{
+			bool bMatch = (CardVM->CardGuid == InGuid);
+			CardVM->SetIsHovered(bMatch);
+			if (bMatch)
+			{
+				FoundIndex = Index;
+			}
+		}
+	}
+
+	UE_MVVM_SET_PROPERTY_VALUE(HoveredCardIndex, FoundIndex);
+	UE_MVVM_SET_PROPERTY_VALUE(bHasHover, FoundIndex != INDEX_NONE);
+}
+
+void UFCHandViewModel::HoverCardByIndex(int32 InIndex)
+{
+	if (!CardsInHand.IsValidIndex(InIndex))
+	{
+		ClearHover();
+		return;
+	}
+
+	for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+	{
+		if (UFCCardViewModel* CardVM = CardsInHand[Index])
+		{
+			CardVM->SetIsHovered(Index == InIndex);
+		}
+	}
+
+	UE_MVVM_SET_PROPERTY_VALUE(HoveredCardIndex, InIndex);
+	UE_MVVM_SET_PROPERTY_VALUE(bHasHover, true);
+}
+
+void UFCHandViewModel::ClearHover()
+{
+	for (UFCCardViewModel* CardVM : CardsInHand)
+	{
+		if (CardVM)
+		{
+			CardVM->SetIsHovered(false);
+		}
+	}
+
+	UE_MVVM_SET_PROPERTY_VALUE(HoveredCardIndex, INDEX_NONE);
+	UE_MVVM_SET_PROPERTY_VALUE(bHasHover, false);
+}
+
+UFCCardViewModel* UFCHandViewModel::GetHoveredCard() const
+{
+	if (CardsInHand.IsValidIndex(HoveredCardIndex))
+	{
+		return CardsInHand[HoveredCardIndex];
+	}
+	return nullptr;
+}
+
 void UFCHandViewModel::UpdatePlayability(int32 CurrentPlayerMana)
 {
 	for (UFCCardViewModel* CardVM : CardsInHand)
@@ -146,4 +232,56 @@ void UFCHandViewModel::UpdatePlayability(int32 CurrentPlayerMana)
 			CardVM->SetIsPlayable(CardVM->ManaCost <= CurrentPlayerMana);
 		}
 	}
+}
+
+void UFCHandViewModel::CalculateCardFanTransform(
+	int32 CardIndex,
+	int32 TotalCards,
+	float CardSpacing,
+	float MaxHandWidth,
+	float ArcHeight,
+	float MaxFanAngle,
+	float AngleStep,
+	FVector2D& OutTranslation,
+	float& OutAngle)
+{
+	OutTranslation = FVector2D::ZeroVector;
+	OutAngle = 0.0f;
+
+	if (TotalCards <= 0 || !FMath::IsWithinInclusive(CardIndex, 0, TotalCards - 1))
+	{
+		return;
+	}
+
+	if (TotalCards == 1)
+	{
+		OutTranslation = FVector2D::ZeroVector;
+		OutAngle = 0.0f;
+		return;
+	}
+
+	const float CenterIndex = (TotalCards - 1) * 0.5f;
+	const float OffsetFromCenter = static_cast<float>(CardIndex) - CenterIndex;
+	const float NormalizedOffset = (CenterIndex > 0.0f) ? (OffsetFromCenter / CenterIndex) : 0.0f;
+
+	// 1. Horizontal Spacing (with automatic compression if total width exceeds MaxHandWidth)
+	float EffectiveSpacing = CardSpacing;
+	const float DesiredTotalWidth = (TotalCards - 1) * CardSpacing;
+	if (MaxHandWidth > 0.0f && DesiredTotalWidth > MaxHandWidth && TotalCards > 1)
+	{
+		EffectiveSpacing = MaxHandWidth / static_cast<float>(TotalCards - 1);
+	}
+	OutTranslation.X = OffsetFromCenter * EffectiveSpacing;
+
+	// 2. Vertical Arc Drop (parabolic curve: center card at Y=0, edge cards drop down by ArcHeight)
+	OutTranslation.Y = ArcHeight * (NormalizedOffset * NormalizedOffset);
+
+	// 3. Rotation Angle (with clamping to MaxFanAngle)
+	float EffectiveAngleStep = AngleStep;
+	const float DesiredTotalAngle = (TotalCards - 1) * AngleStep;
+	if (MaxFanAngle > 0.0f && DesiredTotalAngle > MaxFanAngle && TotalCards > 1)
+	{
+		EffectiveAngleStep = MaxFanAngle / static_cast<float>(TotalCards - 1);
+	}
+	OutAngle = OffsetFromCenter * EffectiveAngleStep;
 }

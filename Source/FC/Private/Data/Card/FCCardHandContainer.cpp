@@ -1,19 +1,30 @@
 #include "Data/Card/FCCardHandContainer.h"
+#include "Card/FCCardDeckComponent.h"
 #include "Components/ActorComponent.h"
 
 void FFCCardItem::PostReplicatedAdd(const FFCCardHandContainer& InArraySerializer)
 {
-	// Client-side notification hook if needed
+	if (UFCCardDeckComponent* DeckComp = Cast<UFCCardDeckComponent>(InArraySerializer.OwnerComponent))
+	{
+		DeckComp->NotifyHandChanged();
+	}
 }
 
 void FFCCardItem::PostReplicatedChange(const FFCCardHandContainer& InArraySerializer)
 {
-	// Client-side notification hook if needed
+	if (UFCCardDeckComponent* DeckComp = Cast<UFCCardDeckComponent>(InArraySerializer.OwnerComponent))
+	{
+		DeckComp->NotifyItemChanged(*this);
+		DeckComp->NotifyHandChanged();
+	}
 }
 
 void FFCCardItem::PreReplicatedRemove(const FFCCardHandContainer& InArraySerializer)
 {
-	// Client-side notification hook if needed
+	if (UFCCardDeckComponent* DeckComp = Cast<UFCCardDeckComponent>(InArraySerializer.OwnerComponent))
+	{
+		DeckComp->NotifyHandChanged();
+	}
 }
 
 FFCCardItem* FFCCardHandContainer::AddCard(FName InCardId, int32 InUpgradeLevel, bool bInLocked)

@@ -167,6 +167,10 @@ struct FC_API FCClassTraitUtils
 
 		if (ElementStrings.Num() == 0)
 		{
+			if (Elements.Contains(EFCElement::None))
+			{
+				return GetElementDisplayName(EFCElement::None);
+			}
 			return FText::GetEmpty();
 		}
 

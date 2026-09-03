@@ -1,4 +1,5 @@
 #include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -8,6 +9,8 @@
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "AbilitySystem/Effects/FCGE_Damage.h"
+#include "Combat/FCCombatUtils.h"
 #include "Engine/OverlapResult.h"
 #include "Net/UnrealNetwork.h"
 
@@ -52,9 +55,58 @@ AFCProjectileBase::AFCProjectileBase()
 	InitialLifeSpan = 5.0f;
 }
 
+void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset)
+{
+	if (!InDataAsset)
+	{
+		return;
+	}
+
+	ProjectileDataAsset = InDataAsset;
+
+	// Combat configuration
+	Damage = InDataAsset->Damage;
+	DamageEffectClass = InDataAsset->DamageEffectClass ? InDataAsset->DamageEffectClass : TSubclassOf<UGameplayEffect>(UFCGE_Damage::StaticClass());
+	ExplosionRadius = InDataAsset->ExplosionRadius;
+	bPiercing = InDataAsset->bPiercing;
+	MaxPierceCount = InDataAsset->MaxPierceCount;
+	SpawnActorOnImpact = InDataAsset->SpawnActorOnImpact;
+	ProjectileElements = InDataAsset->ProjectileElements;
+	SourceClass = InDataAsset->SourceClass;
+	SourceCardType = InDataAsset->SourceCardType;
+
+	// Movement Component (Speed, Trajectory, Gravity)
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->InitialSpeed = InDataAsset->LaunchSpeed;
+		ProjectileMovement->MaxSpeed = InDataAsset->MaxSpeed;
+		ProjectileMovement->ProjectileGravityScale = InDataAsset->GravityScale;
+		ProjectileMovement->bRotationFollowsVelocity = InDataAsset->bRotationFollowsVelocity;
+		ProjectileMovement->bShouldBounce = InDataAsset->bShouldBounce;
+	}
+
+	SetLifeSpan(InDataAsset->LifeSpan);
+
+	// Presentation: Optional Impact Overrides (if null, BP template defaults are preserved)
+	if (UNiagaraSystem* LoadedImpactVFX = InDataAsset->ImpactVFX.LoadSynchronous())
+	{
+		ImpactVFX = LoadedImpactVFX;
+	}
+
+	if (USoundBase* LoadedImpactSound = InDataAsset->ImpactSound.LoadSynchronous())
+	{
+		ImpactSound = LoadedImpactSound;
+	}
+}
+
 void AFCProjectileBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (ProjectileDataAsset)
+	{
+		InitializeFromDataAsset(ProjectileDataAsset);
+	}
 
 	if (CollisionComponent)
 	{
@@ -201,6 +253,12 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 	{
 		// Generic Actor Damage fallback
 		UGameplayStatics::ApplyPointDamage(TargetActor, Damage, GetVelocity().GetSafeNormal(), HitResult, GetInstigatorController(), this, nullptr);
+	}
+
+	// Apply on-hit combat traits (e.g. Mage attack card applies element stacks)
+	if (SourceCardType == EFCCardType::Attack && ProjectileElements.Num() > 0)
+	{
+		UFCCombatUtils::ApplyAttackCardHitTraits(this, TargetActor, SourceClass, SourceCardType, ProjectileElements);
 	}
 }
 

@@ -7,4 +7,7 @@ UFCGA_Fireball::UFCGA_Fireball()
 	BaseDamage = 1.0f;
 	LaunchSpeed = 2500.0f;
 	MuzzleOffset = FVector(100.0f, 0.0f, 40.0f);
+	ProjectileElements = { EFCElement::Fire, EFCElement::Earth };
+	CharacterClass = EFCCharacterClass::Mage;
+	CardType = EFCCardType::Attack;
 }

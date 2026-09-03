@@ -6,6 +6,7 @@
 #include "Card/FCCardDeckComponent.h"
 #include "Game/FCPlayerState.h"
 #include "UI/View/FCHUDWidget.h"
+#include "UI/View/FCHandWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "AbilitySystemInterface.h"
@@ -34,6 +35,40 @@ void AFCPlayerController::BeginPlay()
 void AFCPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+
+	if (InputComponent)
+	{
+		// Keyboard number keys 1~0
+		InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AFCPlayerController::OnNumberKey1Pressed);
+		InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AFCPlayerController::OnNumberKey2Pressed);
+		InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AFCPlayerController::OnNumberKey3Pressed);
+		InputComponent->BindKey(EKeys::Four, IE_Pressed, this, &AFCPlayerController::OnNumberKey4Pressed);
+		InputComponent->BindKey(EKeys::Five, IE_Pressed, this, &AFCPlayerController::OnNumberKey5Pressed);
+		InputComponent->BindKey(EKeys::Six, IE_Pressed, this, &AFCPlayerController::OnNumberKey6Pressed);
+		InputComponent->BindKey(EKeys::Seven, IE_Pressed, this, &AFCPlayerController::OnNumberKey7Pressed);
+		InputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &AFCPlayerController::OnNumberKey8Pressed);
+		InputComponent->BindKey(EKeys::Nine, IE_Pressed, this, &AFCPlayerController::OnNumberKey9Pressed);
+		InputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &AFCPlayerController::OnNumberKey0Pressed);
+
+		// Keypad number keys 1~0
+		InputComponent->BindKey(EKeys::NumPadOne, IE_Pressed, this, &AFCPlayerController::OnNumberKey1Pressed);
+		InputComponent->BindKey(EKeys::NumPadTwo, IE_Pressed, this, &AFCPlayerController::OnNumberKey2Pressed);
+		InputComponent->BindKey(EKeys::NumPadThree, IE_Pressed, this, &AFCPlayerController::OnNumberKey3Pressed);
+		InputComponent->BindKey(EKeys::NumPadFour, IE_Pressed, this, &AFCPlayerController::OnNumberKey4Pressed);
+		InputComponent->BindKey(EKeys::NumPadFive, IE_Pressed, this, &AFCPlayerController::OnNumberKey5Pressed);
+		InputComponent->BindKey(EKeys::NumPadSix, IE_Pressed, this, &AFCPlayerController::OnNumberKey6Pressed);
+		InputComponent->BindKey(EKeys::NumPadSeven, IE_Pressed, this, &AFCPlayerController::OnNumberKey7Pressed);
+		InputComponent->BindKey(EKeys::NumPadEight, IE_Pressed, this, &AFCPlayerController::OnNumberKey8Pressed);
+		InputComponent->BindKey(EKeys::NumPadNine, IE_Pressed, this, &AFCPlayerController::OnNumberKey9Pressed);
+		InputComponent->BindKey(EKeys::NumPadZero, IE_Pressed, this, &AFCPlayerController::OnNumberKey0Pressed);
+
+		// Left Mouse Button (play held card)
+		InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AFCPlayerController::OnLeftMouseButtonPressed);
+
+		// Right Mouse Button & Escape (cancel held card)
+		InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AFCPlayerController::OnRightMouseButtonPressed);
+		InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AFCPlayerController::OnRightMouseButtonPressed);
+	}
 }
 
 void AFCPlayerController::OnPossess(APawn* InPawn)
@@ -49,6 +84,16 @@ void AFCPlayerController::OnPossess(APawn* InPawn)
 void AFCPlayerController::AcknowledgePossession(APawn* P)
 {
 	Super::AcknowledgePossession(P);
+
+	if (IsLocalPlayerController())
+	{
+		SetupHUD();
+	}
+}
+
+void AFCPlayerController::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
 
 	if (IsLocalPlayerController())
 	{
@@ -113,15 +158,22 @@ void AFCPlayerController::BindDeckComponentEvents()
 	// Avoid duplicate delegate bindings
 	DeckComp->OnCardHandUpdated.RemoveAll(this);
 	DeckComp->OnPileCountsChanged.RemoveAll(this);
+	DeckComp->OnCardCycleTriggered.RemoveAll(this);
+	DeckComp->OnCycleSettingsChanged.RemoveAll(this);
 
 	DeckComp->OnCardHandUpdated.AddDynamic(this, &AFCPlayerController::SyncHandToViewModel);
 	DeckComp->OnPileCountsChanged.AddDynamic(this, &AFCPlayerController::OnDeckPileCountsChanged);
+	DeckComp->OnCardCycleTriggered.AddDynamic(this, &AFCPlayerController::OnDeckCycleTriggered);
+	DeckComp->OnCycleSettingsChanged.AddDynamic(this, &AFCPlayerController::OnDeckCycleSettingsChanged);
 
 	// Perform initial sync
 	SyncHandToViewModel();
 	HUDViewModel->SetDrawPileCount(DeckComp->GetDrawPileCount());
 	HUDViewModel->SetDiscardPileCount(DeckComp->GetDiscardPileCount());
 	HUDViewModel->SetExhaustPileCount(DeckComp->GetExhaustPileCount());
+	HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
+	HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
+	HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
 }
 
 void AFCPlayerController::BindAttributeListeners()
@@ -155,6 +207,8 @@ void AFCPlayerController::BindAttributeListeners()
 		HUDViewModel->SetMaxHealth(FMath::RoundToInt(AttrSet->GetMaxHealth()));
 		HUDViewModel->SetCurrentMana(FMath::RoundToInt(AttrSet->GetMana()));
 		HUDViewModel->SetMaxMana(FMath::RoundToInt(AttrSet->GetMaxMana()));
+		HUDViewModel->SetCurrentShield(FMath::RoundToInt(AttrSet->GetShield()));
+		HUDViewModel->SetMaxShield(FMath::RoundToInt(AttrSet->GetMaxShield()));
 	}
 
 	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetHealthAttribute()).AddLambda(
@@ -190,6 +244,24 @@ void AFCPlayerController::BindAttributeListeners()
 			if (HUDViewModel)
 			{
 				HUDViewModel->SetMaxMana(FMath::RoundToInt(Data.NewValue));
+			}
+		});
+
+	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetShieldAttribute()).AddLambda(
+		[this](const FOnAttributeChangeData& Data)
+		{
+			if (HUDViewModel)
+			{
+				HUDViewModel->SetCurrentShield(FMath::RoundToInt(Data.NewValue));
+			}
+		});
+
+	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetMaxShieldAttribute()).AddLambda(
+		[this](const FOnAttributeChangeData& Data)
+		{
+			if (HUDViewModel)
+			{
+				HUDViewModel->SetMaxShield(FMath::RoundToInt(Data.NewValue));
 			}
 		});
 }
@@ -228,6 +300,30 @@ void AFCPlayerController::OnDeckPileCountsChanged(int32 DrawCount, int32 Discard
 		HUDViewModel->SetDrawPileCount(DrawCount);
 		HUDViewModel->SetDiscardPileCount(DiscardCount);
 		HUDViewModel->SetExhaustPileCount(ExhaustCount);
+	}
+}
+
+void AFCPlayerController::OnDeckCycleTriggered()
+{
+	if (HUDViewModel)
+	{
+		if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
+		{
+			if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
+			{
+				HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
+				HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
+				HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
+			}
+		}
+	}
+}
+
+void AFCPlayerController::OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount)
+{
+	if (HUDViewModel)
+	{
+		HUDViewModel->SetCycleInterval(NewInterval);
 	}
 }
 
@@ -299,6 +395,51 @@ void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTa
 		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
 		{
 			DeckComp->Server_PlayCard(CardGuid, TargetInfo);
+		}
+	}
+}
+
+void AFCPlayerController::HandleNumberKeyInput(int32 SlotIndex)
+{
+	if (!IsLocalPlayerController() || !HUDWidget)
+	{
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	{
+		HandWidget->SelectAndHoldCardByIndex(SlotIndex);
+	}
+}
+
+void AFCPlayerController::OnLeftMouseButtonPressed()
+{
+	if (!IsLocalPlayerController() || !HUDWidget)
+	{
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	{
+		if (HandWidget->HasHeldCard())
+		{
+			HandWidget->PlayHeldCard();
+		}
+	}
+}
+
+void AFCPlayerController::OnRightMouseButtonPressed()
+{
+	if (!IsLocalPlayerController() || !HUDWidget)
+	{
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	{
+		if (HandWidget->HasHeldCard())
+		{
+			HandWidget->ClearHeldCard();
 		}
 	}
 }

@@ -1,6 +1,7 @@
 #include "UI/ViewModel/FCCardViewModel.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardHandContainer.h"
+#include "Data/Card/FCCardSubsystem.h"
 
 void UFCCardViewModel::SetUpgradeLevel(int32 InLevel)
 {
@@ -47,27 +48,67 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 	SetUpgradeLevel(InItem.UpgradeLevel);
 	SetIsLocked(InItem.bIsLocked);
 
-	if (InDataAsset)
+	// Static Data Asset Resolution: If InDataAsset was not passed in, look it up via Subsystem / StaticLoadObject
+	const UFCCardDataAsset* StaticData = InDataAsset;
+	if (!StaticData && !InItem.CardId.IsNone())
 	{
-		SetCardName(InDataAsset->DisplayData.CardName.IsEmpty() ? FText::FromName(InDataAsset->GetCardId()) : InDataAsset->DisplayData.CardName);
-		SetCardDescription(InDataAsset->DisplayData.CardDescription);
-		SetCardIcon(InDataAsset->DisplayData.CardIcon);
-		SetCardType(InDataAsset->GameplayData.CardType);
-		SetRarity(InDataAsset->DisplayData.Rarity);
-		SetManaCost(InDataAsset->GameplayData.BaseManaCost);
-		SetRequiredClass(InDataAsset->GameplayData.RequiredClass);
-		SetElements(InDataAsset->GameplayData.Elements);
-		SetIsNeutral(InDataAsset->GameplayData.IsNeutral());
-		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(InDataAsset->GameplayData.RequiredClass));
-		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(InDataAsset->GameplayData.RequiredClass));
+		if (UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this))
+		{
+			StaticData = Subsystem->GetCardDataAsset(InItem.CardId);
+		}
 
-		const FText FormattedTrait = InDataAsset->GameplayData.GetFormattedTraitText();
+		if (!StaticData)
+		{
+			const FString CleanName = InItem.CardId.ToString();
+			const FString PrefixedName = CleanName.StartsWith(TEXT("DA_")) ? CleanName : FString::Printf(TEXT("DA_%s"), *CleanName);
+			const TArray<FString> CandidatePaths = {
+				FString::Printf(TEXT("/Game/Card/%s.%s"), *PrefixedName, *PrefixedName),
+				FString::Printf(TEXT("/Game/Card/%s.%s"), *CleanName, *CleanName),
+				FString::Printf(TEXT("/Game/Data/Card/%s.%s"), *PrefixedName, *PrefixedName),
+				FString::Printf(TEXT("/Game/Data/Cards/%s.%s"), *PrefixedName, *PrefixedName)
+			};
+			for (const FString& PathStr : CandidatePaths)
+			{
+				if (UFCCardDataAsset* LoadedAsset = Cast<UFCCardDataAsset>(StaticLoadObject(UFCCardDataAsset::StaticClass(), nullptr, *PathStr)))
+				{
+					StaticData = LoadedAsset;
+					break;
+				}
+			}
+		}
+	}
+
+	if (StaticData)
+	{
+		const FText RealCardName = !StaticData->DisplayData.CardName.IsEmpty()
+			? StaticData->DisplayData.CardName
+			: FText::FromName(!StaticData->GetCardId().IsNone() ? StaticData->GetCardId() : StaticData->GetFName());
+
+		SetCardName(RealCardName);
+		SetCardDescription(StaticData->DisplayData.CardDescription);
+		SetCardIcon(StaticData->DisplayData.CardIcon);
+		SetCardType(StaticData->GameplayData.CardType);
+		SetRarity(StaticData->DisplayData.Rarity);
+		SetManaCost(StaticData->GameplayData.BaseManaCost);
+		SetRequiredClass(StaticData->GameplayData.RequiredClass);
+		SetElements(StaticData->GameplayData.Elements);
+		SetIsNeutral(StaticData->GameplayData.IsNeutral());
+		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(StaticData->GameplayData.RequiredClass));
+		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(StaticData->GameplayData.RequiredClass));
+
+		const FText FormattedTrait = StaticData->GameplayData.GetFormattedTraitText();
 		SetClassTraitFormattedText(FormattedTrait);
 		SetHasClassTrait(!FormattedTrait.IsEmpty());
+
+		SetExhaustsOnPlay(StaticData->GameplayData.DoesExhaustOnPlay());
+		const FText KeywordsText = StaticData->GameplayData.GetFormattedKeywordsText();
+		SetFormattedKeywords(KeywordsText);
+		SetHasKeywords(!KeywordsText.IsEmpty());
 	}
 	else
 	{
 		SetCardName(FText::FromName(InItem.CardId));
+		SetCardDescription(FText::GetEmpty());
 		SetRequiredClass(EFCCharacterClass::Neutral);
 		SetElements({});
 		SetIsNeutral(true);
@@ -75,6 +116,9 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(EFCCharacterClass::Neutral));
 		SetClassTraitFormattedText(FText::GetEmpty());
 		SetHasClassTrait(false);
+		SetExhaustsOnPlay(false);
+		SetFormattedKeywords(FText::GetEmpty());
+		SetHasKeywords(false);
 	}
 }
 

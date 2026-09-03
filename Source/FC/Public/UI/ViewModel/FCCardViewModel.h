@@ -78,6 +78,16 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	FText ClassTraitFormattedText;
 
+	// --- Keyword & Exhaust Properties ---
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Keyword")
+	bool bExhaustsOnPlay = false;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Keyword")
+	FText FormattedKeywords;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Keyword")
+	bool bHasKeywords = false;
+
 	// --- Interaction State ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	bool bIsPlayable = true;
@@ -87,6 +97,19 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	bool bIsHovered = false;
+
+	// --- Hand Fan Layout Presentation State ---
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Layout")
+	int32 HandIndex = 0;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Layout")
+	int32 TotalCardsInHand = 0;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Layout")
+	float TargetFanAngle = 0.0f;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Layout")
+	FVector2D TargetFanOffset = FVector2D::ZeroVector;
 
 public:
 	// Property Setters utilizing UE_MVVM_SET_PROPERTY_VALUE
@@ -107,9 +130,16 @@ public:
 	void SetFormattedClassText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(FormattedClassText, InText); }
 	void SetClassTraitTypeName(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(ClassTraitTypeName, InText); }
 	void SetClassTraitFormattedText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(ClassTraitFormattedText, InText); }
+	void SetExhaustsOnPlay(bool bInExhaust) { UE_MVVM_SET_PROPERTY_VALUE(bExhaustsOnPlay, bInExhaust); }
+	void SetFormattedKeywords(const FText& InKeywords) { UE_MVVM_SET_PROPERTY_VALUE(FormattedKeywords, InKeywords); }
+	void SetHasKeywords(bool bInHasKeywords) { UE_MVVM_SET_PROPERTY_VALUE(bHasKeywords, bInHasKeywords); }
 	void SetIsPlayable(bool bInPlayable);
 	void SetIsSelected(bool bInSelected) { UE_MVVM_SET_PROPERTY_VALUE(bIsSelected, bInSelected); }
 	void SetIsHovered(bool bInHovered) { UE_MVVM_SET_PROPERTY_VALUE(bIsHovered, bInHovered); }
+	void SetHandIndex(int32 InIndex) { UE_MVVM_SET_PROPERTY_VALUE(HandIndex, InIndex); }
+	void SetTotalCardsInHand(int32 InTotal) { UE_MVVM_SET_PROPERTY_VALUE(TotalCardsInHand, InTotal); }
+	void SetTargetFanAngle(float InAngle) { UE_MVVM_SET_PROPERTY_VALUE(TargetFanAngle, InAngle); }
+	void SetTargetFanOffset(const FVector2D& InOffset) { UE_MVVM_SET_PROPERTY_VALUE(TargetFanOffset, InOffset); }
 
 	/** Initializes or synchronizes the ViewModel from runtime item and static definition */
 	void InitializeFromCardItem(const FFCCardItem& InItem, const UFCCardDataAsset* InDataAsset);

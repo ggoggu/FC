@@ -10,6 +10,9 @@ AFCFireballProjectile::AFCFireballProjectile()
 	ExplosionRadius = 0.0f;
 	bPiercing = false;
 	MaxPierceCount = 0;
+	ProjectileElements = { EFCElement::Fire, EFCElement::Earth };
+	SourceClass = EFCCharacterClass::Mage;
+	SourceCardType = EFCCardType::Attack;
 
 	if (CollisionComponent)
 	{

@@ -97,7 +97,12 @@ UFCClassDataAsset* UFCClassSubsystem::GetClassDataAsset(EFCCharacterClass ClassT
 			FName("Card_Fireball"),
 			FName("Card_Fireball"),
 			FName("Card_Fireball"),
-			FName("Card_AttackBuff")
+			FName("Card_Fireball"),
+			FName("Card_AttackBuff"),
+			FName("Card_AttackBuff"),
+			FName("Card_AttackBuff"),
+			FName("Card_MagicShield"),
+			FName("Card_MagicShield")
 		};
 		MageAsset->ClassData.BaseMaxHealth = 80.0f;
 		MageAsset->ClassData.BaseMaxMana = 100.0f;
@@ -114,6 +119,15 @@ UFCClassDataAsset* UFCClassSubsystem::GetClassDataAsset(EFCCharacterClass ClassT
 		NeutralAsset->ClassData.ClassDescription = NSLOCTEXT("FCClass", "ClassNeutralDesc", "모든 직업이 공용으로 사용할 수 있는 기본 설정입니다.");
 		NeutralAsset->ClassData.AffinityElements.Empty();
 		NeutralAsset->ClassData.StartingDeck = {
+			FName("Card_Fireball"),
+			FName("Card_Fireball"),
+			FName("Card_Fireball"),
+			FName("Card_Fireball"),
+			FName("Card_Fireball"),
+			FName("Card_AttackBuff"),
+			FName("Card_AttackBuff"),
+			FName("Card_AttackBuff"),
+			FName("Card_AttackBuff"),
 			FName("Card_AttackBuff")
 		};
 		NeutralAsset->ClassData.BaseMaxHealth = 100.0f;
@@ -135,7 +149,18 @@ TArray<FName> UFCClassSubsystem::GetStartingDeckForClass(EFCCharacterClass Class
 	}
 
 	// Default fallback
-	return { FName("Card_Fireball"), FName("Card_AttackBuff") };
+	return {
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_Fireball"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff"),
+		FName("Card_AttackBuff")
+	};
 }
 
 TArray<EFCElement> UFCClassSubsystem::GetAffinityElementsForClass(EFCCharacterClass ClassType) const

@@ -13,6 +13,7 @@ class USoundBase;
 class UNiagaraSystem;
 class AActor;
 class UPrimitiveComponent;
+class UFCProjectileDataAsset;
 
 /**
  * Card category/type classification
@@ -54,6 +55,20 @@ enum class EFCCardRarity : uint8
 };
 
 /**
+ * Card gameplay keyword classification
+ */
+UENUM(BlueprintType)
+enum class EFCCardKeyword : uint8
+{
+	None        UMETA(DisplayName = "None"),
+	Exhaust     UMETA(DisplayName = "Exhaust / 소멸"),
+	Retain      UMETA(DisplayName = "Retain / 보존"),
+	Innate      UMETA(DisplayName = "Innate / 선천성"),
+	Ethereal    UMETA(DisplayName = "Ethereal / 휘발성"),
+	Unplayable  UMETA(DisplayName = "Unplayable / 사용 불가")
+};
+
+/**
  * Card zone / combat circulation state
  */
 UENUM(BlueprintType)
@@ -73,7 +88,8 @@ enum class EFCCardAddDestination : uint8
 {
 	DrawPile    UMETA(DisplayName = "Draw Pile"),
 	DiscardPile UMETA(DisplayName = "Discard Pile"),
-	Hand        UMETA(DisplayName = "Hand")
+	Hand        UMETA(DisplayName = "Hand"),
+	ExhaustPile UMETA(DisplayName = "Exhaust Pile")
 };
 
 /**
@@ -100,6 +116,10 @@ struct FC_API FFCCardGameplayData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	EFCCardTargetType TargetType = EFCCardTargetType::SingleTarget;
 
+	/** Optional Projectile Data Asset (if this card spawns a projectile) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	TObjectPtr<UFCProjectileDataAsset> ProjectileDataAsset;
+
 	/** Gameplay Ability granted and activated when this card is played */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	TSubclassOf<UGameplayAbility> CardAbilityClass;
@@ -108,7 +128,7 @@ struct FC_API FFCCardGameplayData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	TArray<TSubclassOf<UGameplayEffect>> CardEffectClasses;
 
-	/** Gameplay tags associated with this card (e.g. Card.Archetype.Fire, Card.Synergy.Combo) */
+	/** Gameplay tags associated with this card (e.g. Card.Archetype.Fire, Card.Keyword.Exhaust) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	FGameplayTagContainer CardTags;
 
@@ -123,6 +143,78 @@ struct FC_API FFCCardGameplayData
 	/** Elemental affinities (Active for Mage cards) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	TArray<EFCElement> Elements;
+
+	/** Elements consumed from target(s) to activate or enhance this card's effect */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	TArray<EFCElement> ConsumedElements;
+
+	/** Whether this card is exhausted (sent to Exhaust Zone/Pile) upon being played */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	bool bExhaustsOnPlay = false;
+
+	/** Gameplay keywords associated with this card (e.g. Exhaust, Retain, Innate) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	TArray<EFCCardKeyword> Keywords;
+
+	/** Helper to check if card exhausts upon being played */
+	bool DoesExhaustOnPlay() const
+	{
+		return bExhaustsOnPlay 
+			|| Keywords.Contains(EFCCardKeyword::Exhaust)
+			|| CardTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Card.Keyword.Exhaust"), false));
+	}
+
+	/** Helper to check if card has the Retain keyword (preserved in hand on turn cycle) */
+	bool DoesRetain() const
+	{
+		return Keywords.Contains(EFCCardKeyword::Retain)
+			|| CardTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Card.Keyword.Retain"), false));
+	}
+
+	/** Helper to check if card has the Ethereal keyword (exhausts if held at end of turn cycle) */
+	bool IsEthereal() const
+	{
+		return Keywords.Contains(EFCCardKeyword::Ethereal)
+			|| CardTags.HasTag(FGameplayTag::RequestGameplayTag(FName("Card.Keyword.Ethereal"), false));
+	}
+
+	/** Helper to format gameplay keywords for presentation/UI display */
+	FText GetFormattedKeywordsText() const
+	{
+		TArray<FText> KeywordTexts;
+		if (DoesExhaustOnPlay())
+		{
+			KeywordTexts.Add(NSLOCTEXT("FC_Card", "Keyword_Exhaust", "소멸"));
+		}
+
+		for (EFCCardKeyword Keyword : Keywords)
+		{
+			switch (Keyword)
+			{
+			case EFCCardKeyword::Retain:
+				KeywordTexts.Add(NSLOCTEXT("FC_Card", "Keyword_Retain", "보존"));
+				break;
+			case EFCCardKeyword::Innate:
+				KeywordTexts.Add(NSLOCTEXT("FC_Card", "Keyword_Innate", "선천성"));
+				break;
+			case EFCCardKeyword::Ethereal:
+				KeywordTexts.Add(NSLOCTEXT("FC_Card", "Keyword_Ethereal", "휘발성"));
+				break;
+			case EFCCardKeyword::Unplayable:
+				KeywordTexts.Add(NSLOCTEXT("FC_Card", "Keyword_Unplayable", "사용 불가"));
+				break;
+			default:
+				break;
+			}
+		}
+
+		if (KeywordTexts.Num() == 0)
+		{
+			return FText::GetEmpty();
+		}
+
+		return FText::Join(FText::FromString(TEXT(", ")), KeywordTexts);
+	}
 
 	/** Helper to check if card has a specific elemental affinity */
 	bool HasElement(EFCElement InElement) const
@@ -140,6 +232,12 @@ struct FC_API FFCCardGameplayData
 	bool CanHaveElements() const
 	{
 		return RequiredClass == EFCCharacterClass::Mage;
+	}
+
+	/** Helper to check if card consumes element stacks */
+	bool RequiresElementConsumption() const
+	{
+		return ConsumedElements.Num() > 0;
 	}
 
 	/** Helper to format class trait text via adapter */

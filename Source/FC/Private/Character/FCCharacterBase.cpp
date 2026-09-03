@@ -1,6 +1,7 @@
 #include "Character/FCCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Combat/Element/FCElementComponent.h"
 
 AFCCharacterBase::AFCCharacterBase()
 {
@@ -12,6 +13,8 @@ AFCCharacterBase::AFCCharacterBase()
 	AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 
 	AttributeSet = CreateDefaultSubobject<UFCAttributeSet>(TEXT("AttributeSet"));
+
+	ElementComponent = CreateDefaultSubobject<UFCElementComponent>(TEXT("ElementComponent"));
 }
 
 UAbilitySystemComponent* AFCCharacterBase::GetAbilitySystemComponent() const
@@ -22,6 +25,11 @@ UAbilitySystemComponent* AFCCharacterBase::GetAbilitySystemComponent() const
 UFCAttributeSet* AFCCharacterBase::GetAttributeSet() const
 {
 	return AttributeSet;
+}
+
+UFCElementComponent* AFCCharacterBase::GetElementComponent() const
+{
+	return ElementComponent;
 }
 
 void AFCCharacterBase::BeginPlay()
