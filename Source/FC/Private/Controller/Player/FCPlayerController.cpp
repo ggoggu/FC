@@ -118,8 +118,8 @@ void AFCPlayerController::SetupHUD()
 		HUDWidget = CreateWidget<UFCHUDWidget>(this, HUDWidgetClass);
 		if (HUDWidget)
 		{
-			HUDWidget->SetHUDViewModel(HUDViewModel);
 			HUDWidget->AddToViewport();
+			HUDWidget->SetHUDViewModel(HUDViewModel);
 		}
 	}
 	else

@@ -1,6 +1,7 @@
 #include "AbilitySystem/FCAttributeSet.h"
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
+#include "Character/FCCharacterBase.h"
 
 UFCAttributeSet::UFCAttributeSet()
 {
@@ -90,6 +91,33 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 {
 	Super::PostGameplayEffectExecute(Data);
 
+	UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent();
+	const bool bHasValidOwner = (TargetASC && TargetASC->GetOwnerActor() != nullptr);
+
+	auto SafeSetHealth = [this, bHasValidOwner](float NewVal)
+	{
+		if (bHasValidOwner)
+		{
+			SetHealth(NewVal);
+		}
+		else
+		{
+			InitHealth(NewVal);
+		}
+	};
+
+	auto SafeSetShield = [this, bHasValidOwner](float NewVal)
+	{
+		if (bHasValidOwner)
+		{
+			SetShield(NewVal);
+		}
+		else
+		{
+			InitShield(NewVal);
+		}
+	};
+
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		if (Data.EvaluatedData.Magnitude < 0.f)
@@ -102,25 +130,38 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 				if (CurrentShield >= IncomingDamage)
 				{
 					// Shield completely absorbs damage
-					SetShield(CurrentShield - IncomingDamage);
-					SetHealth(FMath::Clamp(GetHealth() + IncomingDamage, 0.f, GetMaxHealth()));
+					SafeSetShield(CurrentShield - IncomingDamage);
+					SafeSetHealth(FMath::Clamp(GetHealth() + IncomingDamage, 0.f, GetMaxHealth()));
 				}
 				else
 				{
 					// Shield partially absorbs damage
 					const float Absorbed = CurrentShield;
-					SetShield(0.f);
-					SetHealth(FMath::Clamp(GetHealth() + Absorbed, 0.f, GetMaxHealth()));
+					SafeSetShield(0.f);
+					SafeSetHealth(FMath::Clamp(GetHealth() + Absorbed, 0.f, GetMaxHealth()));
 				}
 			}
 			else
 			{
-				SetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
+				SafeSetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
 			}
 		}
 		else
 		{
-			SetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
+			SafeSetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
+		}
+
+		if (GetHealth() <= 0.0f)
+		{
+			AActor* TargetActor = Data.Target.AbilityActorInfo.IsValid() ? Data.Target.AbilityActorInfo->AvatarActor.Get() : nullptr;
+			AActor* Killer = Data.EffectSpec.GetEffectContext().GetEffectCauser();
+			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
+			{
+				if (!Char->IsDead())
+				{
+					Char->Die(Killer);
+				}
+			}
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetManaAttribute())

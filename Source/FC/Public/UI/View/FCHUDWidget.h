@@ -38,6 +38,7 @@ public:
 	void SetHandWidget(UFCHandWidget* InHandWidget) { HandWidget = InHandWidget; }
 
 protected:
+	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 	/** Optional child hand widget (named HandWidget in Blueprint) automatically linked to HUDViewModel's HandViewModel */

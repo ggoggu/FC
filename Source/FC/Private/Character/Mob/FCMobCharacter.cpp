@@ -3,6 +3,8 @@
 #include "AbilitySystem/FCAttributeSet.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Controller/AI/FCMobAIController.h"
+#include "Gameplay/Spawner/FCMobSpawnerBase.h"
+#include "BrainComponent.h"
 
 AFCMobCharacter::AFCMobCharacter()
 {
@@ -16,6 +18,7 @@ AFCMobCharacter::AFCMobCharacter()
 		MoveComp->bOrientRotationToMovement = true;
 		MoveComp->RotationRate = FRotator(0.0f, 450.0f, 0.0f);
 		MoveComp->MaxWalkSpeed = PatrolSpeed;
+		MoveComp->bUseAccelerationForPaths = true;
 	}
 
 	// Auto-possess with dedicated Mob AIController when placed in level or spawned at runtime
@@ -35,12 +38,63 @@ void AFCMobCharacter::BeginPlay()
 	InitAbilityActorInfo();
 }
 
+void AFCMobCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (OwningSpawner.IsValid())
+	{
+		OwningSpawner->HandleMobDestroyed(this);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
 void AFCMobCharacter::InitAbilityActorInfo()
 {
 	if (AbilitySystemComponent)
 	{
 		AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	}
+}
+
+void AFCMobCharacter::Die(AActor* Killer)
+{
+	if (bIsDead)
+	{
+		return;
+	}
+
+	Super::Die(Killer);
+
+	// Stop AI logic
+	if (AController* Cont = GetController())
+	{
+		if (AAIController* AICont = Cast<AAIController>(Cont))
+		{
+			if (UBrainComponent* BrainComp = AICont->GetBrainComponent())
+			{
+				BrainComp->StopLogic(TEXT("Mob Died"));
+			}
+		}
+	}
+
+	// Notify spawner
+	if (OwningSpawner.IsValid())
+	{
+		OwningSpawner->HandleMobDied(this, Killer);
+	}
+
+	// Schedule cleanup
+	SetLifeSpan(DeathDespawnDelay);
+}
+
+void AFCMobCharacter::SetOwningSpawner(AFCMobSpawnerBase* InSpawner)
+{
+	OwningSpawner = InSpawner;
+}
+
+AFCMobSpawnerBase* AFCMobCharacter::GetOwningSpawner() const
+{
+	return OwningSpawner.Get();
 }
 
 void AFCMobCharacter::SetMovementSpeed(float NewSpeed)
@@ -60,3 +114,4 @@ void AFCMobCharacter::SetChaseSpeed()
 {
 	SetMovementSpeed(ChaseSpeed);
 }
+

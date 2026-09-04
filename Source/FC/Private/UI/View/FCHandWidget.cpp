@@ -450,12 +450,6 @@ void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
 			UFCCardWidget* CardWidget = CreateWidget<UFCCardWidget>(this, CardWidgetClass);
 			if (CardWidget)
 			{
-				CardWidget->SetCardViewModel(CardVM);
-				CardWidget->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
-				CardWidget->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
-				CardWidget->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
-				CardWidget->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
-				CardWidget->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
 				TargetPanel->AddChild(CardWidget);
 
 				// Configure slot anchors and alignment for fan layout origin
@@ -471,6 +465,13 @@ void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
 					OverlaySlot->SetHorizontalAlignment(HAlign_Center);
 					OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
 				}
+
+				CardWidget->SetCardViewModel(CardVM);
+				CardWidget->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
+				CardWidget->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
+				CardWidget->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
+				CardWidget->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
+				CardWidget->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
 
 				ActiveCardWidgets.Add(CardWidget);
 			}

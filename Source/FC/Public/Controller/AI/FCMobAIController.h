@@ -38,8 +38,18 @@ public:
 	UBlackboardData* GetBlackboardAsset() const { return BlackboardAsset; }
 	void SetBlackboardAsset(UBlackboardData* InBB) { BlackboardAsset = InBB; }
 
+	UFUNCTION(BlueprintCallable, Category = "FC|AI")
+	void SetAIState(EFCMobAIState NewState);
+
+	UFUNCTION(BlueprintPure, Category = "FC|AI")
+	EFCMobAIState GetAIState() const { return CurrentAIState; }
+
 protected:
 	virtual void BeginPlay() override;
+
+	/** Current Mob AI State for observation and reflection */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|AI")
+	EFCMobAIState CurrentAIState = EFCMobAIState::Idle;
 
 	/** Callback when AI perception senses or loses sight of an actor */
 	UFUNCTION()
