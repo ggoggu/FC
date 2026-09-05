@@ -18,7 +18,7 @@ AFCMobCharacter::AFCMobCharacter()
 		MoveComp->bOrientRotationToMovement = true;
 		MoveComp->RotationRate = FRotator(0.0f, 450.0f, 0.0f);
 		MoveComp->MaxWalkSpeed = PatrolSpeed;
-		MoveComp->bUseAccelerationForPaths = true;
+		MoveComp->bRequestedMoveUseAcceleration = true;
 	}
 
 	// Auto-possess with dedicated Mob AIController when placed in level or spawned at runtime

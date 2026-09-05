@@ -13,10 +13,10 @@
 
 UFCHandWidget::UFCHandWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, HandViewModel(nullptr)
 	, HoveredCardWidget(nullptr)
 	, DraggedCardWidget(nullptr)
 	, HeldCardWidget(nullptr)
+	, HandViewModel(nullptr)
 {
 	bHasScriptImplementedTick = true;
 	SetIsFocusable(true);

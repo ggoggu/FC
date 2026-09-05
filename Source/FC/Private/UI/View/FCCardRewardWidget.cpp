@@ -9,7 +9,7 @@ UFCCardRewardWidget::UFCCardRewardWidget(const FObjectInitializer& ObjectInitial
 	, RewardViewModel(nullptr)
 	, SourcePickupActor(nullptr)
 {
-	bIsFocusable = true;
+	SetIsFocusable(true);
 }
 
 void UFCCardRewardWidget::SetupRewardWidget(FName InCardId, AFCCardPickupActor* InSourceActor)
