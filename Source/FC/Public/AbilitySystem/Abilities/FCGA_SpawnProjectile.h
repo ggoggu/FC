@@ -35,13 +35,16 @@ public:
 	const UFCProjectileDataAsset* GetProjectileDataAsset() const { return ProjectileDataAsset; }
 	void SetProjectileDataAsset(const UFCProjectileDataAsset* InDataAsset) { ProjectileDataAsset = InDataAsset; }
 
+	TSubclassOf<AFCProjectileBase> GetProjectileClass() const { return ProjectileClass; }
+	void SetProjectileClass(TSubclassOf<AFCProjectileBase> InClass) { ProjectileClass = InClass; }
+
 protected:
 	/** Optional data asset configuring the spawned projectile */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ability|Projectile")
 	TObjectPtr<const UFCProjectileDataAsset> ProjectileDataAsset;
 
 	/** Projectile actor class to spawn */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ability|Projectile")
 	TSubclassOf<AFCProjectileBase> ProjectileClass;
 
 	/** Elemental affinities carried by spawned projectiles */

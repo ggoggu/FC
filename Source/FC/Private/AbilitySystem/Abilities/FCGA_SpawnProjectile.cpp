@@ -15,6 +15,7 @@
 #include "Components/ArrowComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Character/Mob/FCMobCharacter.h"
+#include "Character/FCCharacterBase.h"
 #include "AIController.h"
 
 UFCGA_SpawnProjectile::UFCGA_SpawnProjectile()
@@ -103,12 +104,15 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 		+ (UpVector * MuzzleOffset.Z);
 
 	// 3. 3D 고저차 조준 (Pitch & Yaw Aiming):
-	// AI 몬스터가 플레이어를 조준할 때 대상이 경사로나 언덕 등 고저차가 있는 곳에 위치하면
-	// 수평(Pitch=0)으로만 발사되지 않고 대상의 가슴(spine_03)을 향해 3D 벡터로 조준을 보정합니다.
+	// 대상(적/상자 등) 또는 목표 좌표(TargetAimLocation)가 있으면
+	// 수평으로만 발사되지 않고 대상을 향해 3D 벡터로 조준을 보정합니다.
 	AActor* TargetActor = nullptr;
-	if (const AFCMobCharacter* MobChar = Cast<AFCMobCharacter>(Avatar))
+	FVector TargetAimLocation = FVector::ZeroVector;
+
+	if (const AFCCharacterBase* Char = Cast<AFCCharacterBase>(Avatar))
 	{
-		TargetActor = MobChar->GetCombatTarget();
+		TargetActor = Char->GetCombatTarget();
+		TargetAimLocation = Char->GetTargetAimLocation();
 	}
 	if (!TargetActor)
 	{
@@ -123,7 +127,6 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 
 	if (TargetActor)
 	{
-		FVector TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
 		if (const ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
 		{
 			if (const USkeletalMeshComponent* TargetMesh = TargetChar->GetMesh())
@@ -132,9 +135,25 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 				{
 					TargetAimLocation = TargetMesh->GetSocketLocation(FName("spine_03"));
 				}
+				else
+				{
+					TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+				}
+			}
+			else
+			{
+				TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
 			}
 		}
+		else
+		{
+			// Non-character target (e.g. AFCChestActor, destructibles) -> aim at center
+			TargetAimLocation = TargetActor->GetActorLocation();
+		}
+	}
 
+	if (!TargetAimLocation.IsZero())
+	{
 		const FVector AimDirection = (TargetAimLocation - SpawnLocation).GetSafeNormal();
 		if (!AimDirection.IsNearlyZero())
 		{
@@ -161,9 +180,28 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		return;
 	}
 
-	// 1. Resolve Effective Projectile Data Asset
+	// 1. Resolve Effective Projectile Data Asset & Explicit Class Override
 	const UFCProjectileDataAsset* EffectiveDataAsset = ProjectileDataAsset.Get();
-	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+	TSubclassOf<AFCProjectileBase> ExplicitClassOverride = nullptr;
+
+	// Check if Avatar is a Mob with specific projectile overrides
+	if (ActorInfo && ActorInfo->AvatarActor.IsValid())
+	{
+		if (const AFCMobCharacter* MobChar = Cast<AFCMobCharacter>(ActorInfo->AvatarActor.Get()))
+		{
+			if (MobChar->GetProjectileClassOverride())
+			{
+				ExplicitClassOverride = MobChar->GetProjectileClassOverride();
+			}
+			if (MobChar->GetProjectileDataAssetOverride())
+			{
+				EffectiveDataAsset = MobChar->GetProjectileDataAssetOverride();
+			}
+		}
+	}
+
+	// Check if Ability was granted via a Card Data Asset
+	if (!ExplicitClassOverride && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
 		if (const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle))
 		{
@@ -209,9 +247,13 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 	const FRotator SpawnRotation = LaunchTransform.Rotator();
 
 	// 3. Authoritative Projectile Spawning on Server
-	TSubclassOf<AFCProjectileBase> ClassToSpawn = (EffectiveDataAsset && EffectiveDataAsset->ProjectileClass)
-		? EffectiveDataAsset->ProjectileClass
-		: ProjectileClass;
+	TSubclassOf<AFCProjectileBase> ClassToSpawn = ExplicitClassOverride;
+	if (!ClassToSpawn)
+	{
+		ClassToSpawn = (EffectiveDataAsset && EffectiveDataAsset->ProjectileClass)
+			? EffectiveDataAsset->ProjectileClass
+			: ProjectileClass;
+	}
 
 	if (!ClassToSpawn)
 	{
@@ -277,6 +319,8 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 				}
 
 				UGameplayStatics::FinishSpawningActor(Projectile, LaunchTransform);
+				UE_LOG(LogTemp, Log, TEXT("[UFCGA_SpawnProjectile] Spawned %s at (%s) towards Rot (%s) [Speed: %.1f, Damage: %.1f]"),
+					*ClassToSpawn->GetName(), *SpawnLocation.ToString(), *SpawnRotation.ToString(), EffectiveLaunchSpeed, ScaledDamage);
 			}
 		}
 	}

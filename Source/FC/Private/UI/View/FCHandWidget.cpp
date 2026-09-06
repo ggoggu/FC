@@ -4,6 +4,8 @@
 #include "UI/ViewModel/FCCardViewModel.h"
 #include "Controller/Player/FCPlayerController.h"
 #include "Card/FCCardDeckComponent.h"
+#include "Data/Card/FCCardSubsystem.h"
+#include "Data/Card/FCCardDataAsset.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/Pawn.h"
 #include "Components/PanelWidget.h"
@@ -307,6 +309,10 @@ void UFCHandWidget::PlayCardFromHand(UFCCardWidget* CardWidget)
 	// 1. Submit play request via AFCPlayerController
 	if (AFCPlayerController* FCPC = Cast<AFCPlayerController>(GetOwningPlayer()))
 	{
+		UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
+		const UFCCardDataAsset* CardAsset = Subsystem ? Subsystem->GetCardDataAsset(CardVM->CardId) : nullptr;
+		TargetInfo = FCPC->ResolveCardTargetUnderCursor(CardAsset);
+
 		FCPC->RequestPlayCard(CardVM->CardGuid, TargetInfo);
 		return;
 	}

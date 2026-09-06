@@ -12,6 +12,12 @@
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Combat/FCCombatUtils.h"
+#include "Data/Card/FCCardDataAsset.h"
+#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
+#include "Character/FCCharacterBase.h"
+#include "Engine/World.h"
+#include "CollisionQueryParams.h"
 
 AFCPlayerController::AFCPlayerController()
 {
@@ -390,6 +396,22 @@ void AFCPlayerController::SetCardCombatInputMode(bool bEnableCardMode)
 
 void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
+	// Client-side prediction: immediately rotate local player pawn towards target
+	if (IsLocalPlayerController())
+	{
+		if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetPawn()))
+		{
+			const FVector AimPos = TargetInfo.TargetActor.IsValid() 
+				? TargetInfo.TargetActor->GetActorLocation() 
+				: (FVector)TargetInfo.TargetLocation;
+
+			if (!AimPos.IsZero())
+			{
+				Char->RotateTowardsTarget(AimPos);
+			}
+		}
+	}
+
 	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
 	{
 		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
@@ -397,6 +419,127 @@ void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTa
 			DeckComp->Server_PlayCard(CardGuid, TargetInfo);
 		}
 	}
+}
+
+FFCCardTargetInfo AFCPlayerController::ResolveCardTargetUnderCursor(const UFCCardDataAsset* CardAsset)
+{
+	float MouseX = 0.0f;
+	float MouseY = 0.0f;
+	if (GetMousePosition(MouseX, MouseY))
+	{
+		return ResolveCardTargetAtScreenPosition(FVector2D(MouseX, MouseY), CardAsset);
+	}
+
+	// Fallback if no mouse cursor position (e.g. headless test or gamepad mode)
+	if (APawn* MyPawn = GetPawn())
+	{
+		FFCCardTargetInfo FallbackInfo;
+		FallbackInfo.TargetLocation = MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * 1000.0f;
+		return FallbackInfo;
+	}
+
+	return FFCCardTargetInfo();
+}
+
+FFCCardTargetInfo AFCPlayerController::ResolveCardTargetAtScreenPosition(const FVector2D& ScreenPos, const UFCCardDataAsset* CardAsset)
+{
+	FFCCardTargetInfo TargetInfo;
+
+	APawn* MyPawn = GetPawn();
+	if (!MyPawn)
+	{
+		return TargetInfo;
+	}
+
+	const FVector PawnLocation = MyPawn->GetActorLocation();
+
+	// 1. Deproject Screen Position to 3D World Ray
+	FVector WorldOrigin = FVector::ZeroVector;
+	FVector WorldDirection = MyPawn->GetActorForwardVector();
+
+	if (!DeprojectScreenPositionToWorld(ScreenPos.X, ScreenPos.Y, WorldOrigin, WorldDirection))
+	{
+		if (PlayerCameraManager)
+		{
+			WorldOrigin = PlayerCameraManager->GetCameraLocation();
+			WorldDirection = PlayerCameraManager->GetCameraRotation().Vector();
+		}
+	}
+
+	// 2. Line trace along WorldDirection to find 3D Impact / Drop Location
+	const float TraceDistance = 15000.0f;
+	const FVector TraceEnd = WorldOrigin + WorldDirection * TraceDistance;
+
+	FHitResult HitResult;
+	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(CardTargetDeprojectTrace), true);
+	TraceParams.AddIgnoredActor(MyPawn);
+
+	UWorld* World = GetWorld();
+	bool bHit = false;
+	if (World)
+	{
+		bHit = World->LineTraceSingleByChannel(
+			HitResult,
+			WorldOrigin,
+			TraceEnd,
+			ECC_Visibility,
+			TraceParams
+		);
+	}
+
+	FVector DropWorldLocation = FVector::ZeroVector;
+	AActor* DirectHitActor = nullptr;
+
+	if (bHit && HitResult.bBlockingHit)
+	{
+		DropWorldLocation = HitResult.ImpactPoint;
+		DirectHitActor = HitResult.GetActor();
+		TargetInfo.TargetHitComponent = HitResult.GetComponent();
+	}
+	else
+	{
+		// Intersect ray with ground plane at player's foot level
+		const FPlane GroundPlane(PawnLocation, FVector::UpVector);
+		DropWorldLocation = FMath::LinePlaneIntersection(WorldOrigin, TraceEnd, GroundPlane);
+	}
+
+	TargetInfo.TargetLocation = DropWorldLocation;
+
+	// Check if this card shoots/spawns projectiles and whether auto-targeting is enabled
+	const bool bIsProjectileCard = CardAsset && (CardAsset->GameplayData.SpawnsProjectile() || 
+		(CardAsset->GameplayData.CardAbilityClass && CardAsset->GameplayData.CardAbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass())));
+
+	// If single target or direct hit on attackable target
+	if (DirectHitActor && UFCCombatUtils::IsAttackableTarget(MyPawn, DirectHitActor))
+	{
+		TargetInfo.TargetActor = DirectHitActor;
+		TargetInfo.TargetLocation = DirectHitActor->GetActorLocation();
+		return TargetInfo;
+	}
+
+	// If projectile auto-targeting is active, search for best attackable target in that direction
+	if (bAutoTargetAttackablesOnProjectileCards && bIsProjectileCard)
+	{
+		const FVector AimDirection2D = (DropWorldLocation - PawnLocation).GetSafeNormal2D();
+
+		AActor* BestTarget = UFCCombatUtils::FindBestAttackableTargetInDirection(
+			MyPawn,
+			AimDirection2D,
+			DropWorldLocation,
+			ProjectileTargetMaxRange,
+			ProjectileTargetHalfAngleDegrees,
+			ProjectileTargetProximityRadius,
+			true // Check Line of Sight
+		);
+
+		if (BestTarget)
+		{
+			TargetInfo.TargetActor = BestTarget;
+			TargetInfo.TargetLocation = BestTarget->GetActorLocation();
+		}
+	}
+
+	return TargetInfo;
 }
 
 void AFCPlayerController::HandleNumberKeyInput(int32 SlotIndex)

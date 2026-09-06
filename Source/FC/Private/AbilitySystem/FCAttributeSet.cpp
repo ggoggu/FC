@@ -2,6 +2,7 @@
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
 #include "Character/FCCharacterBase.h"
+#include "Gameplay/FCChestActor.h"
 
 UFCAttributeSet::UFCAttributeSet()
 {
@@ -87,6 +88,25 @@ void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, fl
 	}
 }
 
+void UFCAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
+{
+	Super::PostAttributeChange(Attribute, OldValue, NewValue);
+
+	if (Attribute == GetHealthAttribute() && NewValue <= 0.0f)
+	{
+		if (UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent())
+		{
+			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetASC->GetAvatarActor()))
+			{
+				if (!Char->IsDead())
+				{
+					Char->Die(nullptr);
+				}
+			}
+		}
+	}
+}
+
 void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
 {
 	Super::PostGameplayEffectExecute(Data);
@@ -155,11 +175,53 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 		{
 			AActor* TargetActor = Data.Target.AbilityActorInfo.IsValid() ? Data.Target.AbilityActorInfo->AvatarActor.Get() : nullptr;
 			AActor* Killer = Data.EffectSpec.GetEffectContext().GetEffectCauser();
+			if (!Killer)
+			{
+				Killer = Data.EffectSpec.GetEffectContext().GetInstigator();
+			}
 			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
 			{
 				if (!Char->IsDead())
 				{
 					Char->Die(Killer);
+				}
+			}
+		}
+		else if (Data.EvaluatedData.Magnitude < 0.f)
+		{
+			AActor* TargetActor = Data.Target.AbilityActorInfo.IsValid() ? Data.Target.AbilityActorInfo->AvatarActor.Get() : nullptr;
+			AActor* DamageCauser = Data.EffectSpec.GetEffectContext().GetEffectCauser();
+			if (!DamageCauser)
+			{
+				DamageCauser = Data.EffectSpec.GetEffectContext().GetInstigator();
+			}
+			const FHitResult* HitResult = Data.EffectSpec.GetEffectContext().GetHitResult();
+			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
+			{
+				if (!Char->IsDead())
+				{
+					const float IncomingDamage = -Data.EvaluatedData.Magnitude;
+					Char->HandleDamageTaken(IncomingDamage, DamageCauser, HitResult ? *HitResult : FHitResult());
+				}
+			}
+			else if (AFCChestActor* Chest = Cast<AFCChestActor>(TargetActor))
+			{
+				const float IncomingDamage = -Data.EvaluatedData.Magnitude;
+				if (IncomingDamage >= Chest->GetDamageThreshold())
+				{
+					AController* InstigatorController = nullptr;
+					if (AActor* InstigatorActor = Data.EffectSpec.GetEffectContext().GetInstigator())
+					{
+						if (APawn* InstigatorPawn = Cast<APawn>(InstigatorActor))
+						{
+							InstigatorController = InstigatorPawn->GetController();
+						}
+						else if (AController* AsController = Cast<AController>(InstigatorActor))
+						{
+							InstigatorController = AsController;
+						}
+					}
+					Chest->DestroyAndSpawnDrops(InstigatorController, DamageCauser);
 				}
 			}
 		}

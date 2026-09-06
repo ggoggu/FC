@@ -7,15 +7,10 @@
 
 class AFCMobAIController;
 class AFCMobSpawnerBase;
+class AFCProjectileBase;
+class UFCProjectileDataAsset;
 
-UENUM(BlueprintType)
-enum class EFCDeathDirection : uint8
-{
-	Front UMETA(DisplayName = "Front"),
-	Back UMETA(DisplayName = "Back"),
-	Left UMETA(DisplayName = "Left"),
-	Right UMETA(DisplayName = "Right")
-};
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnChestDroppedSignature, AFCMobCharacter*, DeadMob, AActor*, DroppedChest);
 
 /**
  * Humanoid Mob Character with automated AI navigation and replication
@@ -30,9 +25,7 @@ public:
 
 	virtual void Die(AActor* Killer = nullptr) override;
 
-	/** Calculates relative hit direction from an instigator actor (Front, Back, Left, Right) */
-	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Combat")
-	EFCDeathDirection CalculateHitDirection(AActor* InstigatorActor) const;
+	virtual void HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult) override;
 
 	/** Plays directional death animation on local mesh */
 	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Combat")
@@ -43,6 +36,16 @@ public:
 	void Multicast_PlayDeathAnimation(EFCDeathDirection Direction);
 
 	UAnimSequence* GetDeathAnimationForDirection(EFCDeathDirection Direction) const;
+
+	/** Plays directional hit reaction animation on local mesh */
+	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Combat")
+	void PlayHitAnimation(EFCDeathDirection Direction);
+
+	/** Replicated multicast RPC to play cosmetic hit animation across network */
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayHitAnimation(EFCDeathDirection Direction);
+
+	UAnimSequence* GetHitAnimationForDirection(EFCDeathDirection Direction) const;
 
 	/** Sets movement speed to arbitrary value */
 	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Movement")
@@ -63,6 +66,28 @@ public:
 	AFCMobSpawnerBase* GetOwningSpawner() const;
 
 	float GetDeathDespawnDelay() const { return DeathDespawnDelay; }
+	void SetDeathDespawnDelay(float InDelay) { DeathDespawnDelay = FMath::Max(0.0f, InDelay); }
+
+	float GetInitialMaxHealth() const { return InitialMaxHealth; }
+	void SetInitialMaxHealth(float InHealth) { InitialMaxHealth = FMath::Max(1.0f, InHealth); }
+
+	TSubclassOf<AActor> GetDropChestClass() const { return DropChestClass; }
+	void SetDropChestClass(TSubclassOf<AActor> InClass) { DropChestClass = InClass; }
+
+	float GetDropChestChance() const { return DropChestChance; }
+	void SetDropChestChance(float InChance) { DropChestChance = FMath::Clamp(InChance, 0.0f, 1.0f); }
+
+	/** Rolls chance and spawns drop chest if successful (Server authority only) */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "FC|Mob|Drop")
+	AActor* AttemptDropChest();
+
+	/** Spawns configured drop chest actor in the world (Server authority only) */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "FC|Mob|Drop")
+	AActor* SpawnDropChest();
+
+	/** Multicast delegate fired when a chest is successfully dropped upon death */
+	UPROPERTY(BlueprintAssignable, Category = "FC|Mob|Drop")
+	FFCOnChestDroppedSignature OnChestDropped;
 
 	/** Attempts to activate the mob's configured attack gameplay ability */
 	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Combat")
@@ -75,12 +100,11 @@ public:
 	UAnimMontage* GetAttackMontage() const { return AttackMontage; }
 	void SetAttackMontage(UAnimMontage* InMontage) { AttackMontage = InMontage; }
 
-	/** Sets the current combat target actor for 3D pitch aiming and focus */
-	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Combat")
-	void SetCombatTarget(AActor* InTarget) { CombatTarget = InTarget; }
+	TSubclassOf<AFCProjectileBase> GetProjectileClassOverride() const { return ProjectileClassOverride; }
+	void SetProjectileClassOverride(TSubclassOf<AFCProjectileBase> InClass) { ProjectileClassOverride = InClass; }
 
-	UFUNCTION(BlueprintPure, Category = "FC|Mob|Combat")
-	AActor* GetCombatTarget() const { return CombatTarget.Get(); }
+	UFCProjectileDataAsset* GetProjectileDataAssetOverride() const { return ProjectileDataAssetOverride; }
+	void SetProjectileDataAssetOverride(UFCProjectileDataAsset* InDataAsset) { ProjectileDataAssetOverride = InDataAsset; }
 
 	/** Current Mob AI State */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Mob")
@@ -106,8 +130,16 @@ protected:
 	float ChaseSpeed = 500.0f;
 
 	/** Primary attack ability granted to this mob */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FC|Mob|Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Combat")
 	TSubclassOf<class UGameplayAbility> AttackAbilityClass;
+
+	/** Optional Projectile Class override (e.g. BP_FCProjectile_Orb). If set, this BP projectile will be spawned instead of the C++ default */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Combat")
+	TSubclassOf<AFCProjectileBase> ProjectileClassOverride;
+
+	/** Optional Projectile Data Asset override (e.g. DA_Projectile_Fireball) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Combat")
+	TObjectPtr<UFCProjectileDataAsset> ProjectileDataAssetOverride;
 
 	/** Maximum distance in cm at which this mob can initiate its ranged/melee attack */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Combat", meta = (ClampMin = "50.0"))
@@ -121,13 +153,39 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FC|Mob|Combat")
 	TObjectPtr<UAnimMontage> AttackMontage;
 
-	/** Delay in seconds before dead mob actor is destroyed */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Combat", meta = (ClampMin = "0.0"))
+	/** Initial maximum health for this mob (applied to AttributeSet on BeginPlay) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Stats", meta = (ClampMin = "1.0"))
+	float InitialMaxHealth = 100.0f;
+
+	/** Delay in seconds before dead mob actor is destroyed (0.0 = immediate destroy) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Combat", meta = (ClampMin = "0.0"))
 	float DeathDespawnDelay = 5.0f;
 
-	/** Directional death animations (Front, Back, Left, Right) */
+	/** Blueprint class of the treasure chest to spawn on death */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop")
+	TSubclassOf<AActor> DropChestClass;
+
+	/** Probability of dropping chest on death (0.0 = 0%, 0.5 = 50%, 1.0 = 100%) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float DropChestChance = 1.0f;
+
+	/** World offset applied to the spawned chest position */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop")
+	FVector DropChestOffset = FVector::ZeroVector;
+
+	/** If true, snaps chest spawn location to the ground beneath the mob */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop")
+	bool bSnapChestToGround = true;
+
+	/** Directional death animations from Character/Mannequins/Anims/Death */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
 	TObjectPtr<UAnimSequence> DeathAnim_Front;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Front_02;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Front_03;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
 	TObjectPtr<UAnimSequence> DeathAnim_Back;
@@ -138,12 +196,36 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
 	TObjectPtr<UAnimSequence> DeathAnim_Right;
 
+	/** Optional hit animation montage override */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimMontage> HitMontage;
+
+	/** Directional hit animations (defaults to Death animations from Character/Mannequins/Anims/Death) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Front;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Back;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Left;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Right;
+
+	/** Play rate for hit animation */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation", meta = (ClampMin = "0.1"))
+	float HitPlayRate = 1.5f;
+
+	/** Minimum time in seconds between playing hit reaction animations */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Combat", meta = (ClampMin = "0.0"))
+	float HitReactionCooldown = 0.25f;
+
+	/** Timestamp of last played hit reaction */
+	float LastHitReactTime = -100.0f;
+
 	/** Weak reference to the spawner that produced this mob */
 	UPROPERTY(Transient)
 	TWeakObjectPtr<AFCMobSpawnerBase> OwningSpawner;
-
-	/** Transient reference to active combat target for 3D aim direction calculation */
-	UPROPERTY(Transient)
-	TWeakObjectPtr<AActor> CombatTarget;
 };
 

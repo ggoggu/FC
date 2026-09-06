@@ -62,4 +62,31 @@ public:
 	/** Resolves UFCElementComponent on any actor (via direct lookup or CharacterBase) */
 	UFUNCTION(BlueprintPure, Category = "FC|Combat|Element")
 	static UFCElementComponent* GetElementComponent(AActor* TargetActor);
+
+	/**
+	 * Determines whether the candidate actor is a valid, alive, and attackable target
+	 * (e.g. Alive FCMobCharacter, unopened FCChestActor, or damageable actor with health > 0).
+	 * Excludes self and friendly player characters.
+	 */
+	UFUNCTION(BlueprintPure, Category = "FC|Combat|Targeting")
+	static bool IsAttackableTarget(const AActor* SourceActor, const AActor* TargetCandidate);
+
+	/**
+	 * Searches for the best attackable target in the given aim direction or near the aim world location.
+	 * Evaluates:
+	 * 1. Proximity to AimLocation (within ProximityRadius).
+	 * 2. Directional cone from SourceActor towards AimDirection (within HalfAngleDegrees and MaxRange).
+	 * 3. Line of sight check against WorldStatic geometry if requested.
+	 * Returns nullptr if no attackable object is found.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "FC|Combat|Targeting")
+	static AActor* FindBestAttackableTargetInDirection(
+		const AActor* SourceActor,
+		const FVector& AimDirection,
+		const FVector& AimLocation,
+		float MaxRange = 3000.0f,
+		float HalfAngleDegrees = 30.0f,
+		float ProximityRadius = 350.0f,
+		bool bCheckLineOfSight = true
+	);
 };

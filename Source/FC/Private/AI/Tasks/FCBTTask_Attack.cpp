@@ -128,7 +128,9 @@ void UFCBTTask_Attack::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMe
 		MyMemory->RemainingCastDelay -= DeltaSeconds;
 		if (MyMemory->RemainingCastDelay <= 0.0f)
 		{
-			MobChar->TryActivateAttackAbility();
+			const bool bSuccess = MobChar->TryActivateAttackAbility();
+			UE_LOG(LogTemp, Log, TEXT("[FCBTTask_Attack] Mob %s cast attack ability -> Success: %s"),
+				*MobChar->GetName(), bSuccess ? TEXT("TRUE") : TEXT("FALSE"));
 			MyMemory->bAbilityTriggered = true;
 		}
 	}
