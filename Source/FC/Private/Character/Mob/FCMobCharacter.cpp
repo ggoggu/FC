@@ -4,10 +4,47 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Controller/AI/FCMobAIController.h"
 #include "Gameplay/Spawner/FCMobSpawnerBase.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "UObject/ConstructorHelpers.h"
 #include "BrainComponent.h"
 
 AFCMobCharacter::AFCMobCharacter()
 {
+	// Pure base class: no hardcoded attack ability or montage by default (configured per BP/subclass)
+	AttackAbilityClass = nullptr;
+	AttackMontage = nullptr;
+
+	// Load default directional death animations from Character/Mannequins/Anims/Death
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> FrontDeathFinder(
+		TEXT("/Game/Character/Mannequins/Anims/Death/MM_Death_Front_01.MM_Death_Front_01"));
+	if (FrontDeathFinder.Succeeded())
+	{
+		DeathAnim_Front = FrontDeathFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> BackDeathFinder(
+		TEXT("/Game/Character/Mannequins/Anims/Death/MM_Death_Back_01.MM_Death_Back_01"));
+	if (BackDeathFinder.Succeeded())
+	{
+		DeathAnim_Back = BackDeathFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> LeftDeathFinder(
+		TEXT("/Game/Character/Mannequins/Anims/Death/MM_Death_Left_01.MM_Death_Left_01"));
+	if (LeftDeathFinder.Succeeded())
+	{
+		DeathAnim_Left = LeftDeathFinder.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UAnimSequence> RightDeathFinder(
+		TEXT("/Game/Character/Mannequins/Anims/Death/MM_Death_Right_01.MM_Death_Right_01"));
+	if (RightDeathFinder.Succeeded())
+	{
+		DeathAnim_Right = RightDeathFinder.Object;
+	}
+
 	// Ensure mob rotates towards movement direction, not controller yaw
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
@@ -53,7 +90,23 @@ void AFCMobCharacter::InitAbilityActorInfo()
 	if (AbilitySystemComponent)
 	{
 		AbilitySystemComponent->InitAbilityActorInfo(this, this);
+
+		// Grant configured attack ability on server authority
+		if (HasAuthority() && AttackAbilityClass)
+		{
+			AbilitySystemComponent->GiveAbility(FGameplayAbilitySpec(AttackAbilityClass, 1, INDEX_NONE, this));
+		}
 	}
+}
+
+bool AFCMobCharacter::TryActivateAttackAbility()
+{
+	if (!AbilitySystemComponent || !AttackAbilityClass)
+	{
+		return false;
+	}
+
+	return AbilitySystemComponent->TryActivateAbilityByClass(AttackAbilityClass);
 }
 
 void AFCMobCharacter::Die(AActor* Killer)
@@ -77,6 +130,10 @@ void AFCMobCharacter::Die(AActor* Killer)
 		}
 	}
 
+	// Calculate hit direction and multicast directional death animation
+	const EFCDeathDirection DeathDir = CalculateHitDirection(Killer);
+	Multicast_PlayDeathAnimation(DeathDir);
+
 	// Notify spawner
 	if (OwningSpawner.IsValid())
 	{
@@ -85,6 +142,83 @@ void AFCMobCharacter::Die(AActor* Killer)
 
 	// Schedule cleanup
 	SetLifeSpan(DeathDespawnDelay);
+}
+
+EFCDeathDirection AFCMobCharacter::CalculateHitDirection(AActor* InstigatorActor) const
+{
+	if (!InstigatorActor)
+	{
+		return EFCDeathDirection::Front;
+	}
+
+	const FVector ToInstigator = (InstigatorActor->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+	if (ToInstigator.IsNearlyZero())
+	{
+		return EFCDeathDirection::Front;
+	}
+
+	// Convert to character's local coordinate space
+	const FVector LocalDir = GetActorRotation().UnrotateVector(ToInstigator);
+	const float AngleDegrees = FMath::RadiansToDegrees(FMath::Atan2(LocalDir.Y, LocalDir.X));
+
+	// -45 to +45: Front
+	// +45 to +135: Right
+	// -135 to -45: Left
+	// > 135 or < -135: Back
+	if (AngleDegrees >= -45.0f && AngleDegrees <= 45.0f)
+	{
+		return EFCDeathDirection::Front;
+	}
+	else if (AngleDegrees > 45.0f && AngleDegrees <= 135.0f)
+	{
+		return EFCDeathDirection::Right;
+	}
+	else if (AngleDegrees < -45.0f && AngleDegrees >= -135.0f)
+	{
+		return EFCDeathDirection::Left;
+	}
+	else
+	{
+		return EFCDeathDirection::Back;
+	}
+}
+
+void AFCMobCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
+{
+	UAnimSequence* AnimToPlay = GetDeathAnimationForDirection(Direction);
+	if (!AnimToPlay)
+	{
+		return;
+	}
+
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->Stop();
+		MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+		MeshComp->PlayAnimation(AnimToPlay, /*bLooping=*/false);
+	}
+}
+
+void AFCMobCharacter::Multicast_PlayDeathAnimation_Implementation(EFCDeathDirection Direction)
+{
+	PlayDeathAnimation(Direction);
+}
+
+UAnimSequence* AFCMobCharacter::GetDeathAnimationForDirection(EFCDeathDirection Direction) const
+{
+	switch (Direction)
+	{
+	case EFCDeathDirection::Front:
+		return DeathAnim_Front;
+	case EFCDeathDirection::Back:
+		return DeathAnim_Back;
+	case EFCDeathDirection::Left:
+		return DeathAnim_Left;
+	case EFCDeathDirection::Right:
+		return DeathAnim_Right;
+	default:
+		return DeathAnim_Front;
+	}
 }
 
 void AFCMobCharacter::SetOwningSpawner(AFCMobSpawnerBase* InSpawner)

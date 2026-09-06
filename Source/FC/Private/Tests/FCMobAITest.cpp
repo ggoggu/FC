@@ -6,6 +6,9 @@
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
 #include "AI/FCAITypes.h"
+#include "AI/Decorators/FCBTDecorator_IsInAttackRange.h"
+#include "AI/Tasks/FCBTTask_Attack.h"
+#include "AbilitySystem/Abilities/FCGA_Fireball.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -27,6 +30,7 @@ bool FFCMobAITest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("EFCMobAIState::Patrol value"), static_cast<uint8>(EFCMobAIState::Patrol), 1);
 		TestEqual(TEXT("EFCMobAIState::Investigating value"), static_cast<uint8>(EFCMobAIState::Investigating), 2);
 		TestEqual(TEXT("EFCMobAIState::Chasing value"), static_cast<uint8>(EFCMobAIState::Chasing), 3);
+		TestEqual(TEXT("EFCMobAIState::Attacking value"), static_cast<uint8>(EFCMobAIState::Attacking), 4);
 	}
 
 	// =========================================================================
@@ -105,6 +109,77 @@ bool FFCMobAITest::RunTest(const FString& Parameters)
 				TestTrue(TEXT("SightConfig must detect neutrals"), SightConfig->DetectionByAffiliation.bDetectNeutrals);
 				TestTrue(TEXT("SightConfig must detect friendlies"), SightConfig->DetectionByAffiliation.bDetectFriendlies);
 			}
+		}
+	}
+
+	// =========================================================================
+	// Test 4: FCMobCharacter Combat & Attack Parameters
+	// =========================================================================
+	{
+		AFCMobCharacter* Mob = NewObject<AFCMobCharacter>();
+		TestNotNull(TEXT("AFCMobCharacter should be instantiated"), Mob);
+
+		if (Mob)
+		{
+			TestEqual(TEXT("Default AttackRange should be 700.0"), Mob->GetAttackRange(), 700.0f);
+			TestEqual(TEXT("Default AttackCooldown should be 2.0"), Mob->GetAttackCooldown(), 2.0f);
+			TestNull(TEXT("Default AttackAbilityClass should be null on pure base class"), Mob->GetAttackAbilityClass().Get());
+			TestNull(TEXT("Default AttackMontage should be null on pure base class"), Mob->GetAttackMontage());
+
+			// Test ability assignment
+			Mob->SetAttackAbilityClass(UFCGA_Fireball::StaticClass());
+			TestEqual(TEXT("AttackAbilityClass matches assigned class"), Mob->GetAttackAbilityClass(), TSubclassOf<UGameplayAbility>(UFCGA_Fireball::StaticClass()));
+
+			// Test CombatTarget setting
+			TestNull(TEXT("Initial CombatTarget must be null"), Mob->GetCombatTarget());
+			Mob->SetCombatTarget(Mob);
+			TestEqual(TEXT("CombatTarget must match assigned actor"), Mob->GetCombatTarget(), static_cast<AActor*>(Mob));
+			Mob->SetCombatTarget(nullptr);
+			TestNull(TEXT("Cleared CombatTarget must be null"), Mob->GetCombatTarget());
+		}
+	}
+
+	// =========================================================================
+	// Test 5: UFCBTDecorator_IsInAttackRange Instantiation & Default Properties
+	// =========================================================================
+	{
+		UFCBTDecorator_IsInAttackRange* Decorator = NewObject<UFCBTDecorator_IsInAttackRange>();
+		TestNotNull(TEXT("UFCBTDecorator_IsInAttackRange should be instantiated"), Decorator);
+
+		if (Decorator)
+		{
+			TestEqual(TEXT("NodeName should be 'Is In Attack Range'"), Decorator->GetNodeName(), FString(TEXT("Is In Attack Range")));
+		}
+	}
+
+	// =========================================================================
+	// Test 6: UFCBTTask_Attack Instantiation & Default Properties
+	// =========================================================================
+	{
+		UFCBTTask_Attack* AttackTask = NewObject<UFCBTTask_Attack>();
+		TestNotNull(TEXT("UFCBTTask_Attack should be instantiated"), AttackTask);
+
+		if (AttackTask)
+		{
+			TestEqual(TEXT("NodeName should be 'Mob Attack'"), AttackTask->GetNodeName(), FString(TEXT("Mob Attack")));
+			TestEqual(TEXT("Default CastDelay should be 0.25"), AttackTask->GetCastDelay(), 0.25f);
+		}
+	}
+
+	// =========================================================================
+	// Test 7: Directional Hit & Death Calculation
+	// =========================================================================
+	{
+		AFCMobCharacter* Mob = NewObject<AFCMobCharacter>();
+		TestNotNull(TEXT("AFCMobCharacter should be instantiated for direction test"), Mob);
+
+		if (Mob)
+		{
+			TestEqual(TEXT("CalculateHitDirection with null instigator should default to Front"), Mob->CalculateHitDirection(nullptr), EFCDeathDirection::Front);
+			TestEqual(TEXT("EFCDeathDirection::Front enum value"), static_cast<uint8>(EFCDeathDirection::Front), 0);
+			TestEqual(TEXT("EFCDeathDirection::Back enum value"), static_cast<uint8>(EFCDeathDirection::Back), 1);
+			TestEqual(TEXT("EFCDeathDirection::Left enum value"), static_cast<uint8>(EFCDeathDirection::Left), 2);
+			TestEqual(TEXT("EFCDeathDirection::Right enum value"), static_cast<uint8>(EFCDeathDirection::Right), 3);
 		}
 	}
 

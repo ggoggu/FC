@@ -454,7 +454,7 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 
 		// Trigger GameplayAbility if assigned or if projectile data asset is specified
 		TSubclassOf<UGameplayAbility> AbilityToActivate = DataAsset ? DataAsset->GameplayData.CardAbilityClass : nullptr;
-		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.ProjectileDataAsset)
+		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.SpawnsProjectile() && DataAsset->GameplayData.ProjectileDataAsset)
 		{
 			AbilityToActivate = UFCGA_SpawnProjectile::StaticClass();
 		}

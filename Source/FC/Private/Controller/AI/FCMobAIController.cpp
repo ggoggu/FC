@@ -162,7 +162,10 @@ void AFCMobAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulu
 			Blackboard->SetValueAsObject(FFCMobBlackboardKeys::TargetActor, Actor);
 			Blackboard->SetValueAsVector(FFCMobBlackboardKeys::LastKnownLocation, Actor->GetActorLocation());
 		}
-		SetAIState(EFCMobAIState::Chasing);
+		if (CurrentAIState != EFCMobAIState::Attacking)
+		{
+			SetAIState(EFCMobAIState::Chasing);
+		}
 
 		if (MobChar)
 		{
