@@ -70,6 +70,11 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 				TestTrue(TEXT("AttackBuff should have UFCGE_AttackBuff effect class"), AttackBuffAsset->GameplayData.CardEffectClasses.Contains(UFCGE_AttackBuff::StaticClass()));
 				TestEqual(TEXT("AttackBuff Card Name should match"), AttackBuffAsset->DisplayData.CardName.ToString(), FString(TEXT("공격력 강화")));
 
+				// Non-projectile verification: AttackBuff is a self-buff, no projectile needed
+				TestFalse(TEXT("AttackBuff must not spawn projectile"), AttackBuffAsset->GameplayData.bSpawnsProjectile);
+				TestNull(TEXT("AttackBuff ProjectileDataAsset must be null"), AttackBuffAsset->GameplayData.ProjectileDataAsset.Get());
+				TestFalse(TEXT("AttackBuff SpawnsProjectile() must return false"), AttackBuffAsset->GameplayData.SpawnsProjectile());
+
 				// Neutral Class & Trait Check
 				TestEqual(TEXT("AttackBuff RequiredClass must be Neutral"), (uint8)AttackBuffAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Neutral);
 				TestTrue(TEXT("AttackBuff must be Neutral"), AttackBuffAsset->GameplayData.IsNeutral());

@@ -14,6 +14,8 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ArrowComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Character/Mob/FCMobCharacter.h"
+#include "AIController.h"
 
 UFCGA_SpawnProjectile::UFCGA_SpawnProjectile()
 {
@@ -99,6 +101,50 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 		+ (ForwardVector * MuzzleOffset.X)
 		+ (RightVector * MuzzleOffset.Y)
 		+ (UpVector * MuzzleOffset.Z);
+
+	// 3. 3D 고저차 조준 (Pitch & Yaw Aiming):
+	// AI 몬스터가 플레이어를 조준할 때 대상이 경사로나 언덕 등 고저차가 있는 곳에 위치하면
+	// 수평(Pitch=0)으로만 발사되지 않고 대상의 가슴(spine_03)을 향해 3D 벡터로 조준을 보정합니다.
+	AActor* TargetActor = nullptr;
+	if (const AFCMobCharacter* MobChar = Cast<AFCMobCharacter>(Avatar))
+	{
+		TargetActor = MobChar->GetCombatTarget();
+	}
+	if (!TargetActor)
+	{
+		if (const APawn* Pawn = Cast<APawn>(Avatar))
+		{
+			if (const AAIController* AIC = Cast<AAIController>(Pawn->GetController()))
+			{
+				TargetActor = AIC->GetFocusActor();
+			}
+		}
+	}
+
+	if (TargetActor)
+	{
+		FVector TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+		if (const ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
+		{
+			if (const USkeletalMeshComponent* TargetMesh = TargetChar->GetMesh())
+			{
+				if (TargetMesh->DoesSocketExist(FName("spine_03")))
+				{
+					TargetAimLocation = TargetMesh->GetSocketLocation(FName("spine_03"));
+				}
+			}
+		}
+
+		const FVector AimDirection = (TargetAimLocation - SpawnLocation).GetSafeNormal();
+		if (!AimDirection.IsNearlyZero())
+		{
+			FRotator AimRotator = AimDirection.Rotation();
+			// Clamp pitch angle between -75 and +75 degrees to avoid abnormal extreme elevation
+			AimRotator.Pitch = FMath::ClampAngle(AimRotator.Pitch, -75.0f, 75.0f);
+			AimRotator.Roll = 0.0f;
+			SpawnRotation = AimRotator;
+		}
+	}
 
 	return FTransform(SpawnRotation, SpawnLocation);
 }
