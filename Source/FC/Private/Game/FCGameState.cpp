@@ -4,7 +4,7 @@
 AFCGameState::AFCGameState()
 {
 	bReplicates = true;
-	NetUpdateFrequency = 30.0f;
+	SetNetUpdateFrequency(30.0f);
 }
 
 void AFCGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

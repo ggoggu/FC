@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Card/FCCardDeckComponent.h"
+#include "View/MVVMView.h"
 
 UFCHUDWidget::UFCHUDWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -13,9 +14,43 @@ UFCHUDWidget::UFCHUDWidget(const FObjectInitializer& ObjectInitializer)
 {
 }
 
+void UFCHUDWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	if (HUDViewModel)
+	{
+		if (UMVVMView* View = GetExtension<UMVVMView>())
+		{
+			if (!View->SetViewModel(TEXT("FCHUDViewModel"), HUDViewModel))
+			{
+				View->SetViewModelByClass(HUDViewModel);
+			}
+
+			if (View->IsConstructed())
+			{
+				View->ExecuteViewModelBindings(TEXT("FCHUDViewModel"));
+			}
+		}
+	}
+}
+
 void UFCHUDWidget::SetHUDViewModel(UFCHUDViewModel* InViewModel)
 {
 	HUDViewModel = InViewModel;
+
+	if (UMVVMView* View = GetExtension<UMVVMView>())
+	{
+		if (!View->SetViewModel(TEXT("FCHUDViewModel"), InViewModel))
+		{
+			View->SetViewModelByClass(InViewModel);
+		}
+
+		if (View->IsConstructed())
+		{
+			View->ExecuteViewModelBindings(TEXT("FCHUDViewModel"));
+		}
+	}
 
 	if (HUDViewModel && HandWidget)
 	{

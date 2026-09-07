@@ -70,8 +70,8 @@ void AFCMobAIController::OnPossess(APawn* InPawn)
 	if (Blackboard)
 	{
 		Blackboard->SetValueAsVector(FFCMobBlackboardKeys::HomeLocation, InPawn->GetActorLocation());
-		Blackboard->SetValueAsEnum(FFCMobBlackboardKeys::AIState, static_cast<uint8>(EFCMobAIState::Patrol));
 	}
+	SetAIState(EFCMobAIState::Patrol);
 
 	// Run Behavior Tree
 	if (BehaviorTreeAsset)
@@ -126,6 +126,20 @@ bool AFCMobAIController::IsTargetViablePlayer(AActor* InActor) const
 	return false;
 }
 
+void AFCMobAIController::SetAIState(EFCMobAIState NewState)
+{
+	CurrentAIState = NewState;
+	if (Blackboard)
+	{
+		Blackboard->SetValueAsEnum(FFCMobBlackboardKeys::AIState, static_cast<uint8>(NewState));
+	}
+
+	if (AFCMobCharacter* MobChar = Cast<AFCMobCharacter>(GetPawn()))
+	{
+		MobChar->SetAIState(NewState);
+	}
+}
+
 void AFCMobAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
 	if (!Actor || Actor == GetPawn())
@@ -147,7 +161,10 @@ void AFCMobAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulu
 		{
 			Blackboard->SetValueAsObject(FFCMobBlackboardKeys::TargetActor, Actor);
 			Blackboard->SetValueAsVector(FFCMobBlackboardKeys::LastKnownLocation, Actor->GetActorLocation());
-			Blackboard->SetValueAsEnum(FFCMobBlackboardKeys::AIState, static_cast<uint8>(EFCMobAIState::Chasing));
+		}
+		if (CurrentAIState != EFCMobAIState::Attacking)
+		{
+			SetAIState(EFCMobAIState::Chasing);
 		}
 
 		if (MobChar)
@@ -179,8 +196,8 @@ void AFCMobAIController::HandleTargetPerceptionUpdated(AActor* Actor, FAIStimulu
 				}
 
 				Blackboard->SetValueAsVector(FFCMobBlackboardKeys::LastKnownLocation, LastLocation);
-				Blackboard->SetValueAsEnum(FFCMobBlackboardKeys::AIState, static_cast<uint8>(EFCMobAIState::Investigating));
 			}
 		}
+		SetAIState(EFCMobAIState::Investigating);
 	}
 }

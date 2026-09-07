@@ -42,6 +42,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Chest")
 	float GetDamageThreshold() const { return DamageThreshold; }
 
+	UFUNCTION(BlueprintPure, Category = "Chest")
+	float GetDestroyDelay() const { return DestroyDelay; }
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
+	void SetDestroyDelay(float InDelay) { DestroyDelay = FMath::Max(0.0f, InDelay); }
+
 	/** Manually triggers chest destruction and card drop spawning (Server-Only) */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
 	void DestroyAndSpawnDrops(AController* InstigatorController = nullptr, AActor* DamageCauser = nullptr);
@@ -115,6 +121,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Gameplay", meta = (ClampMin = "0.0"))
 	float DamageThreshold = 1.0f;
 
+	/** Delay in seconds before the destroyed chest actor is completely removed from the world (0 = immediate) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Gameplay", meta = (ClampMin = "0.0"))
+	float DestroyDelay = 0.1f;
+
 	// --- Presentation ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chest|Presentation")
 	TObjectPtr<USoundBase> DestroySound;
@@ -128,4 +138,7 @@ protected:
 	/** Blueprint hook for cosmetic destruction animations and VFX */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Chest|Events")
 	void OnChestBrokenCosmetics();
+
+	/** Hides visual components and disables all collisions when chest breaks */
+	void HideAndDisableChest();
 };

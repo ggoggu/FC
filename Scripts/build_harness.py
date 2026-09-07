@@ -224,15 +224,29 @@ def run_build(
             "summary": "Failed: UnrealBuildTool binary not found."
         }
 
+    # Detect if Live Coding is active in running editor
+    is_live_coding_active = False
+    if sys.platform == "win32":
+        try:
+            tasks_output = subprocess.run(["tasklist"], capture_output=True, text=True).stdout
+            if "LiveCodingConsole.exe" in tasks_output:
+                is_live_coding_active = True
+        except Exception:
+            pass
+
     cmd = [
         str(ubt_exe),
         target,
         platform,
         configuration,
         f"-Project={str(uproject_path.resolve())}",
-        "-WaitMutex",
-        "-NoHotReload"
+        "-WaitMutex"
     ]
+
+    if is_live_coding_active:
+        cmd.append("-LiveCoding")
+    else:
+        cmd.append("-NoHotReload")
 
     if clean:
         cmd.append("-Clean")

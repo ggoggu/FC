@@ -8,6 +8,7 @@
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Combat/FCCombatUtils.h"
 #include "Combat/Element/FCElementComponent.h"
+#include "Character/FCCharacterBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -452,9 +453,45 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 			}
 		}
 
+		// If this is a projectile card or targeted card, set target and rotate character towards target on server
+		if (DataAsset && DataAsset->GameplayData.SpawnsProjectile())
+		{
+			AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
+			if (!Char)
+			{
+				if (const APlayerState* PS = Cast<APlayerState>(GetOwner()))
+				{
+					Char = Cast<AFCCharacterBase>(PS->GetPawn());
+				}
+				else if (const AController* Ctrl = Cast<AController>(GetOwner()))
+				{
+					Char = Cast<AFCCharacterBase>(Ctrl->GetPawn());
+				}
+			}
+
+			if (Char)
+			{
+				AActor* ValidTarget = TargetInfo.TargetActor.Get();
+				if (ValidTarget && !UFCCombatUtils::IsAttackableTarget(Char, ValidTarget))
+				{
+					ValidTarget = nullptr;
+				}
+
+				Char->SetCombatTarget(ValidTarget);
+				Char->SetTargetAimLocation(TargetInfo.TargetLocation);
+
+				// Rotate character towards target actor or target location
+				const FVector AimPos = ValidTarget ? ValidTarget->GetActorLocation() : (FVector)TargetInfo.TargetLocation;
+				if (!AimPos.IsZero())
+				{
+					Char->RotateTowardsTarget(AimPos);
+				}
+			}
+		}
+
 		// Trigger GameplayAbility if assigned or if projectile data asset is specified
 		TSubclassOf<UGameplayAbility> AbilityToActivate = DataAsset ? DataAsset->GameplayData.CardAbilityClass : nullptr;
-		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.ProjectileDataAsset)
+		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.SpawnsProjectile() && DataAsset->GameplayData.ProjectileDataAsset)
 		{
 			AbilityToActivate = UFCGA_SpawnProjectile::StaticClass();
 		}

@@ -4,6 +4,8 @@
 #include "UI/ViewModel/FCCardViewModel.h"
 #include "Controller/Player/FCPlayerController.h"
 #include "Card/FCCardDeckComponent.h"
+#include "Data/Card/FCCardSubsystem.h"
+#include "Data/Card/FCCardDataAsset.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/Pawn.h"
 #include "Components/PanelWidget.h"
@@ -13,10 +15,10 @@
 
 UFCHandWidget::UFCHandWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, HandViewModel(nullptr)
 	, HoveredCardWidget(nullptr)
 	, DraggedCardWidget(nullptr)
 	, HeldCardWidget(nullptr)
+	, HandViewModel(nullptr)
 {
 	bHasScriptImplementedTick = true;
 	SetIsFocusable(true);
@@ -307,6 +309,10 @@ void UFCHandWidget::PlayCardFromHand(UFCCardWidget* CardWidget)
 	// 1. Submit play request via AFCPlayerController
 	if (AFCPlayerController* FCPC = Cast<AFCPlayerController>(GetOwningPlayer()))
 	{
+		UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
+		const UFCCardDataAsset* CardAsset = Subsystem ? Subsystem->GetCardDataAsset(CardVM->CardId) : nullptr;
+		TargetInfo = FCPC->ResolveCardTargetUnderCursor(CardAsset);
+
 		FCPC->RequestPlayCard(CardVM->CardGuid, TargetInfo);
 		return;
 	}
@@ -450,12 +456,6 @@ void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
 			UFCCardWidget* CardWidget = CreateWidget<UFCCardWidget>(this, CardWidgetClass);
 			if (CardWidget)
 			{
-				CardWidget->SetCardViewModel(CardVM);
-				CardWidget->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
-				CardWidget->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
-				CardWidget->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
-				CardWidget->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
-				CardWidget->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
 				TargetPanel->AddChild(CardWidget);
 
 				// Configure slot anchors and alignment for fan layout origin
@@ -471,6 +471,13 @@ void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
 					OverlaySlot->SetHorizontalAlignment(HAlign_Center);
 					OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
 				}
+
+				CardWidget->SetCardViewModel(CardVM);
+				CardWidget->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
+				CardWidget->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
+				CardWidget->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
+				CardWidget->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
+				CardWidget->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
 
 				ActiveCardWidgets.Add(CardWidget);
 			}

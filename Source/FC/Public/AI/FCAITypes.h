@@ -12,7 +12,8 @@ enum class EFCMobAIState : uint8
 	Idle UMETA(DisplayName = "Idle"),
 	Patrol UMETA(DisplayName = "Patrol"),
 	Investigating UMETA(DisplayName = "Investigating"),
-	Chasing UMETA(DisplayName = "Chasing")
+	Chasing UMETA(DisplayName = "Chasing"),
+	Attacking UMETA(DisplayName = "Attacking")
 };
 
 /**

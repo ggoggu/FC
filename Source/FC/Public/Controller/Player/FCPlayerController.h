@@ -7,6 +7,7 @@
 class UInputMappingContext;
 class UFCHUDWidget;
 class UFCHUDViewModel;
+class UFCCardDataAsset;
 struct FFCCardTargetInfo;
 
 /**
@@ -34,6 +35,14 @@ public:
 	/** Submits a request to play a card through the authoritative DeckComponent */
 	UFUNCTION(BlueprintCallable, Category = "Card|Actions")
 	void RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo);
+
+	/** Resolves targeting info (target actor, target 3D world location) under the current mouse cursor */
+	UFUNCTION(BlueprintCallable, Category = "Card|Targeting")
+	FFCCardTargetInfo ResolveCardTargetUnderCursor(const UFCCardDataAsset* CardAsset = nullptr);
+
+	/** Resolves targeting info at a specific 2D viewport screen coordinate */
+	UFUNCTION(BlueprintCallable, Category = "Card|Targeting")
+	FFCCardTargetInfo ResolveCardTargetAtScreenPosition(const FVector2D& ScreenPos, const UFCCardDataAsset* CardAsset = nullptr);
 
 	/** Handles card slot selection via keyboard number key input (0 = 1st card, ..., 9 = 10th card) */
 	UFUNCTION(BlueprintCallable, Category = "Input|CardCombat")
@@ -97,6 +106,22 @@ protected:
 	/** Priority for the card combat mapping context */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|CardCombat", meta = (AllowPrivateAccess = "true"))
 	int32 CardCombatMappingPriority = 1;
+
+	/** Whether to automatically search for and lock onto attackable targets (mobs, chests) for projectile cards */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting")
+	bool bAutoTargetAttackablesOnProjectileCards = true;
+
+	/** Maximum search range for projectile card auto-targeting */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "100.0"))
+	float ProjectileTargetMaxRange = 3000.0f;
+
+	/** Half-angle in degrees of the frontal targeting cone for projectile cards */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "5.0", ClampMax = "89.0"))
+	float ProjectileTargetHalfAngleDegrees = 30.0f;
+
+	/** Proximity radius around cursor drop location to search for attackable objects */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "50.0"))
+	float ProjectileTargetProximityRadius = 350.0f;
 
 	UFUNCTION()
 	void SyncHandToViewModel();

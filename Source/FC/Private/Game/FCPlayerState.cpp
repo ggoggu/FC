@@ -5,7 +5,7 @@
 AFCPlayerState::AFCPlayerState()
 {
 	bReplicates = true;
-	NetUpdateFrequency = 30.0f;
+	SetNetUpdateFrequency(30.0f);
 
 	CardDeckComponent = CreateDefaultSubobject<UFCCardDeckComponent>(TEXT("CardDeckComponent"));
 }

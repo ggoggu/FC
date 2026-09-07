@@ -48,6 +48,11 @@ bool FFCIgniteCardTest::RunTest(const FString& Parameters)
 				TestTrue(TEXT("Ignite should contain None element"), IgniteAsset->GameplayData.Elements.Contains(EFCElement::None));
 				TestEqual(TEXT("Ignite trait text should format as '무속성'"), IgniteAsset->GameplayData.GetFormattedTraitText().ToString(), FString(TEXT("무속성")));
 
+				// Non-projectile verification: Ignite is an immediate area ability, no projectile needed
+				TestFalse(TEXT("Ignite must not spawn projectile"), IgniteAsset->GameplayData.bSpawnsProjectile);
+				TestNull(TEXT("Ignite ProjectileDataAsset must be null"), IgniteAsset->GameplayData.ProjectileDataAsset.Get());
+				TestFalse(TEXT("Ignite SpawnsProjectile() must return false"), IgniteAsset->GameplayData.SpawnsProjectile());
+
 				// Class Usability
 				TestTrue(TEXT("Ignite must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(IgniteAsset->GameplayData.RequiredClass, EFCCharacterClass::Mage));
 				TestFalse(TEXT("Ignite must not be usable by Warrior"), FCClassTraitUtils::CanCardBeUsedByClass(IgniteAsset->GameplayData.RequiredClass, EFCCharacterClass::Warrior));

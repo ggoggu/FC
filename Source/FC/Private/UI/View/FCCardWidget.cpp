@@ -23,9 +23,15 @@ void UFCCardWidget::NativeConstruct()
 	{
 		if (UMVVMView* View = GetExtension<UMVVMView>())
 		{
-			View->SetViewModelByClass(CardViewModel);
-			View->SetViewModel(TEXT("FCCardViewModel"), CardViewModel);
-			View->ExecuteViewModelBindings(TEXT("FCCardViewModel"));
+			if (!View->SetViewModel(TEXT("FCCardViewModel"), CardViewModel))
+			{
+				View->SetViewModelByClass(CardViewModel);
+			}
+
+			if (View->IsConstructed())
+			{
+				View->ExecuteViewModelBindings(TEXT("FCCardViewModel"));
+			}
 		}
 	}
 }
@@ -45,9 +51,15 @@ void UFCCardWidget::SetCardViewModel(UFCCardViewModel* InViewModel)
 
 	if (UMVVMView* View = GetExtension<UMVVMView>())
 	{
-		View->SetViewModelByClass(InViewModel);
-		View->SetViewModel(TEXT("FCCardViewModel"), InViewModel);
-		View->ExecuteViewModelBindings(TEXT("FCCardViewModel"));
+		if (!View->SetViewModel(TEXT("FCCardViewModel"), InViewModel))
+		{
+			View->SetViewModelByClass(InViewModel);
+		}
+
+		if (View->IsConstructed())
+		{
+			View->ExecuteViewModelBindings(TEXT("FCCardViewModel"));
+		}
 	}
 
 	OnCardViewModelAssigned(InViewModel);

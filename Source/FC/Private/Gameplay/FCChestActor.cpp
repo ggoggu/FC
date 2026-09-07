@@ -48,6 +48,7 @@ AFCChestActor::AFCChestActor()
 
 	// Gameplay Defaults
 	DamageThreshold = 1.0f;
+	DestroyDelay = 0.1f;
 	bAllowOpenerClass = true;
 	bAllowNeutralCards = false;
 	AllowedOtherClasses.Empty();
@@ -196,6 +197,28 @@ TArray<FName> AFCChestActor::GetFilteredRewardCardIds(EFCCharacterClass OpenerCl
 	return FilteredCards;
 }
 
+void AFCChestActor::HideAndDisableChest()
+{
+	SetActorEnableCollision(false);
+
+	if (CollisionBox)
+	{
+		CollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	SetActorHiddenInGame(true);
+
+	if (BaseMesh)
+	{
+		BaseMesh->SetVisibility(false, true);
+	}
+
+	if (LidMesh)
+	{
+		LidMesh->SetVisibility(false, true);
+	}
+}
+
 void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AActor* DamageCauser)
 {
 	if (!HasAuthority() || bIsOpened)
@@ -205,10 +228,7 @@ void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AAct
 
 	bIsOpened = true;
 
-	if (CollisionBox)
-	{
-		CollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+	HideAndDisableChest();
 
 	const EFCCharacterClass OpenerClass = GetOpenerClass(InstigatorController, DamageCauser);
 	const TArray<FName> DropsToSpawn = GetFilteredRewardCardIds(OpenerClass);
@@ -247,14 +267,20 @@ void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AAct
 	}
 
 	OnChestBrokenCosmetics();
+
+	if (DestroyDelay <= 0.0f)
+	{
+		Destroy();
+	}
+	else
+	{
+		SetLifeSpan(DestroyDelay);
+	}
 }
 
 void AFCChestActor::OnRep_IsOpened()
 {
-	if (CollisionBox)
-	{
-		CollisionBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	}
+	HideAndDisableChest();
 
 	if (DestroySound)
 	{

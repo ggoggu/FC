@@ -49,6 +49,7 @@ bool FFCProjectileDataAssetTest::RunTest(const FString& Parameters)
 			FireArrowCard->GameplayData.RequiredClass = EFCCharacterClass::Mage;
 			FireArrowCard->GameplayData.Elements = { EFCElement::Fire };
 			FireArrowCard->GameplayData.CardAbilityClass = UFCGA_SpawnProjectile::StaticClass();
+			FireArrowCard->GameplayData.bSpawnsProjectile = true;
 			FireArrowCard->GameplayData.ProjectileDataAsset = FireArrowProjData;
 			FireArrowCard->DisplayData.CardName = FText::FromString(TEXT("파이어 에로우"));
 			FireArrowCard->DisplayData.CardDescription = FText::FromString(TEXT("불 화살을 발사한다."));
@@ -71,6 +72,8 @@ bool FFCProjectileDataAssetTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Fire Arrow trait text should format properly"), ResolvedCard->GameplayData.GetFormattedTraitText().ToString(), FString(TEXT("화염")));
 
 				// Projectile Data Asset Link
+				TestTrue(TEXT("Fire Arrow bSpawnsProjectile must be true"), ResolvedCard->GameplayData.bSpawnsProjectile);
+				TestTrue(TEXT("Fire Arrow must spawn projectile"), ResolvedCard->GameplayData.SpawnsProjectile());
 				TestNotNull(TEXT("Fire Arrow must have valid ProjectileDataAsset"), ResolvedCard->GameplayData.ProjectileDataAsset.Get());
 				if (ResolvedCard->GameplayData.ProjectileDataAsset)
 				{

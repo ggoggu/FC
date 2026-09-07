@@ -116,8 +116,12 @@ struct FC_API FFCCardGameplayData
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
 	EFCCardTargetType TargetType = EFCCardTargetType::SingleTarget;
 
-	/** Optional Projectile Data Asset (if this card spawns a projectile) */
+	/** Whether this card shoots or spawns a projectile (e.g. Fireball, FireArrow) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	bool bSpawnsProjectile = false;
+
+	/** Optional Projectile Data Asset (active only when bSpawnsProjectile is true) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay", meta = (EditCondition = "bSpawnsProjectile", EditConditionHides))
 	TObjectPtr<UFCProjectileDataAsset> ProjectileDataAsset;
 
 	/** Gameplay Ability granted and activated when this card is played */
@@ -238,6 +242,12 @@ struct FC_API FFCCardGameplayData
 	bool RequiresElementConsumption() const
 	{
 		return ConsumedElements.Num() > 0;
+	}
+
+	/** Helper to check if this card shoots or spawns a projectile */
+	bool SpawnsProjectile() const
+	{
+		return bSpawnsProjectile || ProjectileDataAsset != nullptr;
 	}
 
 	/** Helper to format class trait text via adapter */
