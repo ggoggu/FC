@@ -65,12 +65,16 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// Test 3: AFCCardPickupActor CDO Defaults
+	// Test 3: AFCCardPickupActor CDO Defaults & Widget Lifecycle
 	AFCCardPickupActor* PickupCDO = GetMutableDefault<AFCCardPickupActor>();
 	TestNotNull(TEXT("AFCCardPickupActor CDO should exist"), PickupCDO);
 	if (PickupCDO)
 	{
 		TestTrue(TEXT("Card pickup must replicate"), PickupCDO->GetIsReplicated());
+		TestNull(TEXT("ActiveRewardWidget should be null by default"), PickupCDO->GetActiveRewardWidget());
+		PickupCDO->HideRewardWidgetForPlayer();
+		PickupCDO->ClearActiveRewardWidget(nullptr);
+		TestNull(TEXT("ActiveRewardWidget should remain null after cleanup calls"), PickupCDO->GetActiveRewardWidget());
 	}
 
 	// =========================================================================

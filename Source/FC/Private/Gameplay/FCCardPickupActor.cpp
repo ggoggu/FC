@@ -52,7 +52,15 @@ void AFCCardPickupActor::BeginPlay()
 	if (OverlapSphere)
 	{
 		OverlapSphere->OnComponentBeginOverlap.AddDynamic(this, &AFCCardPickupActor::OnOverlapBegin);
+		OverlapSphere->OnComponentEndOverlap.AddDynamic(this, &AFCCardPickupActor::OnOverlapEnd);
 	}
+}
+
+void AFCCardPickupActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	HideRewardWidgetForPlayer();
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AFCCardPickupActor::SetDropCardId(FName InCardId)
@@ -77,9 +85,34 @@ void AFCCardPickupActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AAc
 	}
 }
 
+void AFCCardPickupActor::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (!OtherActor)
+	{
+		return;
+	}
+
+	APawn* Pawn = Cast<APawn>(OtherActor);
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		// Avoid premature close if pawn is still overlapping via another component
+		if (OverlapSphere && OverlapSphere->IsOverlappingActor(OtherActor))
+		{
+			return;
+		}
+
+		HideRewardWidgetForPlayer();
+	}
+}
+
 void AFCCardPickupActor::ShowRewardWidgetForPlayer(APawn* PlayerPawn)
 {
-	if (!PlayerPawn)
+	if (!PlayerPawn || bIsClaimed)
+	{
+		return;
+	}
+
+	if (ActiveRewardWidget && ActiveRewardWidget->IsInViewport())
 	{
 		return;
 	}
@@ -102,9 +135,33 @@ void AFCCardPickupActor::ShowRewardWidgetForPlayer(APawn* PlayerPawn)
 
 	if (RewardWidget)
 	{
-		RewardWidget->AddToViewport(100);
-		RewardWidget->SetupRewardWidget(DropCardId, this);
+		ActiveRewardWidget = RewardWidget;
+		ActiveRewardWidget->AddToViewport(100);
+		ActiveRewardWidget->SetupRewardWidget(DropCardId, this);
 	}
+}
+
+void AFCCardPickupActor::HideRewardWidgetForPlayer()
+{
+	if (ActiveRewardWidget)
+	{
+		UFCCardRewardWidget* WidgetToClose = ActiveRewardWidget;
+		ActiveRewardWidget = nullptr;
+		WidgetToClose->CloseRewardWidget();
+	}
+}
+
+void AFCCardPickupActor::ClearActiveRewardWidget(UFCCardRewardWidget* InWidget)
+{
+	if (!InWidget || ActiveRewardWidget == InWidget)
+	{
+		ActiveRewardWidget = nullptr;
+	}
+}
+
+UFCCardRewardWidget* AFCCardPickupActor::GetActiveRewardWidget() const
+{
+	return ActiveRewardWidget;
 }
 
 bool AFCCardPickupActor::Server_ClaimPickup_Validate(APawn* ClaimerPawn, EFCCardAddDestination Destination)
