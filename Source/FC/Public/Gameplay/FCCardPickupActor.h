@@ -40,8 +40,20 @@ public:
 	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Pickup")
 	void Server_ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
 
+	/** Dismisses and closes the Card Reward Widget for the local player */
+	UFUNCTION(BlueprintCallable, Category = "Card|UI")
+	void HideRewardWidgetForPlayer();
+
+	/** Clears cached reference to active reward widget if closed externally */
+	UFUNCTION(BlueprintCallable, Category = "Card|UI")
+	void ClearActiveRewardWidget(UFCCardRewardWidget* InWidget = nullptr);
+
+	UFUNCTION(BlueprintPure, Category = "Card|UI")
+	UFCCardRewardWidget* GetActiveRewardWidget() const;
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card|Pickup", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USphereComponent> OverlapSphere;
@@ -74,8 +86,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Cosmetics")
 	TObjectPtr<UNiagaraSystem> PickupVFX;
 
+	/** Currently active local reward widget instance */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Card|UI")
+	TObjectPtr<UFCCardRewardWidget> ActiveRewardWidget;
+
 	UFUNCTION()
 	virtual void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	virtual void OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 	UFUNCTION()
 	virtual void OnRep_DropCardId();

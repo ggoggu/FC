@@ -75,11 +75,21 @@ void UFCCardRewardWidget::OnDiscardClicked()
 
 void UFCCardRewardWidget::CloseRewardWidget()
 {
+	if (RewardViewModel)
+	{
+		RewardViewModel->SetIsVisible(false);
+	}
+
 	if (APlayerController* PC = GetOwningPlayer())
 	{
 		FInputModeGameOnly InputMode;
 		PC->SetInputMode(InputMode);
 		PC->bShowMouseCursor = false;
+	}
+
+	if (SourcePickupActor.IsValid())
+	{
+		SourcePickupActor->ClearActiveRewardWidget(this);
 	}
 
 	RemoveFromParent();
