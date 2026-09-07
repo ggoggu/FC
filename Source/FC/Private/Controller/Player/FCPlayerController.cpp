@@ -506,8 +506,9 @@ FFCCardTargetInfo AFCPlayerController::ResolveCardTargetAtScreenPosition(const F
 	TargetInfo.TargetLocation = DropWorldLocation;
 
 	// Check if this card shoots/spawns projectiles and whether auto-targeting is enabled
+	const TSubclassOf<UGameplayAbility> AbilityClass = CardAsset ? CardAsset->GameplayData.GetCardAbilityClass() : nullptr;
 	const bool bIsProjectileCard = CardAsset && (CardAsset->GameplayData.SpawnsProjectile() || 
-		(CardAsset->GameplayData.CardAbilityClass && CardAsset->GameplayData.CardAbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass())));
+		(AbilityClass && AbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass())));
 
 	// If single target or direct hit on attackable target
 	if (DirectHitActor && UFCCombatUtils::IsAttackableTarget(MyPawn, DirectHitActor))

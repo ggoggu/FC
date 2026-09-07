@@ -10,6 +10,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Class/FCClassTypes.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -42,7 +43,7 @@ bool FFCIgniteCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Ignite TargetType must be AllEnemies"), (uint8)IgniteAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::AllEnemies);
 				TestEqual(TEXT("Ignite CardType must be Attack"), (uint8)IgniteAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
 				TestEqual(TEXT("Ignite Base Value (Damage per stack) must be 10.0"), IgniteAsset->GameplayData.BaseValue, 10.0f);
-				TestTrue(TEXT("Ignite CardAbilityClass must be UFCGA_Ignite"), IgniteAsset->GameplayData.CardAbilityClass == UFCGA_Ignite::StaticClass());
+				TestTrue(TEXT("Ignite CardAbilityClass must be UFCGA_Ignite"), IgniteAsset->GameplayData.GetCardAbilityClass() == UFCGA_Ignite::StaticClass());
 
 				// Elemental Affinity & Formatting: None (무속성)
 				TestTrue(TEXT("Ignite should contain None element"), IgniteAsset->GameplayData.Elements.Contains(EFCElement::None));
@@ -50,7 +51,7 @@ bool FFCIgniteCardTest::RunTest(const FString& Parameters)
 
 				// Non-projectile verification: Ignite is an immediate area ability, no projectile needed
 				TestFalse(TEXT("Ignite must not spawn projectile"), IgniteAsset->GameplayData.bSpawnsProjectile);
-				TestNull(TEXT("Ignite ProjectileDataAsset must be null"), IgniteAsset->GameplayData.ProjectileDataAsset.Get());
+				TestNull(TEXT("Ignite ProjectileDataAsset must be null"), IgniteAsset->GameplayData.GetProjectileDataAsset());
 				TestFalse(TEXT("Ignite SpawnsProjectile() must return false"), IgniteAsset->GameplayData.SpawnsProjectile());
 
 				// Class Usability

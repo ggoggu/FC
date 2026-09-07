@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 #include "Engine/NetSerialization.h"
+#include "Engine/DataTable.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCCardTypes.generated.h"
 
@@ -101,63 +102,63 @@ struct FC_API FFCCardGameplayData
 	GENERATED_BODY()
 
 	/** Unique identifier tag or name for this card type */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	FName CardId = NAME_None;
 
 	/** Base Mana cost to play the card */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay", meta = (ClampMin = "0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay", meta = (ClampMin = "0"))
 	int32 BaseManaCost = 1;
 
 	/** Card functional type */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	EFCCardType CardType = EFCCardType::Attack;
 
 	/** Target selection requirement */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	EFCCardTargetType TargetType = EFCCardTargetType::SingleTarget;
 
 	/** Whether this card shoots or spawns a projectile (e.g. Fireball, FireArrow) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	bool bSpawnsProjectile = false;
 
-	/** Optional Projectile Data Asset (active only when bSpawnsProjectile is true) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay", meta = (EditCondition = "bSpawnsProjectile", EditConditionHides))
-	TObjectPtr<UFCProjectileDataAsset> ProjectileDataAsset;
+	/** Optional Projectile Data Asset (active only when bSpawnsProjectile is true, soft referenced) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay", meta = (EditCondition = "bSpawnsProjectile", EditConditionHides))
+	TSoftObjectPtr<UFCProjectileDataAsset> ProjectileDataAsset;
 
-	/** Gameplay Ability granted and activated when this card is played */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
-	TSubclassOf<UGameplayAbility> CardAbilityClass;
+	/** Gameplay Ability granted and activated when this card is played (soft referenced) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
+	TSoftClassPtr<UGameplayAbility> CardAbilityClass;
 
-	/** Optional direct Gameplay Effects applied upon playing */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
-	TArray<TSubclassOf<UGameplayEffect>> CardEffectClasses;
+	/** Optional direct Gameplay Effects applied upon playing (soft referenced) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
+	TArray<TSoftClassPtr<UGameplayEffect>> CardEffectClasses;
 
 	/** Gameplay tags associated with this card (e.g. Card.Archetype.Fire, Card.Keyword.Exhaust) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	FGameplayTagContainer CardTags;
 
 	/** Base numerical value (damage, shield, heal amount) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	float BaseValue = 10.0f;
 
 	/** Character class required to play/deck this card (Neutral = all classes) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	EFCCharacterClass RequiredClass = EFCCharacterClass::Neutral;
 
 	/** Elemental affinities (Active for Mage cards) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	TArray<EFCElement> Elements;
 
 	/** Elements consumed from target(s) to activate or enhance this card's effect */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	TArray<EFCElement> ConsumedElements;
 
 	/** Whether this card is exhausted (sent to Exhaust Zone/Pile) upon being played */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	bool bExhaustsOnPlay = false;
 
 	/** Gameplay keywords associated with this card (e.g. Exhaust, Retain, Innate) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Gameplay")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Gameplay")
 	TArray<EFCCardKeyword> Keywords;
 
 	/** Helper to check if card exhausts upon being played */
@@ -247,8 +248,17 @@ struct FC_API FFCCardGameplayData
 	/** Helper to check if this card shoots or spawns a projectile */
 	bool SpawnsProjectile() const
 	{
-		return bSpawnsProjectile || ProjectileDataAsset != nullptr;
+		return bSpawnsProjectile || !ProjectileDataAsset.IsNull();
 	}
+
+	/** Safe accessor resolving the ability class, loading synchronously as fallback if not yet loaded in memory */
+	TSubclassOf<UGameplayAbility> GetCardAbilityClass() const;
+
+	/** Safe accessor resolving direct gameplay effects */
+	TArray<TSubclassOf<UGameplayEffect>> GetCardEffectClasses() const;
+
+	/** Safe accessor resolving the projectile data asset */
+	UFCProjectileDataAsset* GetProjectileDataAsset() const;
 
 	/** Helper to format class trait text via adapter */
 	FText GetFormattedTraitText() const
@@ -270,36 +280,54 @@ struct FC_API FFCCardDisplayData
 	GENERATED_BODY()
 
 	/** Localized card title */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	FText CardName;
 
 	/** Localized card ability description */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	FText CardDescription;
 
 	/** Flavor / lore text */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	FText CardLore;
 
 	/** Soft reference to card artwork texture (prevents blocking sync loads) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	TSoftObjectPtr<UTexture2D> CardIcon;
 
 	/** Soft reference to card frame/border texture */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	TSoftObjectPtr<UTexture2D> CardFrame;
 
 	/** Soft reference to audio cue played on card activation */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	TSoftObjectPtr<USoundBase> PlaySound;
 
 	/** Soft reference to Niagara particle effect on play */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	TSoftObjectPtr<UNiagaraSystem> PlayVFX;
 
 	/** Visual rarity framing */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Display")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Display")
 	EFCCardRarity Rarity = EFCCardRarity::Common;
+};
+
+/**
+ * Row structure for Card Catalog Data Table (DT_CardCatalog)
+ * Allows bulk editing, Excel/CSV imports, Git diff tracking, and instant zero-hitch metadata loading.
+ */
+USTRUCT(BlueprintType)
+struct FC_API FFCCardTableRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** Authoritative combat, ability, tag, and cost data */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay")
+	FFCCardGameplayData GameplayData;
+
+	/** Client-side visual, audio, and localized text data */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Display")
+	FFCCardDisplayData DisplayData;
 };
 
 /**

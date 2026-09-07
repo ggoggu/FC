@@ -229,8 +229,10 @@ private:
 	TArray<FName> ServerDrawPile;
 	TArray<FName> ServerDiscardPile;
 	TArray<FName> ServerExhaustPile;
-
 	FTimerHandle CycleTimerHandle;
+
+	/** Active streaming handle for preloaded card assets (keeps deck abilities & textures pinned in memory during match) */
+	TSharedPtr<struct FStreamableHandle> ActiveDeckPreloadHandle;
 
 	UAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
 };

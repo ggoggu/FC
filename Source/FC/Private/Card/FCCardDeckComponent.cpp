@@ -12,6 +12,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "Engine/StreamableManager.h"
 
 UFCCardDeckComponent::UFCCardDeckComponent()
 {
@@ -39,6 +40,7 @@ void UFCCardDeckComponent::BeginPlay()
 void UFCCardDeckComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopCycleTimer();
+	ActiveDeckPreloadHandle.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -84,6 +86,13 @@ void UFCCardDeckComponent::InitializeDeck(const TArray<FName>& StartingDeck)
 	if (bAutoCycleEnabled)
 	{
 		StartCycleTimer();
+	}
+
+	// Trigger on-demand async preloading for active combat deck
+	if (UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this))
+	{
+		TSet<FName> UniqueDeckCards(ServerDrawPile);
+		ActiveDeckPreloadHandle = Subsystem->PreloadCardAssetsAsync(UniqueDeckCards.Array());
 	}
 }
 
@@ -346,6 +355,12 @@ bool UFCCardDeckComponent::AddCardToDeck(FName CardId, EFCCardAddDestination Des
 	}
 
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
+
+	if (Subsystem)
+	{
+		Subsystem->PreloadCardAssetsAsync({ CardId });
+	}
+
 	return true;
 }
 
@@ -490,8 +505,8 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		}
 
 		// Trigger GameplayAbility if assigned or if projectile data asset is specified
-		TSubclassOf<UGameplayAbility> AbilityToActivate = DataAsset ? DataAsset->GameplayData.CardAbilityClass : nullptr;
-		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.SpawnsProjectile() && DataAsset->GameplayData.ProjectileDataAsset)
+		TSubclassOf<UGameplayAbility> AbilityToActivate = DataAsset ? DataAsset->GameplayData.GetCardAbilityClass() : nullptr;
+		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.SpawnsProjectile() && DataAsset->GameplayData.GetProjectileDataAsset())
 		{
 			AbilityToActivate = UFCGA_SpawnProjectile::StaticClass();
 		}
@@ -507,7 +522,7 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		// Apply direct Gameplay Effects if assigned and condition met
 		if (DataAsset && bCanApplyConditionalEffects)
 		{
-			for (const TSubclassOf<UGameplayEffect>& EffectClass : DataAsset->GameplayData.CardEffectClasses)
+			for (const TSubclassOf<UGameplayEffect>& EffectClass : DataAsset->GameplayData.GetCardEffectClasses())
 			{
 				if (EffectClass)
 				{
