@@ -14,6 +14,7 @@
 #include "Animation/AnimInstance.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Character/Mob/FCMobCharacter.h"
 
 AFCPlayerCharacter::AFCPlayerCharacter()
 {
@@ -95,11 +96,25 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 
 	HitPlayRate = 1.5f;
 	HitReactionCooldown = 0.25f;
+
+	bEnableHealthDrain = true;
+	InitialDrainInterval = 10.0f;
+	HealthDrainAmount = 1.0f;
+	MinDrainInterval = 1.0f;
+	DrainAccelerationStep = 0.15f;
+	DrainDecayMultiplier = 0.98f;
+	CurrentDrainInterval = 10.0f;
+	HealOnKillAmount = 5.0f;
 }
 
 void AFCPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (HasAuthority() && Controller != nullptr)
+	{
+		StartHealthDrain();
+	}
 }
 
 void AFCPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -174,7 +189,21 @@ void AFCPlayerCharacter::PossessedBy(AController* NewController)
 				}
 			}
 		}
+
+		StartHealthDrain();
 	}
+}
+
+void AFCPlayerCharacter::UnPossessed()
+{
+	StopHealthDrain();
+	Super::UnPossessed();
+}
+
+void AFCPlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopHealthDrain();
+	Super::EndPlay(EndPlayReason);
 }
 
 void AFCPlayerCharacter::OnRep_PlayerState()
@@ -195,6 +224,8 @@ void AFCPlayerCharacter::InitAbilityActorInfo()
 void AFCPlayerCharacter::Die(AActor* Killer)
 {
 	Super::Die(Killer);
+
+	StopHealthDrain();
 
 	const EFCDeathDirection DeathDir = CalculateHitDirection(Killer);
 	Multicast_PlayDeathAnimation(DeathDir);
@@ -332,5 +363,108 @@ UAnimSequence* AFCPlayerCharacter::GetHitAnimationForDirection(EFCDeathDirection
 		return HitAnim_Right ? HitAnim_Right.Get() : DeathAnim_Right.Get();
 	default:
 		return HitAnim_Front ? HitAnim_Front.Get() : DeathAnim_Front.Get();
+	}
+}
+
+void AFCPlayerCharacter::StartHealthDrain()
+{
+	if (!HasAuthority() || bIsDead || !bEnableHealthDrain)
+	{
+		return;
+	}
+
+	if (CurrentDrainInterval <= 0.0f)
+	{
+		CurrentDrainInterval = InitialDrainInterval;
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HealthDrainTimerHandle);
+		World->GetTimerManager().SetTimer(
+			HealthDrainTimerHandle,
+			this,
+			&AFCPlayerCharacter::HandleHealthDrainTick,
+			CurrentDrainInterval,
+			false
+		);
+	}
+}
+
+void AFCPlayerCharacter::StopHealthDrain()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(HealthDrainTimerHandle);
+	}
+}
+
+void AFCPlayerCharacter::ResetHealthDrain()
+{
+	CurrentDrainInterval = InitialDrainInterval;
+	if (HasAuthority() && !bIsDead && bEnableHealthDrain)
+	{
+		StartHealthDrain();
+	}
+}
+
+void AFCPlayerCharacter::HandleHealthDrainTick()
+{
+	if (!HasAuthority() || bIsDead)
+	{
+		StopHealthDrain();
+		return;
+	}
+
+	if (AttributeSet)
+	{
+		const float CurrentHealth = AttributeSet->GetHealth();
+		const float NewHealth = FMath::Clamp(CurrentHealth - HealthDrainAmount, 0.0f, AttributeSet->GetMaxHealth());
+		AttributeSet->SetHealth(NewHealth);
+
+		if (NewHealth <= 0.0f)
+		{
+			StopHealthDrain();
+			Die(nullptr);
+			return;
+		}
+	}
+
+	// Calculate accelerated interval for next tick
+	// Slowly accelerate: decrement step, and gently scale by decay multiplier
+	float NextInterval = CurrentDrainInterval - DrainAccelerationStep;
+	if (DrainDecayMultiplier > 0.0f && DrainDecayMultiplier < 1.0f)
+	{
+		NextInterval *= DrainDecayMultiplier;
+	}
+	CurrentDrainInterval = FMath::Max(MinDrainInterval, NextInterval);
+
+	// Schedule next drain tick
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			HealthDrainTimerHandle,
+			this,
+			&AFCPlayerCharacter::HandleHealthDrainTick,
+			CurrentDrainInterval,
+			false
+		);
+	}
+}
+
+void AFCPlayerCharacter::OnKilledEnemy(AFCMobCharacter* VictimMob)
+{
+	if (!HasAuthority() || bIsDead)
+	{
+		return;
+	}
+
+	const float RewardAmount = (VictimMob && VictimMob->GetHealthRewardOnKill() > 0.0f)
+		? VictimMob->GetHealthRewardOnKill()
+		: HealOnKillAmount;
+
+	if (RewardAmount > 0.0f)
+	{
+		ApplyHeal(RewardAmount);
 	}
 }

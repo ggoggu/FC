@@ -2,6 +2,8 @@
 #include "Misc/AutomationTest.h"
 #include "Character/Player/FCPlayerCharacter.h"
 #include "Character/FCCharacterBase.h"
+#include "Character/Mob/FCMobCharacter.h"
+#include "AbilitySystem/FCAttributeSet.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -84,6 +86,80 @@ bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 					CDO->GetDeathAnimationForDirection(EFCDeathDirection::Right));
 				TestNotNull(TEXT("BP_FCPlayerCharacter should have HitAnim_Front"),
 					CDO->GetHitAnimationForDirection(EFCDeathDirection::Front));
+			}
+		}
+	}
+
+	// =========================================================================
+	// Test 5: Health Drain Defaults & Reset
+	// =========================================================================
+	{
+		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
+		TestNotNull(TEXT("Player character should be instantiable for drain test"), PlayerChar);
+
+		if (PlayerChar)
+		{
+			TestEqual(TEXT("Initial drain interval should be 10.0s"), PlayerChar->GetCurrentDrainInterval(), 10.0f);
+			TestEqual(TEXT("Default heal on kill should be 5.0"), PlayerChar->GetHealOnKillAmount(), 5.0f);
+
+			// Calling ResetHealthDrain resets interval to initial
+			PlayerChar->ResetHealthDrain();
+			TestEqual(TEXT("ResetHealthDrain should restore interval to 10.0s"), PlayerChar->GetCurrentDrainInterval(), 10.0f);
+		}
+	}
+
+	// =========================================================================
+	// Test 6: ApplyHeal and MaxHealth Clamping
+	// =========================================================================
+	{
+		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
+		TestNotNull(TEXT("Player character should be instantiable for heal test"), PlayerChar);
+
+		if (PlayerChar)
+		{
+			UFCAttributeSet* AttrSet = PlayerChar->GetAttributeSet();
+			TestNotNull(TEXT("Player character should have AttributeSet"), AttrSet);
+
+			if (AttrSet)
+			{
+				AttrSet->SetMaxHealth(100.0f);
+				AttrSet->SetHealth(50.0f);
+
+				// Apply heal 5.0
+				PlayerChar->ApplyHeal(5.0f);
+				TestEqual(TEXT("Health should increase from 50 to 55"), AttrSet->GetHealth(), 55.0f);
+
+				// Apply heal exceeding MaxHealth
+				PlayerChar->ApplyHeal(100.0f);
+				TestEqual(TEXT("Health should clamp to MaxHealth 100"), AttrSet->GetHealth(), 100.0f);
+			}
+		}
+	}
+
+	// =========================================================================
+	// Test 7: Kill Reward (OnKilledEnemy)
+	// =========================================================================
+	{
+		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
+		AFCMobCharacter* MobChar = NewObject<AFCMobCharacter>();
+		TestNotNull(TEXT("Player should be valid for kill reward test"), PlayerChar);
+		TestNotNull(TEXT("Mob should be valid for kill reward test"), MobChar);
+
+		if (PlayerChar && MobChar)
+		{
+			UFCAttributeSet* AttrSet = PlayerChar->GetAttributeSet();
+			TestNotNull(TEXT("Player should have AttributeSet for kill reward test"), AttrSet);
+
+			if (AttrSet)
+			{
+				AttrSet->SetMaxHealth(100.0f);
+				AttrSet->SetHealth(80.0f);
+
+				TestEqual(TEXT("Mob default HealthRewardOnKill should be 5.0"), MobChar->GetHealthRewardOnKill(), 5.0f);
+
+				// Player kills mob -> recovers 5 health
+				PlayerChar->OnKilledEnemy(MobChar);
+				TestEqual(TEXT("Health should increase from 80 to 85 after killing mob"), AttrSet->GetHealth(), 85.0f);
 			}
 		}
 	}

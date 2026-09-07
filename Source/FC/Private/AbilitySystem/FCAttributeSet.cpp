@@ -174,10 +174,10 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 		if (GetHealth() <= 0.0f)
 		{
 			AActor* TargetActor = Data.Target.AbilityActorInfo.IsValid() ? Data.Target.AbilityActorInfo->AvatarActor.Get() : nullptr;
-			AActor* Killer = Data.EffectSpec.GetEffectContext().GetEffectCauser();
+			AActor* Killer = Data.EffectSpec.GetEffectContext().GetInstigator();
 			if (!Killer)
 			{
-				Killer = Data.EffectSpec.GetEffectContext().GetInstigator();
+				Killer = Data.EffectSpec.GetEffectContext().GetEffectCauser();
 			}
 			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
 			{

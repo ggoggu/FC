@@ -11,6 +11,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "BrainComponent.h"
 #include "Gameplay/FCChestActor.h"
+#include "Character/Player/FCPlayerCharacter.h"
 #include "Engine/World.h"
 
 AFCMobCharacter::AFCMobCharacter()
@@ -93,6 +94,7 @@ AFCMobCharacter::AFCMobCharacter()
 	DropChestOffset = FVector::ZeroVector;
 	bSnapChestToGround = true;
 	InitialMaxHealth = 100.0f;
+	HealthRewardOnKill = 5.0f;
 	DeathDespawnDelay = 5.0f;
 
 	// Mobs use Minimal replication mode for Gameplay Ability System
@@ -176,6 +178,45 @@ void AFCMobCharacter::Die(AActor* Killer)
 
 		// Roll chance and spawn drop chest
 		AttemptDropChest();
+
+		// Reward killer player with health recovery
+		if (HealthRewardOnKill > 0.0f)
+		{
+			AFCPlayerCharacter* KillerPlayer = Cast<AFCPlayerCharacter>(Killer);
+			if (!KillerPlayer && Killer)
+			{
+				KillerPlayer = Cast<AFCPlayerCharacter>(Killer->GetInstigator());
+			}
+			if (!KillerPlayer && Killer)
+			{
+				KillerPlayer = Cast<AFCPlayerCharacter>(Killer->GetOwner());
+			}
+			if (!KillerPlayer && Killer)
+			{
+				if (AController* KillerCont = Cast<AController>(Killer))
+				{
+					KillerPlayer = Cast<AFCPlayerCharacter>(KillerCont->GetPawn());
+				}
+				else if (AController* KillerInstCont = Killer->GetInstigatorController())
+				{
+					KillerPlayer = Cast<AFCPlayerCharacter>(KillerInstCont->GetPawn());
+				}
+			}
+
+			// Standalone / Listen server single player fallback if Killer was null (e.g. dot/environment)
+			if (!KillerPlayer && GetWorld())
+			{
+				if (APlayerController* FirstPC = GetWorld()->GetFirstPlayerController())
+				{
+					KillerPlayer = Cast<AFCPlayerCharacter>(FirstPC->GetPawn());
+				}
+			}
+
+			if (KillerPlayer && !KillerPlayer->IsDead())
+			{
+				KillerPlayer->OnKilledEnemy(this);
+			}
+		}
 
 		// Notify spawner
 		if (OwningSpawner.IsValid())

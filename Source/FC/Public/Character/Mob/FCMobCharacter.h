@@ -3,14 +3,15 @@
 #include "CoreMinimal.h"
 #include "Character/FCCharacterBase.h"
 #include "AI/FCAITypes.h"
-#include "FCMobCharacter.generated.h"
-
+class AFCMobCharacter;
 class AFCMobAIController;
 class AFCMobSpawnerBase;
 class AFCProjectileBase;
 class UFCProjectileDataAsset;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnChestDroppedSignature, AFCMobCharacter*, DeadMob, AActor*, DroppedChest);
+
+#include "FCMobCharacter.generated.h"
 
 /**
  * Humanoid Mob Character with automated AI navigation and replication
@@ -70,6 +71,9 @@ public:
 
 	float GetInitialMaxHealth() const { return InitialMaxHealth; }
 	void SetInitialMaxHealth(float InHealth) { InitialMaxHealth = FMath::Max(1.0f, InHealth); }
+
+	float GetHealthRewardOnKill() const { return HealthRewardOnKill; }
+	void SetHealthRewardOnKill(float InReward) { HealthRewardOnKill = FMath::Max(0.0f, InReward); }
 
 	TSubclassOf<AActor> GetDropChestClass() const { return DropChestClass; }
 	void SetDropChestClass(TSubclassOf<AActor> InClass) { DropChestClass = InClass; }
@@ -164,6 +168,10 @@ protected:
 	/** Blueprint class of the treasure chest to spawn on death */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop")
 	TSubclassOf<AActor> DropChestClass;
+
+	/** Health restored to player killer upon this mob's death (default: 5.0) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop", meta = (ClampMin = "0.0"))
+	float HealthRewardOnKill = 5.0f;
 
 	/** Probability of dropping chest on death (0.0 = 0%, 0.5 = 50%, 1.0 = 100%) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))

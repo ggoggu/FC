@@ -11,6 +11,7 @@ class UFCElementComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnCharacterDeathSignature, AActor*, DeadActor, AActor*, Killer);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FFCOnCharacterDamageTakenSignature, AActor*, DamagedActor, float, DamageAmount, AActor*, DamageCauser, const FHitResult&, HitResult);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnCharacterHealedSignature, AActor*, HealedActor, float, HealAmount);
 
 UENUM(BlueprintType)
 enum class EFCDeathDirection : uint8
@@ -46,6 +47,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	virtual void HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult);
 
+	/** Called to restore character health on authoritative server (clamped to MaxHealth) */
+	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
+	virtual void ApplyHeal(float HealAmount);
+
 	/** Calculates relative hit direction from an instigator actor (Front, Back, Left, Right) */
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	EFCDeathDirection CalculateHitDirection(AActor* InstigatorActor) const;
@@ -62,6 +67,10 @@ public:
 	/** Multicast delegate fired when character takes damage */
 	UPROPERTY(BlueprintAssignable, Category = "FC|Combat")
 	FFCOnCharacterDamageTakenSignature OnDamageTaken;
+
+	/** Multicast delegate fired when character is healed */
+	UPROPERTY(BlueprintAssignable, Category = "FC|Combat")
+	FFCOnCharacterHealedSignature OnHealed;
 
 	/** Sets the active combat target actor (used for pitch/yaw projectile aiming) */
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")

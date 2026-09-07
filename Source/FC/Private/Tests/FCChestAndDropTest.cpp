@@ -22,6 +22,7 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 	if (ChestCDO)
 	{
 		TestEqual(TEXT("Chest damage threshold should be 1.0"), ChestCDO->GetDamageThreshold(), 1.0f);
+		TestEqual(TEXT("Chest default destroy delay should be 0.1"), ChestCDO->GetDestroyDelay(), 0.1f);
 		TestFalse(TEXT("Chest should not be opened by default"), ChestCDO->IsOpened());
 	}
 

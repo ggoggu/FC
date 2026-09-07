@@ -113,6 +113,28 @@ void AFCCharacterBase::HandleDamageTaken(float DamageAmount, AActor* DamageCause
 	OnDamageTaken.Broadcast(this, DamageAmount, DamageCauser, HitResult);
 }
 
+void AFCCharacterBase::ApplyHeal(float HealAmount)
+{
+	if (!HasAuthority() || bIsDead || HealAmount <= 0.0f)
+	{
+		return;
+	}
+
+	if (AttributeSet)
+	{
+		const float CurrentHealth = AttributeSet->GetHealth();
+		const float MaxHealth = AttributeSet->GetMaxHealth();
+		const float NewHealth = FMath::Clamp(CurrentHealth + HealAmount, 0.0f, MaxHealth);
+		const float ActualHealed = NewHealth - CurrentHealth;
+
+		if (ActualHealed > 0.0f)
+		{
+			AttributeSet->SetHealth(NewHealth);
+			OnHealed.Broadcast(this, ActualHealed);
+		}
+	}
+}
+
 EFCDeathDirection AFCCharacterBase::CalculateHitDirection(AActor* InstigatorActor) const
 {
 	if (!InstigatorActor)
