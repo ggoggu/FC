@@ -207,9 +207,9 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		{
 			if (const UFCCardDataAsset* CardAsset = Cast<UFCCardDataAsset>(Spec->SourceObject.Get()))
 			{
-				if (CardAsset->GameplayData.ProjectileDataAsset)
+				if (UFCProjectileDataAsset* CardProjAsset = CardAsset->GameplayData.GetProjectileDataAsset())
 				{
-					EffectiveDataAsset = CardAsset->GameplayData.ProjectileDataAsset;
+					EffectiveDataAsset = CardProjAsset;
 				}
 			}
 		}

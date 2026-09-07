@@ -49,7 +49,7 @@ bool FFCFireballCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Fireball Mana Cost should be 2"), FireballAsset->GameplayData.BaseManaCost, 2);
 				TestEqual(TEXT("Fireball Base Damage should be 1.0"), FireballAsset->GameplayData.BaseValue, 1.0f);
 				TestEqual(TEXT("Fireball Card Type should be Attack"), (uint8)FireballAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
-				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.CardAbilityClass == UFCGA_Fireball::StaticClass());
+				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.GetCardAbilityClass() == UFCGA_Fireball::StaticClass());
 				TestEqual(TEXT("Fireball Card Name should match"), FireballAsset->DisplayData.CardName.ToString(), FString(TEXT("파이어 볼")));
 
 				// Class & Multi-Element Affinities (Mage: Fire + Earth)

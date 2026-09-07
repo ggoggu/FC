@@ -1,0 +1,128 @@
+[
+  {
+    "Name": "Card_Fireball",
+    "GameplayData": {
+      "CardId": "Card_Fireball",
+      "BaseManaCost": 2,
+      "CardType": "Attack",
+      "TargetType": "DirectionalAoE",
+      "bSpawnsProjectile": true,
+      "CardAbilityClass": "/Script/FC.FCGA_Fireball",
+      "BaseValue": 1.0,
+      "RequiredClass": "Mage",
+      "Elements": [
+        "Fire",
+        "Earth"
+      ],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "파이어 볼",
+      "CardDescription": "전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다.",
+      "CardLore": "",
+      "Rarity": "Common"
+    }
+  },
+  {
+    "Name": "Card_FireArrow",
+    "GameplayData": {
+      "CardId": "Card_FireArrow",
+      "BaseManaCost": 1,
+      "CardType": "Attack",
+      "TargetType": "SingleTarget",
+      "bSpawnsProjectile": true,
+      "ProjectileDataAsset": "/Game/Card/DA_Projectile_FireArrow.DA_Projectile_FireArrow",
+      "BaseValue": 10.0,
+      "RequiredClass": "Mage",
+      "Elements": [
+        "Fire"
+      ],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "파이어 애로우",
+      "CardDescription": "화염 화살을 발사하여 10의 피해를 입힙니다.",
+      "CardLore": "",
+      "Rarity": "Common"
+    }
+  },
+  {
+    "Name": "Card_AttackBuff",
+    "GameplayData": {
+      "CardId": "Card_AttackBuff",
+      "BaseManaCost": 1,
+      "CardType": "Skill",
+      "TargetType": "Self",
+      "bSpawnsProjectile": false,
+      "CardEffectClasses": [
+        "/Script/FC.FCGE_AttackBuff"
+      ],
+      "BaseValue": 5.0,
+      "RequiredClass": "Neutral",
+      "Elements": [],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "공격력 강화",
+      "CardDescription": "자신의 공격력을 증가시킵니다.",
+      "CardLore": "",
+      "Rarity": "Common"
+    }
+  },
+  {
+    "Name": "Card_MagicShield",
+    "GameplayData": {
+      "CardId": "Card_MagicShield",
+      "BaseManaCost": 1,
+      "CardType": "Skill",
+      "TargetType": "Self",
+      "bSpawnsProjectile": false,
+      "CardEffectClasses": [
+        "/Script/FC.FCGE_MagicShield"
+      ],
+      "BaseValue": 20.0,
+      "RequiredClass": "Mage",
+      "Elements": [],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "매직실드",
+      "CardDescription": "자신에게 전신체 보호막을 생성하여 피해를 흡수합니다.",
+      "CardLore": "",
+      "Rarity": "Common"
+    }
+  },
+  {
+    "Name": "Card_Ignite",
+    "GameplayData": {
+      "CardId": "Card_Ignite",
+      "BaseManaCost": 1,
+      "CardType": "Attack",
+      "TargetType": "AllEnemies",
+      "bSpawnsProjectile": false,
+      "CardAbilityClass": "/Script/FC.FCGA_Ignite",
+      "BaseValue": 10.0,
+      "RequiredClass": "Mage",
+      "Elements": [
+        "None"
+      ],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "점화",
+      "CardDescription": "근처에 있는 모든 적에게 불스택 1개당 10의 피해를 입힙니다.",
+      "CardLore": "",
+      "Rarity": "Uncommon"
+    }
+  }
+]

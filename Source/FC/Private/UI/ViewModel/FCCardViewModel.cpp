@@ -48,33 +48,13 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 	SetUpgradeLevel(InItem.UpgradeLevel);
 	SetIsLocked(InItem.bIsLocked);
 
-	// Static Data Asset Resolution: If InDataAsset was not passed in, look it up via Subsystem / StaticLoadObject
+	// Static Data Asset Resolution: If InDataAsset was not passed in, look it up via Subsystem
 	const UFCCardDataAsset* StaticData = InDataAsset;
 	if (!StaticData && !InItem.CardId.IsNone())
 	{
 		if (UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this))
 		{
 			StaticData = Subsystem->GetCardDataAsset(InItem.CardId);
-		}
-
-		if (!StaticData)
-		{
-			const FString CleanName = InItem.CardId.ToString();
-			const FString PrefixedName = CleanName.StartsWith(TEXT("DA_")) ? CleanName : FString::Printf(TEXT("DA_%s"), *CleanName);
-			const TArray<FString> CandidatePaths = {
-				FString::Printf(TEXT("/Game/Card/%s.%s"), *PrefixedName, *PrefixedName),
-				FString::Printf(TEXT("/Game/Card/%s.%s"), *CleanName, *CleanName),
-				FString::Printf(TEXT("/Game/Data/Card/%s.%s"), *PrefixedName, *PrefixedName),
-				FString::Printf(TEXT("/Game/Data/Cards/%s.%s"), *PrefixedName, *PrefixedName)
-			};
-			for (const FString& PathStr : CandidatePaths)
-			{
-				if (UFCCardDataAsset* LoadedAsset = Cast<UFCCardDataAsset>(StaticLoadObject(UFCCardDataAsset::StaticClass(), nullptr, *PathStr)))
-				{
-					StaticData = LoadedAsset;
-					break;
-				}
-			}
 		}
 	}
 

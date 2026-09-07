@@ -7,6 +7,7 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -67,12 +68,12 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("AttackBuff Target Type must be Self"), (uint8)AttackBuffAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::Self);
 				TestEqual(TEXT("AttackBuff Mana Cost should be 2"), AttackBuffAsset->GameplayData.BaseManaCost, 2);
 				TestEqual(TEXT("AttackBuff Base Value should be 1.0"), AttackBuffAsset->GameplayData.BaseValue, 1.0f);
-				TestTrue(TEXT("AttackBuff should have UFCGE_AttackBuff effect class"), AttackBuffAsset->GameplayData.CardEffectClasses.Contains(UFCGE_AttackBuff::StaticClass()));
+				TestTrue(TEXT("AttackBuff should have UFCGE_AttackBuff effect class"), AttackBuffAsset->GameplayData.GetCardEffectClasses().Contains(UFCGE_AttackBuff::StaticClass()));
 				TestEqual(TEXT("AttackBuff Card Name should match"), AttackBuffAsset->DisplayData.CardName.ToString(), FString(TEXT("공격력 강화")));
 
 				// Non-projectile verification: AttackBuff is a self-buff, no projectile needed
 				TestFalse(TEXT("AttackBuff must not spawn projectile"), AttackBuffAsset->GameplayData.bSpawnsProjectile);
-				TestNull(TEXT("AttackBuff ProjectileDataAsset must be null"), AttackBuffAsset->GameplayData.ProjectileDataAsset.Get());
+				TestNull(TEXT("AttackBuff ProjectileDataAsset must be null"), AttackBuffAsset->GameplayData.GetProjectileDataAsset());
 				TestFalse(TEXT("AttackBuff SpawnsProjectile() must return false"), AttackBuffAsset->GameplayData.SpawnsProjectile());
 
 				// Neutral Class & Trait Check
@@ -90,7 +91,7 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 			{
 				TestEqual(TEXT("Fireball Card Type must be Attack"), (uint8)FireballAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
 				TestEqual(TEXT("Fireball Target Type must be DirectionalAoE"), (uint8)FireballAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::DirectionalAoE);
-				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.CardAbilityClass == UFCGA_Fireball::StaticClass());
+				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.GetCardAbilityClass() == UFCGA_Fireball::StaticClass());
 			}
 		}
 	}

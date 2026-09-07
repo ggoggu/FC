@@ -137,7 +137,7 @@ bool FFCProjectileTargetingTest::RunTest(const FString& Parameters)
 
 				TestTrue(TEXT("Fireball card must return SpawnsProjectile = true"), FireballCard->GameplayData.SpawnsProjectile());
 				TestTrue(TEXT("Fireball ability class must be UFCGA_Fireball or derived from UFCGA_SpawnProjectile"),
-					FireballCard->GameplayData.CardAbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass()));
+					FireballCard->GameplayData.GetCardAbilityClass()->IsChildOf(UFCGA_SpawnProjectile::StaticClass()));
 
 				// Fire Arrow Card
 				UFCCardDataAsset* FireArrowCard = NewObject<UFCCardDataAsset>(Subsystem);

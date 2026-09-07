@@ -41,7 +41,7 @@ bool FFCMagicShieldCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("MagicShield RequiredClass must be Mage"), (uint8)MagicShieldAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Mage);
 				TestEqual(TEXT("MagicShield must have no elemental affinities (속성 x)"), MagicShieldAsset->GameplayData.Elements.Num(), 0);
 				TestEqual(TEXT("MagicShield Base Value should be 20.0"), MagicShieldAsset->GameplayData.BaseValue, 20.0f);
-				TestTrue(TEXT("MagicShield should contain UFCGE_MagicShield effect class"), MagicShieldAsset->GameplayData.CardEffectClasses.Contains(UFCGE_MagicShield::StaticClass()));
+				TestTrue(TEXT("MagicShield should contain UFCGE_MagicShield effect class"), MagicShieldAsset->GameplayData.GetCardEffectClasses().Contains(UFCGE_MagicShield::StaticClass()));
 				TestEqual(TEXT("MagicShield Card Name should match"), MagicShieldAsset->DisplayData.CardName.ToString(), FString(TEXT("매직실드")));
 
 				// Class usability rules
