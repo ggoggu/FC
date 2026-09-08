@@ -33,7 +33,7 @@
       "CardType": "Attack",
       "TargetType": "SingleTarget",
       "bSpawnsProjectile": true,
-      "ProjectileDataAsset": "/Game/Card/DA_Projectile_FireArrow.DA_Projectile_FireArrow",
+      "ProjectileDataAsset": "/Game/Combat/Data/DA_Projectile_FireArrow.DA_Projectile_FireArrow",
       "BaseValue": 10.0,
       "RequiredClass": "Mage",
       "Elements": [

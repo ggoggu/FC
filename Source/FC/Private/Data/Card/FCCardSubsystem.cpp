@@ -384,7 +384,7 @@ void UFCCardSubsystem::PopulateDefaultCatalog()
 		FireArrow.GameplayData.TargetType = EFCCardTargetType::SingleTarget;
 		FireArrow.GameplayData.BaseValue = 10.0f;
 		FireArrow.GameplayData.bSpawnsProjectile = true;
-		FireArrow.GameplayData.ProjectileDataAsset = TSoftObjectPtr<UFCProjectileDataAsset>(FSoftObjectPath(TEXT("/Game/Card/DA_Projectile_FireArrow.DA_Projectile_FireArrow")));
+		FireArrow.GameplayData.ProjectileDataAsset = TSoftObjectPtr<UFCProjectileDataAsset>(FSoftObjectPath(TEXT("/Game/Combat/Data/DA_Projectile_FireArrow.DA_Projectile_FireArrow")));
 		FireArrow.GameplayData.RequiredClass = EFCCharacterClass::Mage;
 		FireArrow.GameplayData.Elements = { EFCElement::Fire };
 		FireArrow.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_FireArrow_Name", "파이어 애로우");
