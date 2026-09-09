@@ -8,6 +8,7 @@ class AFCMobAIController;
 class AFCMobSpawnerBase;
 class AFCProjectileBase;
 class UFCProjectileDataAsset;
+class UWidgetComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnChestDroppedSignature, AFCMobCharacter*, DeadMob, AActor*, DroppedChest);
 
@@ -120,6 +121,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|Mob")
 	EFCMobAIState GetAIState() const { return CurrentAIState; }
 
+	UFUNCTION(BlueprintPure, Category = "FC|Mob|UI")
+	UWidgetComponent* GetOverheadWidgetComponent() const { return OverheadWidgetComponent; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -231,6 +235,10 @@ protected:
 
 	/** Timestamp of last played hit reaction */
 	float LastHitReactTime = -100.0f;
+
+	/** Overhead Widget Component for displaying health, name, or elemental stacks */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Mob|UI", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UWidgetComponent> OverheadWidgetComponent;
 
 	/** Weak reference to the spawner that produced this mob */
 	UPROPERTY(Transient)

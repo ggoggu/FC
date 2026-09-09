@@ -12,6 +12,7 @@
 #include "BrainComponent.h"
 #include "Gameplay/FCChestActor.h"
 #include "Character/Player/FCPlayerCharacter.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 
 AFCMobCharacter::AFCMobCharacter()
@@ -102,6 +103,13 @@ AFCMobCharacter::AFCMobCharacter()
 	{
 		AbilitySystemComponent->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 	}
+
+	// Overhead Widget Component for health/name/elemental stacks
+	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidgetComponent"));
+	OverheadWidgetComponent->SetupAttachment(RootComponent);
+	OverheadWidgetComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 110.0f));
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	OverheadWidgetComponent->SetDrawAtDesiredSize(true);
 }
 
 void AFCMobCharacter::BeginPlay()
@@ -158,6 +166,11 @@ void AFCMobCharacter::Die(AActor* Killer)
 	if (bIsDead)
 	{
 		return;
+	}
+
+	if (OverheadWidgetComponent)
+	{
+		OverheadWidgetComponent->SetVisibility(false);
 	}
 
 	Super::Die(Killer);
@@ -293,6 +306,11 @@ AActor* AFCMobCharacter::SpawnDropChest()
 
 void AFCMobCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
 {
+	if (OverheadWidgetComponent)
+	{
+		OverheadWidgetComponent->SetVisibility(false);
+	}
+
 	UAnimSequence* AnimToPlay = GetDeathAnimationForDirection(Direction);
 	if (!AnimToPlay)
 	{
