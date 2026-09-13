@@ -69,8 +69,9 @@ public:
 	void SetCardDataTable(UDataTable* InDataTable);
 
 protected:
-	/** Populates built-in baseline cards into CachedCardRows to guarantee zero missing assets */
-	void PopulateDefaultCatalog();
+	/** Flag indicating whether the catalog has already been initialized / loaded */
+	UPROPERTY(Transient)
+	bool bCatalogLoaded = false;
 
 	/** Active Card DataTable (optional external source of truth) */
 	UPROPERTY(Transient)

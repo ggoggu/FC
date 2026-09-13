@@ -1,11 +1,7 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
-#include "AbilitySystem/Abilities/FCGA_Fireball.h"
-#include "AbilitySystem/Abilities/FCGA_Ignite.h"
-#include "AbilitySystem/Abilities/FCGA_SandWall.h"
-#include "AbilitySystem/Effects/FCGE_MagicShield.h"
-#include "AbilitySystem/Effects/FCGE_AttackBuff.h"
-#include "Combat/Projectile/FCProjectileDataAsset.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Engine/AssetManager.h"
 #include "Engine/DataTable.h"
 #include "Engine/GameInstance.h"
@@ -30,6 +26,7 @@ void UFCCardSubsystem::Deinitialize()
 	CardCatalog.Empty();
 	CachedCardRows.Empty();
 	CardDataTable = nullptr;
+	bCatalogLoaded = false;
 	Super::Deinitialize();
 }
 
@@ -89,9 +86,9 @@ bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
 		return false;
 	}
 
-	if (CachedCardRows.Num() == 0)
+	if (!bCatalogLoaded)
 	{
-		const_cast<UFCCardSubsystem*>(this)->PopulateDefaultCatalog();
+		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
 	// 1. Fast in-memory struct lookup
@@ -122,6 +119,23 @@ bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
 		}
 	}
 
+	// Check by localized / display name alias (e.g. Card_점화 -> 점화, Card_센드워 -> 센드 워)
+	FString SearchName = CardStr;
+	if (SearchName.StartsWith(TEXT("Card_")))
+	{
+		SearchName = SearchName.RightChop(5);
+	}
+	for (const auto& Pair : CachedCardRows)
+	{
+		FString DisplayNameNoSpaces = Pair.Value.DisplayData.CardName.ToString().Replace(TEXT(" "), TEXT(""));
+		if (DisplayNameNoSpaces.Equals(SearchName, ESearchCase::IgnoreCase) ||
+			Pair.Value.DisplayData.CardName.ToString().Equals(SearchName, ESearchCase::IgnoreCase))
+		{
+			OutRow = Pair.Value;
+			return true;
+		}
+	}
+
 	// 2. Check in-memory PrimaryDataAsset catalog
 	if (const TObjectPtr<UFCCardDataAsset>* FoundAsset = CardCatalog.Find(CardId))
 	{
@@ -138,9 +152,9 @@ bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
 
 void UFCCardSubsystem::GetAllCardIds(TArray<FName>& OutCardIds) const
 {
-	if (CachedCardRows.Num() == 0)
+	if (!bCatalogLoaded)
 	{
-		const_cast<UFCCardSubsystem*>(this)->PopulateDefaultCatalog();
+		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
 	OutCardIds.Reset();
@@ -170,9 +184,9 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		return nullptr;
 	}
 
-	if (CachedCardRows.Num() == 0)
+	if (!bCatalogLoaded)
 	{
-		const_cast<UFCCardSubsystem*>(this)->PopulateDefaultCatalog();
+		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
 	// 1. Return already instantiated/cached DataAsset wrapper
@@ -351,135 +365,15 @@ TSharedPtr<FStreamableHandle> UFCCardSubsystem::PreloadCardAssetsAsync(const TAr
 void UFCCardSubsystem::SetCardDataTable(UDataTable* InDataTable)
 {
 	CardDataTable = InDataTable;
+	bCatalogLoaded = false;
 	LoadCardCatalog();
-}
-
-void UFCCardSubsystem::PopulateDefaultCatalog()
-{
-	// 1. Card_Fireball
-	{
-		FFCCardTableRow Fireball;
-		Fireball.GameplayData.CardId = FName("Card_Fireball");
-		Fireball.GameplayData.BaseManaCost = 2;
-		Fireball.GameplayData.CardType = EFCCardType::Attack;
-		Fireball.GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
-		Fireball.GameplayData.BaseValue = 1.0f;
-		Fireball.GameplayData.bSpawnsProjectile = true;
-		Fireball.GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
-		Fireball.GameplayData.RequiredClass = EFCCharacterClass::Mage;
-		Fireball.GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
-		Fireball.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_Fireball_Name", "파이어 볼");
-		Fireball.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_Fireball_Desc", "전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다.");
-		Fireball.DisplayData.Rarity = EFCCardRarity::Common;
-
-		RegisterCardRow(FName("Card_Fireball"), Fireball);
-		RegisterCardRow(FName("DA_Card_Fireball"), Fireball);
-	}
-
-	// 2. Card_FireArrow
-	{
-		FFCCardTableRow FireArrow;
-		FireArrow.GameplayData.CardId = FName("Card_FireArrow");
-		FireArrow.GameplayData.BaseManaCost = 1;
-		FireArrow.GameplayData.CardType = EFCCardType::Attack;
-		FireArrow.GameplayData.TargetType = EFCCardTargetType::SingleTarget;
-		FireArrow.GameplayData.BaseValue = 10.0f;
-		FireArrow.GameplayData.bSpawnsProjectile = true;
-		FireArrow.GameplayData.ProjectileDataAsset = TSoftObjectPtr<UFCProjectileDataAsset>(FSoftObjectPath(TEXT("/Game/Combat/Data/DA_Projectile_FireArrow.DA_Projectile_FireArrow")));
-		FireArrow.GameplayData.RequiredClass = EFCCharacterClass::Mage;
-		FireArrow.GameplayData.Elements = { EFCElement::Fire };
-		FireArrow.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_FireArrow_Name", "파이어 애로우");
-		FireArrow.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_FireArrow_Desc", "화염 화살을 발사하여 10의 피해를 입힙니다.");
-		FireArrow.DisplayData.Rarity = EFCCardRarity::Common;
-
-		RegisterCardRow(FName("Card_FireArrow"), FireArrow);
-		RegisterCardRow(FName("DA_Card_FireArrow"), FireArrow);
-	}
-
-	// 3. Card_AttackBuff
-	{
-		FFCCardTableRow AttackBuff;
-		AttackBuff.GameplayData.CardId = FName("Card_AttackBuff");
-		AttackBuff.GameplayData.BaseManaCost = 1;
-		AttackBuff.GameplayData.CardType = EFCCardType::Skill;
-		AttackBuff.GameplayData.TargetType = EFCCardTargetType::Self;
-		AttackBuff.GameplayData.BaseValue = 5.0f;
-		AttackBuff.GameplayData.CardEffectClasses.Add(UFCGE_AttackBuff::StaticClass());
-		AttackBuff.GameplayData.RequiredClass = EFCCharacterClass::Neutral;
-		AttackBuff.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_AttackBuff_Name", "공격력 강화");
-		AttackBuff.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_AttackBuff_Desc", "자신의 공격력을 증가시킵니다.");
-		AttackBuff.DisplayData.Rarity = EFCCardRarity::Common;
-
-		RegisterCardRow(FName("Card_AttackBuff"), AttackBuff);
-		RegisterCardRow(FName("DA_Card_AttackBuff"), AttackBuff);
-	}
-
-	// 4. Card_MagicShield
-	{
-		FFCCardTableRow MagicShield;
-		MagicShield.GameplayData.CardId = FName("Card_MagicShield");
-		MagicShield.GameplayData.BaseManaCost = 1;
-		MagicShield.GameplayData.CardType = EFCCardType::Skill;
-		MagicShield.GameplayData.TargetType = EFCCardTargetType::Self;
-		MagicShield.GameplayData.BaseValue = 20.0f;
-		MagicShield.GameplayData.CardEffectClasses.Add(UFCGE_MagicShield::StaticClass());
-		MagicShield.GameplayData.RequiredClass = EFCCharacterClass::Mage;
-		MagicShield.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_MagicShield_Name", "매직실드");
-		MagicShield.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_MagicShield_Desc", "자신에게 전신체 보호막을 생성하여 피해를 흡수합니다.");
-		MagicShield.DisplayData.Rarity = EFCCardRarity::Common;
-
-		RegisterCardRow(FName("Card_MagicShield"), MagicShield);
-		RegisterCardRow(FName("DA_Card_MagicShield"), MagicShield);
-	}
-
-	// 5. Card_Ignite
-	{
-		FFCCardTableRow Ignite;
-		Ignite.GameplayData.CardId = FName("Card_Ignite");
-		Ignite.GameplayData.BaseManaCost = 1;
-		Ignite.GameplayData.CardType = EFCCardType::Attack;
-		Ignite.GameplayData.TargetType = EFCCardTargetType::AllEnemies;
-		Ignite.GameplayData.BaseValue = 10.0f;
-		Ignite.GameplayData.CardAbilityClass = UFCGA_Ignite::StaticClass();
-		Ignite.GameplayData.RequiredClass = EFCCharacterClass::Mage;
-		Ignite.GameplayData.Elements = { EFCElement::None };
-		Ignite.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_Ignite_Name", "점화");
-		Ignite.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_Ignite_Desc", "근처에 있는 모든 적에게 불스택 1개당 10의 피해를 입힙니다.");
-		Ignite.DisplayData.Rarity = EFCCardRarity::Uncommon;
-
-		RegisterCardRow(FName("Card_Ignite"), Ignite);
-		RegisterCardRow(FName("Card_점화"), Ignite);
-		RegisterCardRow(FName("DA_Card_Ignite"), Ignite);
-	}
-
-	// 6. Card_SandWall (센드 워)
-	{
-		FFCCardTableRow SandWall;
-		SandWall.GameplayData.CardId = FName("Card_SandWall");
-		SandWall.GameplayData.BaseManaCost = 1;
-		SandWall.GameplayData.CardType = EFCCardType::Skill;
-		SandWall.GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
-		SandWall.GameplayData.BaseValue = 1.0f;
-		SandWall.GameplayData.bSpawnsProjectile = false;
-		SandWall.GameplayData.CardAbilityClass = UFCGA_SandWall::StaticClass();
-		SandWall.GameplayData.RequiredClass = EFCCharacterClass::Mage;
-		SandWall.GameplayData.Elements = { EFCElement::Earth };
-		SandWall.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_SandWall_Name", "센드 워");
-		SandWall.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_SandWall_Desc", "1초 동안 날아오는 공격을 흡수하는 모래벽을 전방에 소환합니다.");
-		SandWall.DisplayData.Rarity = EFCCardRarity::Common;
-
-		RegisterCardRow(FName("Card_SandWall"), SandWall);
-		RegisterCardRow(FName("Card_센드워"), SandWall);
-		RegisterCardRow(FName("DA_Card_SandWall"), SandWall);
-	}
 }
 
 void UFCCardSubsystem::LoadCardCatalog()
 {
-	// 1. Establish baseline fallback catalog (zero-hitch, guarantees baseline stability)
-	PopulateDefaultCatalog();
+	bCatalogLoaded = true;
 
-	// 2. Load DataTable if not already bound
+	// 1. Load DataTable if not already bound
 	if (!CardDataTable)
 	{
 		const TArray<FString> DataTableCandidatePaths = {
@@ -497,7 +391,26 @@ void UFCCardSubsystem::LoadCardCatalog()
 		}
 	}
 
-	// 3. Overlay rows from DataTable if present
+	// 2. Headless / Standalone Fallback: If uasset DataTable could not be loaded, load from project Content CSV
+	if (!CardDataTable || CardDataTable->GetRowMap().Num() == 0)
+	{
+		const FString CsvPath = FPaths::ProjectContentDir() / TEXT("Card/DT_CardCatalog.csv");
+		if (FPaths::FileExists(CsvPath))
+		{
+			FString CsvContent;
+			if (FFileHelper::LoadFileToString(CsvContent, *CsvPath))
+			{
+				if (!CardDataTable)
+				{
+					CardDataTable = NewObject<UDataTable>(this, FName("DT_CardCatalog_Fallback"));
+					CardDataTable->RowStruct = FFCCardTableRow::StaticStruct();
+				}
+				CardDataTable->CreateTableFromCSVString(CsvContent);
+			}
+		}
+	}
+
+	// 3. Register rows from DataTable
 	if (CardDataTable)
 	{
 		for (const auto& RowPair : CardDataTable->GetRowMap())
