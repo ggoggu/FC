@@ -2,6 +2,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "AbilitySystem/Abilities/FCGA_Fireball.h"
 #include "AbilitySystem/Abilities/FCGA_Ignite.h"
+#include "AbilitySystem/Abilities/FCGA_SandWall.h"
 #include "AbilitySystem/Effects/FCGE_MagicShield.h"
 #include "AbilitySystem/Effects/FCGE_AttackBuff.h"
 #include "Combat/Projectile/FCProjectileDataAsset.h"
@@ -449,6 +450,27 @@ void UFCCardSubsystem::PopulateDefaultCatalog()
 		RegisterCardRow(FName("Card_Ignite"), Ignite);
 		RegisterCardRow(FName("Card_점화"), Ignite);
 		RegisterCardRow(FName("DA_Card_Ignite"), Ignite);
+	}
+
+	// 6. Card_SandWall (센드 워)
+	{
+		FFCCardTableRow SandWall;
+		SandWall.GameplayData.CardId = FName("Card_SandWall");
+		SandWall.GameplayData.BaseManaCost = 1;
+		SandWall.GameplayData.CardType = EFCCardType::Skill;
+		SandWall.GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
+		SandWall.GameplayData.BaseValue = 1.0f;
+		SandWall.GameplayData.bSpawnsProjectile = false;
+		SandWall.GameplayData.CardAbilityClass = UFCGA_SandWall::StaticClass();
+		SandWall.GameplayData.RequiredClass = EFCCharacterClass::Mage;
+		SandWall.GameplayData.Elements = { EFCElement::Earth };
+		SandWall.DisplayData.CardName = NSLOCTEXT("FCCard", "Card_SandWall_Name", "센드 워");
+		SandWall.DisplayData.CardDescription = NSLOCTEXT("FCCard", "Card_SandWall_Desc", "1초 동안 날아오는 공격을 흡수하는 모래벽을 전방에 소환합니다.");
+		SandWall.DisplayData.Rarity = EFCCardRarity::Common;
+
+		RegisterCardRow(FName("Card_SandWall"), SandWall);
+		RegisterCardRow(FName("Card_센드워"), SandWall);
+		RegisterCardRow(FName("DA_Card_SandWall"), SandWall);
 	}
 }
 

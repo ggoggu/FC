@@ -124,5 +124,30 @@
       "CardLore": "",
       "Rarity": "Uncommon"
     }
+  },
+  {
+    "Name": "Card_SandWall",
+    "GameplayData": {
+      "CardId": "Card_SandWall",
+      "BaseManaCost": 1,
+      "CardType": "Skill",
+      "TargetType": "DirectionalAoE",
+      "bSpawnsProjectile": false,
+      "CardAbilityClass": "/Script/FC.FCGA_SandWall",
+      "BaseValue": 1.0,
+      "RequiredClass": "Mage",
+      "Elements": [
+        "Earth"
+      ],
+      "ConsumedElements": [],
+      "bExhaustsOnPlay": false,
+      "Keywords": []
+    },
+    "DisplayData": {
+      "CardName": "센드 워",
+      "CardDescription": "1초 동안 날아오는 공격을 흡수하는 모래벽을 전방에 소환합니다.",
+      "CardLore": "",
+      "Rarity": "Common"
+    }
   }
 ]

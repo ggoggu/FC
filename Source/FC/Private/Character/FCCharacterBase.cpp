@@ -129,7 +129,14 @@ void AFCCharacterBase::ApplyHeal(float HealAmount)
 
 		if (ActualHealed > 0.0f)
 		{
-			AttributeSet->SetHealth(NewHealth);
+			if (GetWorld())
+			{
+				AttributeSet->SetHealth(NewHealth);
+			}
+			else
+			{
+				AttributeSet->InitHealth(NewHealth);
+			}
 			OnHealed.Broadcast(this, ActualHealed);
 		}
 	}

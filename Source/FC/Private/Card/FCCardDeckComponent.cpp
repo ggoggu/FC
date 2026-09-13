@@ -469,7 +469,9 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		}
 
 		// If this is a projectile card or targeted card, set target and rotate character towards target on server
-		if (DataAsset && DataAsset->GameplayData.SpawnsProjectile())
+		if (DataAsset && (DataAsset->GameplayData.SpawnsProjectile() || 
+			DataAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE || 
+			DataAsset->GameplayData.TargetType == EFCCardTargetType::SingleTarget))
 		{
 			AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
 			if (!Char)

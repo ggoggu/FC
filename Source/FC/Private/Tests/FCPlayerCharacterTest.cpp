@@ -122,8 +122,8 @@ bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 
 			if (AttrSet)
 			{
-				AttrSet->SetMaxHealth(100.0f);
-				AttrSet->SetHealth(50.0f);
+				AttrSet->InitMaxHealth(100.0f);
+				AttrSet->InitHealth(50.0f);
 
 				// Apply heal 5.0
 				PlayerChar->ApplyHeal(5.0f);
@@ -152,8 +152,8 @@ bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 
 			if (AttrSet)
 			{
-				AttrSet->SetMaxHealth(100.0f);
-				AttrSet->SetHealth(80.0f);
+				AttrSet->InitMaxHealth(100.0f);
+				AttrSet->InitHealth(80.0f);
 
 				TestEqual(TEXT("Mob default HealthRewardOnKill should be 5.0"), MobChar->GetHealthRewardOnKill(), 5.0f);
 
