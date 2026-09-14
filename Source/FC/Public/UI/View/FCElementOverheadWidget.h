@@ -18,7 +18,7 @@ class UTextBlock;
  * Displays active elemental stacks accumulated by Mage cards.
  * Subscribes to UFCElementOverheadViewModel for zero-tick MVVM updates.
  */
-UCLASS(Abstract, BlueprintType, Blueprintable)
+UCLASS(BlueprintType, Blueprintable)
 class FC_API UFCElementOverheadWidget : public UUserWidget
 {
 	GENERATED_BODY()

@@ -16,7 +16,7 @@ class UTexture2D;
  * Lightweight UMG UserWidget representing an individual element stack token or gem.
  * Reusable and pooled by UFCElementOverheadWidget without ViewModel allocations.
  */
-UCLASS(Abstract, BlueprintType, Blueprintable)
+UCLASS(BlueprintType, Blueprintable)
 class FC_API UFCElementStackItemWidget : public UUserWidget
 {
 	GENERATED_BODY()
