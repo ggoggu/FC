@@ -7,7 +7,6 @@
 #include "AbilitySystem/Abilities/FCGA_Fireball.h"
 #include "Data/Card/FCCardTypes.h"
 #include "UI/ViewModel/FCElementOverheadViewModel.h"
-#include "UI/ViewModel/FCElementStackItemViewModel.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/GameInstance.h"
 
@@ -247,12 +246,12 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("OverheadVM Visibility should be Visible"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Visible);
 			TestEqual(TEXT("OverheadVM FireCount should be 1"), OverheadVM->FireCount, 1);
 			TestEqual(TEXT("OverheadVM WaterCount should be 1"), OverheadVM->WaterCount, 1);
-			TestEqual(TEXT("OverheadVM StackList size should be 2"), OverheadVM->StackList.Num(), 2);
+			TestEqual(TEXT("OverheadVM CurrentStacks size should be 2"), OverheadVM->CurrentStacks.Num(), 2);
 
-			if (OverheadVM->StackList.Num() == 2)
+			if (OverheadVM->CurrentStacks.Num() == 2)
 			{
-				TestEqual(TEXT("Stack 0 element is Fire"), OverheadVM->StackList[0]->Element, EFCElement::Fire);
-				TestEqual(TEXT("Stack 1 element is Water"), OverheadVM->StackList[1]->Element, EFCElement::Water);
+				TestEqual(TEXT("Stack 0 element is Fire"), OverheadVM->CurrentStacks[0], EFCElement::Fire);
+				TestEqual(TEXT("Stack 1 element is Water"), OverheadVM->CurrentStacks[1], EFCElement::Water);
 			}
 
 			// Clear stacks

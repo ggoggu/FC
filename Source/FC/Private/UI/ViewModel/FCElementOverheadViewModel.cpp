@@ -46,12 +46,12 @@ void UFCElementOverheadViewModel::RefreshFromComponent()
 	}
 }
 
-void UFCElementOverheadViewModel::HandleStacksChanged(const TArray<EFCElement>& CurrentStacks)
+void UFCElementOverheadViewModel::HandleStacksChanged(const TArray<EFCElement>& InStacks)
 {
-	UpdateFromStacks(CurrentStacks);
+	UpdateFromStacks(InStacks);
 }
 
-void UFCElementOverheadViewModel::UpdateFromStacks(const TArray<EFCElement>& CurrentStacks)
+void UFCElementOverheadViewModel::UpdateFromStacks(const TArray<EFCElement>& InStacks)
 {
 	int32 NewFire = 0;
 	int32 NewEarth = 0;
@@ -61,12 +61,8 @@ void UFCElementOverheadViewModel::UpdateFromStacks(const TArray<EFCElement>& Cur
 	int32 NewHoly = 0;
 	int32 NewDark = 0;
 
-	StackList.Empty(CurrentStacks.Num());
-
-	for (int32 Index = 0; Index < CurrentStacks.Num(); ++Index)
+	for (const EFCElement Elem : InStacks)
 	{
-		const EFCElement Elem = CurrentStacks[Index];
-
 		switch (Elem)
 		{
 		case EFCElement::Fire:      NewFire++;      break;
@@ -78,16 +74,10 @@ void UFCElementOverheadViewModel::UpdateFromStacks(const TArray<EFCElement>& Cur
 		case EFCElement::Dark:      NewDark++;      break;
 		default: break;
 		}
-
-		UFCElementStackItemViewModel* ItemVM = NewObject<UFCElementStackItemViewModel>(this);
-		if (ItemVM)
-		{
-			ItemVM->InitializeFromElement(Elem, Index);
-			StackList.Add(ItemVM);
-		}
 	}
 
-	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(StackList);
+	CurrentStacks = InStacks;
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(CurrentStacks);
 
 	SetFireCount(NewFire);
 	SetEarthCount(NewEarth);
@@ -97,7 +87,7 @@ void UFCElementOverheadViewModel::UpdateFromStacks(const TArray<EFCElement>& Cur
 	SetHolyCount(NewHoly);
 	SetDarkCount(NewDark);
 
-	SetTotalStacks(CurrentStacks.Num());
+	SetTotalStacks(InStacks.Num());
 
 	OnStacksUpdated.Broadcast(TotalStacks);
 }

@@ -4,7 +4,6 @@
 #include "MVVMViewModelBase.h"
 #include "Data/Class/FCClassTypes.h"
 #include "Components/SlateWrapperTypes.h"
-#include "UI/ViewModel/FCElementStackItemViewModel.h"
 #include "FCElementOverheadViewModel.generated.h"
 
 class UFCElementComponent;
@@ -37,9 +36,15 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element")
 	bool bHasAnyStack = false;
 
-	/** Ordered collection of active element stack tokens */
+	/** Ordered collection of active element stacks (Zero UObject allocation) */
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element")
-	TArray<TObjectPtr<UFCElementStackItemViewModel>> StackList;
+	TArray<EFCElement> CurrentStacks;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Element")
+	const TArray<EFCElement>& GetCurrentStacks() const { return CurrentStacks; }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Element")
+	EFCElement GetStackAt(int32 Index) const { return CurrentStacks.IsValidIndex(Index) ? CurrentStacks[Index] : EFCElement::None; }
 
 	// --- Element Count Breakdowns ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
@@ -76,7 +81,7 @@ public:
 
 	/** Applies an array of element stacks directly to the ViewModel */
 	UFUNCTION(BlueprintCallable, Category = "FC|Element")
-	void UpdateFromStacks(const TArray<EFCElement>& CurrentStacks);
+	void UpdateFromStacks(const TArray<EFCElement>& InStacks);
 
 	// --- Setters utilizing UE_MVVM_SET_PROPERTY_VALUE ---
 	void SetTotalStacks(int32 InTotal);
@@ -106,7 +111,7 @@ public:
 
 protected:
 	UFUNCTION()
-	void HandleStacksChanged(const TArray<EFCElement>& CurrentStacks);
+	void HandleStacksChanged(const TArray<EFCElement>& InStacks);
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UFCElementComponent> BoundElementComponent;

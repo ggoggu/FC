@@ -81,6 +81,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FC|Element|Config")
 	TSubclassOf<UFCElementStackItemWidget> StackItemWidgetClass;
 
+	/** Pre-allocated widget pool for active element stack gems (Zero Runtime Allocation) */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "FC|Element|View")
+	TArray<TObjectPtr<UFCElementStackItemWidget>> PooledStackWidgets;
+
+	/** Maximum number of pre-allocated token slots (default: 7) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FC|Element|Config", meta = (ClampMin = "1"))
+	int32 MaxPooledSlots = 7;
+
+	/** Pre-allocates child item widgets up to MaxPooledSlots to eliminate runtime allocations */
+	UFUNCTION(BlueprintCallable, Category = "FC|Element|View")
+	virtual void InitializeWidgetPool();
+
 	/** If true, widget collapses when stack count is 0 and becomes visible when stacks > 0 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Element|Config")
 	bool bAutoHideWhenEmpty = true;
