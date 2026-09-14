@@ -6,6 +6,9 @@
 #include "Combat/Projectile/FCFireballProjectile.h"
 #include "AbilitySystem/Abilities/FCGA_Fireball.h"
 #include "Data/Card/FCCardTypes.h"
+#include "UI/ViewModel/FCElementOverheadViewModel.h"
+#include "UI/ViewModel/FCElementStackItemViewModel.h"
+#include "Components/WidgetComponent.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -211,6 +214,56 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("Card with ConsumedElements must RequireElementConsumption"), CardData.RequiresElementConsumption());
 	TestEqual(TEXT("Card should require 2 consumed elements"), CardData.ConsumedElements.Num(), 2);
+
+	// =========================================================================
+	// Test 9: Element Overhead ViewModel & Mob Overhead Widget Component
+	// =========================================================================
+	AFCMobCharacter* TestMob = NewObject<AFCMobCharacter>();
+	TestNotNull(TEXT("AFCMobCharacter must instantiate"), TestMob);
+	if (TestMob)
+	{
+		TestNotNull(TEXT("AFCMobCharacter must have OverheadWidgetComponent"), TestMob->GetOverheadWidgetComponent());
+		if (UWidgetComponent* WidgetComp = TestMob->GetOverheadWidgetComponent())
+		{
+			TestEqual(TEXT("OverheadWidgetComponent space should be Screen"), WidgetComp->GetWidgetSpace(), EWidgetSpace::Screen);
+		}
+
+		UFCElementComponent* MobElemComp = TestMob->GetElementComponent();
+		TestNotNull(TEXT("Mob must have ElementComponent"), MobElemComp);
+
+		UFCElementOverheadViewModel* OverheadVM = NewObject<UFCElementOverheadViewModel>();
+		TestNotNull(TEXT("UFCElementOverheadViewModel must instantiate"), OverheadVM);
+		if (OverheadVM && MobElemComp)
+		{
+			OverheadVM->BindToElementComponent(MobElemComp);
+			TestEqual(TEXT("Initial OverheadVM TotalStacks should be 0"), OverheadVM->TotalStacks, 0);
+			TestFalse(TEXT("OverheadVM bHasAnyStack should be false"), OverheadVM->bHasAnyStack);
+			TestEqual(TEXT("OverheadVM Visibility should be Collapsed"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Collapsed);
+
+			// Add Fire and Water stacks to mob
+			MobElemComp->AddElementStacks({ EFCElement::Fire, EFCElement::Water });
+			TestEqual(TEXT("OverheadVM TotalStacks should be 2"), OverheadVM->TotalStacks, 2);
+			TestTrue(TEXT("OverheadVM bHasAnyStack should be true"), OverheadVM->bHasAnyStack);
+			TestEqual(TEXT("OverheadVM Visibility should be Visible"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Visible);
+			TestEqual(TEXT("OverheadVM FireCount should be 1"), OverheadVM->FireCount, 1);
+			TestEqual(TEXT("OverheadVM WaterCount should be 1"), OverheadVM->WaterCount, 1);
+			TestEqual(TEXT("OverheadVM StackList size should be 2"), OverheadVM->StackList.Num(), 2);
+
+			if (OverheadVM->StackList.Num() == 2)
+			{
+				TestEqual(TEXT("Stack 0 element is Fire"), OverheadVM->StackList[0]->Element, EFCElement::Fire);
+				TestEqual(TEXT("Stack 1 element is Water"), OverheadVM->StackList[1]->Element, EFCElement::Water);
+			}
+
+			// Clear stacks
+			MobElemComp->ClearAllElementStacks();
+			TestEqual(TEXT("OverheadVM TotalStacks after clear should be 0"), OverheadVM->TotalStacks, 0);
+			TestFalse(TEXT("OverheadVM bHasAnyStack after clear should be false"), OverheadVM->bHasAnyStack);
+			TestEqual(TEXT("OverheadVM Visibility after clear should be Collapsed"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Collapsed);
+
+			OverheadVM->UnbindFromElementComponent();
+		}
+	}
 
 	return true;
 }

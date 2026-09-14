@@ -505,9 +505,11 @@ FFCCardTargetInfo AFCPlayerController::ResolveCardTargetAtScreenPosition(const F
 
 	TargetInfo.TargetLocation = DropWorldLocation;
 
-	// Check if this card shoots/spawns projectiles and whether auto-targeting is enabled
+	// Check if this card shoots/spawns projectiles or requires directional targeting, and whether auto-targeting is enabled
 	const TSubclassOf<UGameplayAbility> AbilityClass = CardAsset ? CardAsset->GameplayData.GetCardAbilityClass() : nullptr;
-	const bool bIsProjectileCard = CardAsset && (CardAsset->GameplayData.SpawnsProjectile() || 
+	const bool bIsTargetedCard = CardAsset && (CardAsset->GameplayData.SpawnsProjectile() || 
+		CardAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE ||
+		CardAsset->GameplayData.TargetType == EFCCardTargetType::SingleTarget ||
 		(AbilityClass && AbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass())));
 
 	// If single target or direct hit on attackable target
@@ -518,8 +520,8 @@ FFCCardTargetInfo AFCPlayerController::ResolveCardTargetAtScreenPosition(const F
 		return TargetInfo;
 	}
 
-	// If projectile auto-targeting is active, search for best attackable target in that direction
-	if (bAutoTargetAttackablesOnProjectileCards && bIsProjectileCard)
+	// If projectile or directional auto-targeting is active, search for best attackable target in that direction
+	if (bAutoTargetAttackablesOnProjectileCards && bIsTargetedCard)
 	{
 		const FVector AimDirection2D = (DropWorldLocation - PawnLocation).GetSafeNormal2D();
 
