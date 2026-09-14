@@ -62,6 +62,15 @@ void UFCCardWidget::SetCardViewModel(UFCCardViewModel* InViewModel)
 		}
 	}
 
+	if (CardViewModel && CardViewModel->bIsHeld)
+	{
+		SetIsHeldByHotKey(true);
+	}
+	else
+	{
+		bIsHeldByHotKey = false;
+	}
+
 	OnCardViewModelAssigned(InViewModel);
 }
 
@@ -102,9 +111,23 @@ float UFCCardWidget::GetDescriptionWrapWidth() const
 	return 0.0f;
 }
 
+bool UFCCardWidget::IsHeldByHotKey() const
+{
+	if (CardViewModel)
+	{
+		return CardViewModel->bIsHeld;
+	}
+	return bIsHeldByHotKey;
+}
+
 void UFCCardWidget::SetIsHeldByHotKey(bool bInHeld)
 {
 	bIsHeldByHotKey = bInHeld;
+	if (CardViewModel)
+	{
+		CardViewModel->SetIsHeld(bInHeld);
+	}
+
 	if (bInHeld)
 	{
 		TargetAngle = 0.0f;

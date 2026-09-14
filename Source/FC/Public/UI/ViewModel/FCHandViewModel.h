@@ -49,6 +49,15 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Hand")
 	bool bHasHover = false;
 
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Hand")
+	int32 HeldCardIndex = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Hand")
+	FGuid HeldCardGuid;
+
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Hand")
+	bool bHasHeldCard = false;
+
 public:
 	// Synchronization & Mutation API
 	void SyncFromHandContainer(const FFCCardHandContainer& Container, UFCCardSubsystem* DataSubsystem);
@@ -77,6 +86,21 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "FC|Hand")
 	UFCCardViewModel* GetHoveredCard() const;
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Hand")
+	void HoldCardByGuid(const FGuid& InGuid);
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Hand")
+	void HoldCardByIndex(int32 InIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Hand")
+	void ClearHeldCard();
+
+	UFUNCTION(BlueprintPure, Category = "FC|Hand")
+	UFCCardViewModel* GetHeldCard() const;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Hand")
+	bool HasHeldCard() const { return bHasHeldCard; }
 
 	UFUNCTION(BlueprintCallable, Category = "FC|Hand")
 	void UpdatePlayability(int32 CurrentPlayerMana);

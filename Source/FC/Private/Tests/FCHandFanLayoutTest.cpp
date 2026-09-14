@@ -323,6 +323,121 @@ bool FFCHandFanLayoutTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// =========================================================================
+	// Test 12: HandViewModel SSOT Card Holding State
+	// =========================================================================
+	{
+		UFCHandViewModel* HandVM = NewObject<UFCHandViewModel>();
+		TestNotNull(TEXT("HandViewModel must instantiate"), HandVM);
+
+		if (HandVM)
+		{
+			FFCCardHandContainer Container;
+			Container.AddCard(FName("Card_Fireball"));
+			Container.AddCard(FName("Card_AttackBuff"));
+			Container.AddCard(FName("Card_SandWall"));
+
+			HandVM->SyncFromHandContainer(Container, nullptr);
+			TestEqual(TEXT("Cards count must be 3"), HandVM->CardsInHand.Num(), 3);
+			TestFalse(TEXT("Initially HasHeldCard should be false"), HandVM->HasHeldCard());
+			TestEqual(TEXT("Initially HeldCardIndex should be INDEX_NONE"), HandVM->HeldCardIndex, INDEX_NONE);
+
+			// Hold Card 1 (AttackBuff)
+			HandVM->HoldCardByIndex(1);
+			TestTrue(TEXT("HasHeldCard should be true after HoldCardByIndex"), HandVM->HasHeldCard());
+			TestEqual(TEXT("HeldCardIndex should be 1"), HandVM->HeldCardIndex, 1);
+			TestEqual(TEXT("HeldCardGuid should match Card 1 Guid"), HandVM->HeldCardGuid, HandVM->CardsInHand[1]->CardGuid);
+			TestTrue(TEXT("Card 1 bIsHeld should be true"), HandVM->CardsInHand[1]->bIsHeld);
+			TestFalse(TEXT("Card 0 bIsHeld should be false"), HandVM->CardsInHand[0]->bIsHeld);
+			TestEqual(TEXT("GetHeldCard should return Card 1"), HandVM->GetHeldCard(), HandVM->CardsInHand[1].Get());
+
+			// Toggle hold off by holding the same card again
+			HandVM->HoldCardByIndex(1);
+			TestFalse(TEXT("HasHeldCard should be false after toggle"), HandVM->HasHeldCard());
+			TestEqual(TEXT("HeldCardIndex should be INDEX_NONE after toggle"), HandVM->HeldCardIndex, INDEX_NONE);
+			TestFalse(TEXT("Card 1 bIsHeld should be false after toggle"), HandVM->CardsInHand[1]->bIsHeld);
+
+			// Hold by GUID
+			const FGuid Card2Guid = HandVM->CardsInHand[2]->CardGuid;
+			HandVM->HoldCardByGuid(Card2Guid);
+			TestTrue(TEXT("HasHeldCard should be true after HoldCardByGuid"), HandVM->HasHeldCard());
+			TestEqual(TEXT("HeldCardIndex should be 2"), HandVM->HeldCardIndex, 2);
+			TestTrue(TEXT("Card 2 bIsHeld should be true"), HandVM->CardsInHand[2]->bIsHeld);
+
+			// Clear held card
+			HandVM->ClearHeldCard();
+			TestFalse(TEXT("HasHeldCard should be false after ClearHeldCard"), HandVM->HasHeldCard());
+			TestEqual(TEXT("HeldCardIndex should be INDEX_NONE after clear"), HandVM->HeldCardIndex, INDEX_NONE);
+			TestFalse(TEXT("Card 2 bIsHeld should be false after clear"), HandVM->CardsInHand[2]->bIsHeld);
+
+			// Hold Card 2 and simulate card being played/removed from container
+			HandVM->HoldCardByIndex(2);
+			TestTrue(TEXT("Card 2 is held before sync"), HandVM->HasHeldCard());
+
+			FFCCardHandContainer SmallerContainer;
+			SmallerContainer.AddCard(FName("Card_Fireball"));
+			SmallerContainer.AddCard(FName("Card_AttackBuff"));
+			// Card_SandWall is removed!
+			HandVM->SyncFromHandContainer(SmallerContainer, nullptr);
+
+			// Held card should be automatically cleared since it's no longer in hand
+			TestFalse(TEXT("Held card must be automatically cleared when removed from container"), HandVM->HasHeldCard());
+			TestEqual(TEXT("HeldCardIndex must be INDEX_NONE after removed card sync"), HandVM->HeldCardIndex, INDEX_NONE);
+		}
+	}
+
+	// =========================================================================
+	// Test 13: CardWidget & HandWidget SSOT Holding and Pooling Queries
+	// =========================================================================
+	{
+		UFCCardViewModel* CardVM = NewObject<UFCCardViewModel>();
+		UFCCardWidget* CardWidget = NewObject<UFCCardWidget>();
+
+		TestNotNull(TEXT("CardVM must instantiate"), CardVM);
+		TestNotNull(TEXT("CardWidget must instantiate"), CardWidget);
+
+		if (CardVM && CardWidget)
+		{
+			CardWidget->SetCardViewModel(CardVM);
+
+			// Initial state
+			TestFalse(TEXT("CardWidget IsHeldByHotKey should be false initially"), CardWidget->IsHeldByHotKey());
+			TestFalse(TEXT("CardVM bIsHeld should be false initially"), CardVM->bIsHeld);
+
+			// Mutating widget updates ViewModel SSOT
+			CardWidget->SetIsHeldByHotKey(true);
+			TestTrue(TEXT("CardWidget IsHeldByHotKey should be true"), CardWidget->IsHeldByHotKey());
+			TestTrue(TEXT("CardVM bIsHeld should be synced to true"), CardVM->bIsHeld);
+
+			// Mutating ViewModel is reflected by CardWidget
+			CardVM->SetIsHeld(false);
+			TestFalse(TEXT("CardWidget IsHeldByHotKey should reflect ViewModel false"), CardWidget->IsHeldByHotKey());
+		}
+
+		UFCHandViewModel* HandVM = NewObject<UFCHandViewModel>();
+		UFCHandWidget* HandWidget = NewObject<UFCHandWidget>();
+
+		TestNotNull(TEXT("HandVM must instantiate"), HandVM);
+		TestNotNull(TEXT("HandWidget must instantiate"), HandWidget);
+
+		if (HandVM && HandWidget)
+		{
+			TestEqual(TEXT("Initial HandWidget pool size should be 0"), HandWidget->GetCardPoolSize(), 0);
+			TestFalse(TEXT("Initial HandWidget HasHeldCard should be false"), HandWidget->HasHeldCard());
+
+			HandWidget->SetHandViewModel(HandVM);
+
+			// Verify SSOT reflection between HandWidget and HandViewModel
+			HandVM->HoldCardByIndex(0); // If empty, won't hold
+			HandVM->bHasHeldCard = true;
+			TestTrue(TEXT("HandWidget HasHeldCard reflects HandViewModel bHasHeldCard"), HandWidget->HasHeldCard());
+
+			HandWidget->ClearHeldCard();
+			TestFalse(TEXT("HandWidget ClearHeldCard resets HandViewModel bHasHeldCard"), HandVM->HasHeldCard());
+			TestFalse(TEXT("HandWidget HasHeldCard is false after clear"), HandWidget->HasHeldCard());
+		}
+	}
+
 	return true;
 }
 

@@ -96,7 +96,7 @@ public:
 	bool IsDragging() const { return bIsDragging; }
 
 	UFUNCTION(BlueprintPure, Category = "Card|Interaction")
-	bool IsHeldByHotKey() const { return bIsHeldByHotKey; }
+	bool IsHeldByHotKey() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Card|Interaction")
 	void SetIsHeldByHotKey(bool bInHeld);
