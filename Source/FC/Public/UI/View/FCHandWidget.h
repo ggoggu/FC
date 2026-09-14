@@ -84,7 +84,18 @@ public:
 
 	/** Checks if a card is currently held following the mouse */
 	UFUNCTION(BlueprintPure, Category = "Hand|Interaction")
-	bool HasHeldCard() const { return HeldCardWidget.IsValid(); }
+	bool HasHeldCard() const;
+
+	/** Gets the current size of the allocated card widget pool */
+	UFUNCTION(BlueprintPure, Category = "Hand|Pool")
+	int32 GetCardPoolSize() const { return CardWidgetPool.Num(); }
+
+	/** Gets the list of currently active instantiated card widgets */
+	const TArray<TObjectPtr<UFCCardWidget>>& GetActiveCardWidgets() const { return ActiveCardWidgets; }
+
+	/** Pre-warms the card widget pool to the specified count (default 10) */
+	UFUNCTION(BlueprintCallable, Category = "Hand|Pool")
+	void PrewarmCardWidgetPool(class UPanelWidget* TargetPanel, int32 PoolSize = 10);
 
 	/** Recalculates and applies fan layout transforms across all active card widgets */
 	UFUNCTION(BlueprintCallable, Category = "Hand|FanLayout")
@@ -196,6 +207,14 @@ protected:
 	/** Widget blueprint class used to instantiate individual card views */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand|Config")
 	TSubclassOf<UFCCardWidget> CardWidgetClass;
+
+	/** Reusable card widget pool to eliminate allocations and GC churn during hand updates */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Hand|Pool")
+	TArray<TObjectPtr<UFCCardWidget>> CardWidgetPool;
+
+	/** Host panel currently owning the pooled card widgets */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<class UPanelWidget> CachedHostPanel;
 
 	/** List of instantiated active card widgets currently displayed */
 	UPROPERTY(BlueprintReadOnly, Category = "Hand|View")

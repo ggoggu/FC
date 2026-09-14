@@ -98,6 +98,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	bool bIsHovered = false;
 
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
+	bool bIsHeld = false;
+
 	// --- Hand Fan Layout Presentation State ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card|Layout")
 	int32 HandIndex = 0;
@@ -136,6 +139,8 @@ public:
 	void SetIsPlayable(bool bInPlayable);
 	void SetIsSelected(bool bInSelected) { UE_MVVM_SET_PROPERTY_VALUE(bIsSelected, bInSelected); }
 	void SetIsHovered(bool bInHovered) { UE_MVVM_SET_PROPERTY_VALUE(bIsHovered, bInHovered); }
+	void SetIsHeld(bool bInHeld) { UE_MVVM_SET_PROPERTY_VALUE(bIsHeld, bInHeld); }
+	bool GetIsHeld() const { return bIsHeld; }
 	void SetHandIndex(int32 InIndex) { UE_MVVM_SET_PROPERTY_VALUE(HandIndex, InIndex); }
 	void SetTotalCardsInHand(int32 InTotal) { UE_MVVM_SET_PROPERTY_VALUE(TotalCardsInHand, InTotal); }
 	void SetTargetFanAngle(float InAngle) { UE_MVVM_SET_PROPERTY_VALUE(TargetFanAngle, InAngle); }

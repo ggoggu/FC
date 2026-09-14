@@ -289,6 +289,10 @@ void UFCHandWidget::PlayCardFromHand(UFCCardWidget* CardWidget)
 	{
 		HeldCardWidget->SetIsHeldByHotKey(false);
 		HeldCardWidget = nullptr;
+		if (HandViewModel)
+		{
+			HandViewModel->ClearHeldCard();
+		}
 	}
 
 	UFCCardViewModel* CardVM = CardWidget->GetCardViewModel();
@@ -340,6 +344,15 @@ void UFCHandWidget::PlayCardFromHand(UFCCardWidget* CardWidget)
 	}
 }
 
+bool UFCHandWidget::HasHeldCard() const
+{
+	if (HandViewModel && HandViewModel->HasHeldCard())
+	{
+		return true;
+	}
+	return HeldCardWidget.IsValid();
+}
+
 bool UFCHandWidget::SelectAndHoldCardByIndex(int32 Index)
 {
 	if (!ActiveCardWidgets.IsValidIndex(Index))
@@ -360,6 +373,12 @@ bool UFCHandWidget::SelectAndHoldCardByIndex(int32 Index)
 		return true;
 	}
 
+	// Update ViewModel SSOT
+	if (HandViewModel)
+	{
+		HandViewModel->HoldCardByIndex(Index);
+	}
+
 	// Clear previous held card if any
 	if (HeldCardWidget.IsValid())
 	{
@@ -368,14 +387,6 @@ bool UFCHandWidget::SelectAndHoldCardByIndex(int32 Index)
 
 	HeldCardWidget = TargetCard;
 	TargetCard->SetIsHeldByHotKey(true);
-
-	if (UFCCardViewModel* CardVM = TargetCard->GetCardViewModel())
-	{
-		if (HandViewModel)
-		{
-			HandViewModel->SelectCardByGuid(CardVM->CardGuid);
-		}
-	}
 
 	UpdateFanLayout(false);
 	OnHandCardSelected.Broadcast(TargetCard);
@@ -387,6 +398,20 @@ bool UFCHandWidget::SelectAndHoldCardByGuid(const FGuid& CardGuid)
 	if (!CardGuid.IsValid())
 	{
 		return false;
+	}
+
+	if (HandViewModel)
+	{
+		for (int32 Index = 0; Index < HandViewModel->CardsInHand.Num(); ++Index)
+		{
+			if (const UFCCardViewModel* CardVM = HandViewModel->CardsInHand[Index])
+			{
+				if (CardVM->CardGuid == CardGuid)
+				{
+					return SelectAndHoldCardByIndex(Index);
+				}
+			}
+		}
 	}
 
 	for (int32 Index = 0; Index < ActiveCardWidgets.Num(); ++Index)
@@ -414,6 +439,7 @@ void UFCHandWidget::ClearHeldCard()
 
 	if (HandViewModel)
 	{
+		HandViewModel->ClearHeldCard();
 		HandViewModel->ClearSelection();
 	}
 
@@ -422,7 +448,7 @@ void UFCHandWidget::ClearHeldCard()
 
 bool UFCHandWidget::PlayHeldCard()
 {
-	if (!HeldCardWidget.IsValid())
+	if (!HasHeldCard())
 	{
 		return false;
 	}
@@ -430,8 +456,55 @@ bool UFCHandWidget::PlayHeldCard()
 	UFCCardWidget* CardToPlay = HeldCardWidget.Get();
 	ClearHeldCard();
 
-	PlayCardFromHand(CardToPlay);
-	return true;
+	if (CardToPlay)
+	{
+		PlayCardFromHand(CardToPlay);
+		return true;
+	}
+	return false;
+}
+
+void UFCHandWidget::PrewarmCardWidgetPool(UPanelWidget* TargetPanel, int32 PoolSize)
+{
+	if (!TargetPanel || !CardWidgetClass || PoolSize <= 0)
+	{
+		return;
+	}
+
+	CachedHostPanel = TargetPanel;
+
+	while (CardWidgetPool.Num() < PoolSize)
+	{
+		UFCCardWidget* NewCard = CreateWidget<UFCCardWidget>(this, CardWidgetClass);
+		if (!NewCard)
+		{
+			break;
+		}
+
+		TargetPanel->AddChild(NewCard);
+
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(NewCard->Slot))
+		{
+			CanvasSlot->SetAnchors(FAnchors(0.5f, 1.0f, 0.5f, 1.0f));
+			CanvasSlot->SetAlignment(FVector2D(0.5f, 1.0f));
+			CanvasSlot->SetAutoSize(true);
+			CanvasSlot->SetPosition(FVector2D::ZeroVector);
+		}
+		else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(NewCard->Slot))
+		{
+			OverlaySlot->SetHorizontalAlignment(HAlign_Center);
+			OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
+		}
+
+		NewCard->SetVisibility(ESlateVisibility::Collapsed);
+		NewCard->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
+		NewCard->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
+		NewCard->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
+		NewCard->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
+		NewCard->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
+
+		CardWidgetPool.Add(NewCard);
+	}
 }
 
 void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
@@ -441,46 +514,86 @@ void UFCHandWidget::RefreshCardWidgets(UPanelWidget* TargetPanel)
 		return;
 	}
 
-	TargetPanel->ClearChildren();
-	ActiveCardWidgets.Empty();
-	HeldCardWidget = nullptr;
+	// Reparent existing pooled widgets if target panel changed
+	if (CachedHostPanel.Get() != TargetPanel)
+	{
+		CachedHostPanel = TargetPanel;
+		for (UFCCardWidget* PooledWidget : CardWidgetPool)
+		{
+			if (PooledWidget && PooledWidget->GetParent() != TargetPanel)
+			{
+				TargetPanel->AddChild(PooledWidget);
+			}
+		}
+	}
 
 	const int32 TotalCards = HandViewModel->CardsInHand.Num();
-	ActiveCardWidgets.Reserve(TotalCards);
 
+	// Expand pool if necessary (zero allocation when pool is already large enough)
+	while (CardWidgetPool.Num() < TotalCards)
+	{
+		UFCCardWidget* NewCard = CreateWidget<UFCCardWidget>(this, CardWidgetClass);
+		if (!NewCard)
+		{
+			break;
+		}
+
+		TargetPanel->AddChild(NewCard);
+
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(NewCard->Slot))
+		{
+			CanvasSlot->SetAnchors(FAnchors(0.5f, 1.0f, 0.5f, 1.0f));
+			CanvasSlot->SetAlignment(FVector2D(0.5f, 1.0f));
+			CanvasSlot->SetAutoSize(true);
+			CanvasSlot->SetPosition(FVector2D::ZeroVector);
+		}
+		else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(NewCard->Slot))
+		{
+			OverlaySlot->SetHorizontalAlignment(HAlign_Center);
+			OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
+		}
+
+		NewCard->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
+		NewCard->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
+		NewCard->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
+		NewCard->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
+		NewCard->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
+
+		CardWidgetPool.Add(NewCard);
+	}
+
+	ActiveCardWidgets.Reset(TotalCards);
+	HeldCardWidget = nullptr;
+
+	// Activate and assign ViewModels to needed widgets
 	for (int32 Index = 0; Index < TotalCards; ++Index)
 	{
-		UFCCardViewModel* CardVM = HandViewModel->CardsInHand[Index];
-		if (CardVM)
+		if (CardWidgetPool.IsValidIndex(Index))
 		{
-			UFCCardWidget* CardWidget = CreateWidget<UFCCardWidget>(this, CardWidgetClass);
-			if (CardWidget)
+			UFCCardWidget* CardWidget = CardWidgetPool[Index];
+			UFCCardViewModel* CardVM = HandViewModel->CardsInHand[Index];
+			if (CardWidget && CardVM)
 			{
-				TargetPanel->AddChild(CardWidget);
-
-				// Configure slot anchors and alignment for fan layout origin
-				if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(CardWidget->Slot))
-				{
-					CanvasSlot->SetAnchors(FAnchors(0.5f, 1.0f, 0.5f, 1.0f));
-					CanvasSlot->SetAlignment(FVector2D(0.5f, 1.0f));
-					CanvasSlot->SetAutoSize(true);
-					CanvasSlot->SetPosition(FVector2D::ZeroVector);
-				}
-				else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(CardWidget->Slot))
-				{
-					OverlaySlot->SetHorizontalAlignment(HAlign_Center);
-					OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
-				}
-
+				CardWidget->SetVisibility(ESlateVisibility::Visible);
 				CardWidget->SetCardViewModel(CardVM);
-				CardWidget->OnCardClicked.AddDynamic(this, &UFCHandWidget::HandleCardClicked);
-				CardWidget->OnCardHovered.AddDynamic(this, &UFCHandWidget::HandleCardHovered);
-				CardWidget->OnCardDragStarted.AddDynamic(this, &UFCHandWidget::HandleCardDragStarted);
-				CardWidget->OnCardDragged.AddDynamic(this, &UFCHandWidget::HandleCardDragged);
-				CardWidget->OnCardDragEnded.AddDynamic(this, &UFCHandWidget::HandleCardDragEnded);
+
+				if (CardVM->bIsHeld)
+				{
+					HeldCardWidget = CardWidget;
+				}
 
 				ActiveCardWidgets.Add(CardWidget);
 			}
+		}
+	}
+
+	// Collapse and detach remaining pooled widgets
+	for (int32 Index = TotalCards; Index < CardWidgetPool.Num(); ++Index)
+	{
+		if (UFCCardWidget* InactiveWidget = CardWidgetPool[Index])
+		{
+			InactiveWidget->SetVisibility(ESlateVisibility::Collapsed);
+			InactiveWidget->SetCardViewModel(nullptr);
 		}
 	}
 

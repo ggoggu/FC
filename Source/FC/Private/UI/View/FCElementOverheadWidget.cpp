@@ -18,6 +18,8 @@ void UFCElementOverheadWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	InitializeWidgetPool();
+
 	if (!ViewModel)
 	{
 		SetViewModel(NewObject<UFCElementOverheadViewModel>(this));
@@ -49,6 +51,8 @@ void UFCElementOverheadWidget::NativeDestruct()
 		ViewModel->OnStacksUpdated.RemoveDynamic(this, &UFCElementOverheadWidget::HandleStacksUpdated);
 		ViewModel->UnbindFromElementComponent();
 	}
+
+	PooledStackWidgets.Empty();
 
 	Super::NativeDestruct();
 }
@@ -94,6 +98,34 @@ void UFCElementOverheadWidget::InitializeForElementComponent(UFCElementComponent
 	}
 }
 
+void UFCElementOverheadWidget::InitializeWidgetPool()
+{
+	if (PooledStackWidgets.Num() > 0)
+	{
+		return;
+	}
+
+	if (!StackListContainer || !StackItemWidgetClass)
+	{
+		return;
+	}
+
+	StackListContainer->ClearChildren();
+	PooledStackWidgets.Empty(MaxPooledSlots);
+
+	for (int32 SlotIndex = 0; SlotIndex < MaxPooledSlots; ++SlotIndex)
+	{
+		UFCElementStackItemWidget* ItemWidget = CreateWidget<UFCElementStackItemWidget>(this, StackItemWidgetClass);
+		if (ItemWidget)
+		{
+			ItemWidget->ClearElement();
+			ItemWidget->SetVisibility(ESlateVisibility::Collapsed);
+			StackListContainer->AddChild(ItemWidget);
+			PooledStackWidgets.Add(ItemWidget);
+		}
+	}
+}
+
 void UFCElementOverheadWidget::HandleStacksUpdated(int32 NewTotalStacks)
 {
 	if (bAutoHideWhenEmpty)
@@ -121,30 +153,31 @@ void UFCElementOverheadWidget::HandleStacksUpdated(int32 NewTotalStacks)
 
 void UFCElementOverheadWidget::RefreshStackWidgets()
 {
-	if (!StackListContainer)
+	if (PooledStackWidgets.Num() == 0)
 	{
-		return;
+		InitializeWidgetPool();
 	}
 
-	StackListContainer->ClearChildren();
+	const TArray<EFCElement>& CurrentStacks = ViewModel ? ViewModel->GetCurrentStacks() : TArray<EFCElement>();
+	const int32 ActiveCount = CurrentStacks.Num();
 
-	if (!ViewModel || !StackItemWidgetClass)
+	for (int32 Index = 0; Index < PooledStackWidgets.Num(); ++Index)
 	{
-		return;
-	}
-
-	for (UFCElementStackItemViewModel* ItemVM : ViewModel->StackList)
-	{
-		if (!ItemVM)
+		UFCElementStackItemWidget* SlotWidget = PooledStackWidgets[Index];
+		if (!SlotWidget)
 		{
 			continue;
 		}
 
-		UFCElementStackItemWidget* ItemWidget = CreateWidget<UFCElementStackItemWidget>(this, StackItemWidgetClass);
-		if (ItemWidget)
+		if (Index < ActiveCount)
 		{
-			ItemWidget->SetItemViewModel(ItemVM);
-			StackListContainer->AddChild(ItemWidget);
+			SlotWidget->SetElement(CurrentStacks[Index], Index);
+			SlotWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+		else
+		{
+			SlotWidget->ClearElement();
+			SlotWidget->SetVisibility(ESlateVisibility::Collapsed);
 		}
 	}
 }

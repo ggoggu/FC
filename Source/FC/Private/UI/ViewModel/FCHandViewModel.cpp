@@ -77,6 +77,38 @@ void UFCHandViewModel::SyncFromHandContainer(const FFCCardHandContainer& Contain
 		HoverCardByIndex(HoveredCardIndex);
 	}
 
+	// Revalidate held card
+	if (HeldCardGuid.IsValid())
+	{
+		int32 FoundHeldIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+		{
+			if (UFCCardViewModel* CardVM = CardsInHand[Index])
+			{
+				const bool bMatch = (CardVM->CardGuid == HeldCardGuid);
+				CardVM->SetIsHeld(bMatch);
+				if (bMatch)
+				{
+					FoundHeldIndex = Index;
+				}
+			}
+		}
+
+		if (FoundHeldIndex != INDEX_NONE)
+		{
+			UE_MVVM_SET_PROPERTY_VALUE(HeldCardIndex, FoundHeldIndex);
+			UE_MVVM_SET_PROPERTY_VALUE(bHasHeldCard, true);
+		}
+		else
+		{
+			ClearHeldCard();
+		}
+	}
+	else
+	{
+		ClearHeldCard();
+	}
+
 	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(CardsInHand);
 	OnCardsUpdated.Broadcast();
 }
@@ -219,6 +251,92 @@ UFCCardViewModel* UFCHandViewModel::GetHoveredCard() const
 	if (CardsInHand.IsValidIndex(HoveredCardIndex))
 	{
 		return CardsInHand[HoveredCardIndex];
+	}
+	return nullptr;
+}
+
+void UFCHandViewModel::HoldCardByGuid(const FGuid& InGuid)
+{
+	int32 FoundIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+	{
+		if (UFCCardViewModel* CardVM = CardsInHand[Index])
+		{
+			if (CardVM->CardGuid == InGuid)
+			{
+				FoundIndex = Index;
+				break;
+			}
+		}
+	}
+
+	if (FoundIndex != INDEX_NONE)
+	{
+		HoldCardByIndex(FoundIndex);
+	}
+	else
+	{
+		ClearHeldCard();
+	}
+}
+
+void UFCHandViewModel::HoldCardByIndex(int32 InIndex)
+{
+	if (!CardsInHand.IsValidIndex(InIndex))
+	{
+		ClearHeldCard();
+		return;
+	}
+
+	// Toggle if already holding this card
+	if (HeldCardIndex == InIndex)
+	{
+		ClearHeldCard();
+		return;
+	}
+
+	HeldCardIndex = InIndex;
+	HeldCardGuid = CardsInHand[InIndex] ? CardsInHand[InIndex]->CardGuid : FGuid();
+	UE_MVVM_SET_PROPERTY_VALUE(bHasHeldCard, true);
+
+	for (int32 Index = 0; Index < CardsInHand.Num(); ++Index)
+	{
+		if (UFCCardViewModel* CardVM = CardsInHand[Index])
+		{
+			CardVM->SetIsHeld(Index == InIndex);
+		}
+	}
+
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HeldCardIndex);
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HeldCardGuid);
+
+	// Also sync selection to held card
+	SelectCardByIndex(InIndex);
+}
+
+void UFCHandViewModel::ClearHeldCard()
+{
+	HeldCardIndex = INDEX_NONE;
+	HeldCardGuid = FGuid();
+	UE_MVVM_SET_PROPERTY_VALUE(bHasHeldCard, false);
+
+	for (UFCCardViewModel* CardVM : CardsInHand)
+	{
+		if (CardVM)
+		{
+			CardVM->SetIsHeld(false);
+		}
+	}
+
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HeldCardIndex);
+	UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HeldCardGuid);
+}
+
+UFCCardViewModel* UFCHandViewModel::GetHeldCard() const
+{
+	if (CardsInHand.IsValidIndex(HeldCardIndex))
+	{
+		return CardsInHand[HeldCardIndex];
 	}
 	return nullptr;
 }
