@@ -29,6 +29,17 @@ public:
 	virtual void Die(AActor* Killer = nullptr) override;
 	virtual void HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult) override;
 
+	virtual void Jump() override;
+	virtual void StopJumping() override;
+
+	/** Jump Input Action getter */
+	UFUNCTION(BlueprintPure, Category = "FC|Player|Input")
+	UInputAction* GetJumpAction() const { return JumpAction; }
+
+	/** Jump Input Action setter */
+	UFUNCTION(BlueprintCallable, Category = "FC|Player|Input")
+	void SetJumpAction(UInputAction* InAction) { JumpAction = InAction; }
+
 	/** Starts health drain timer loop on authoritative server */
 	UFUNCTION(BlueprintCallable, Category = "FC|Player|HealthDrain")
 	void StartHealthDrain();
@@ -79,6 +90,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void InitAbilityActorInfo();
+	virtual bool CanJumpInternal_Implementation() const override;
 
 	/** Enhanced Input handlers */
 	void Move(const FInputActionValue& Value);
@@ -97,6 +109,10 @@ protected:
 	/** Look Input Action (Mouse Look) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> LookAction;
+
+	/** Jump Input Action (Space) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> JumpAction;
 
 	/** Directional death animations from Character/Mannequins/Anims/Death */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")

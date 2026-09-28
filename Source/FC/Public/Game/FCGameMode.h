@@ -4,6 +4,8 @@
 #include "GameFramework/GameModeBase.h"
 #include "FCGameMode.generated.h"
 
+class AFCDungeonManager;
+
 /**
  * AFCGameMode
  * 
@@ -20,6 +22,18 @@ public:
 
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
+
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+	virtual AActor* FindPlayerStart_Implementation(AController* Player, const FString& IncomingName = TEXT("")) override;
+	virtual void RestartPlayerAtPlayerStart(AController* NewPlayer, AActor* StartSpot) override;
+
+	/** Get or find the active dungeon manager in the level */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	AFCDungeonManager* GetDungeonManager() const;
+
+	/** Set or register the active dungeon manager */
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
+	void SetDungeonManager(AFCDungeonManager* InDungeonManager);
 
 	/** Saves all connected player states to persistence and transitions to the target level */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "FC|GameMode")
@@ -51,4 +65,8 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+
+private:
+	UPROPERTY(Transient)
+	mutable TWeakObjectPtr<AFCDungeonManager> CachedDungeonManager;
 };

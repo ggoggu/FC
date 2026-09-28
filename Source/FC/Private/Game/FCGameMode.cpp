@@ -5,6 +5,9 @@
 #include "Character/Player/FCPlayerCharacter.h"
 #include "Card/FCCardDeckComponent.h"
 #include "Data/FCPlayerPersistenceSubsystem.h"
+#include "Map/FCDungeonManager.h"
+#include "Map/FCRoomBase.h"
+#include "GameFramework/PlayerStart.h"
 #include "Kismet/GameplayStatics.h"
 
 AFCGameMode::AFCGameMode()
@@ -37,6 +40,117 @@ AFCGameMode::AFCGameMode()
 void AFCGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (HasAuthority())
+	{
+		if (AFCDungeonManager* DungeonMgr = GetDungeonManager())
+		{
+			if (DungeonMgr->GetSpawnedRooms().Num() == 0)
+			{
+				DungeonMgr->GenerateDungeon();
+			}
+			else
+			{
+				DungeonMgr->TeleportPlayersToStartRoom();
+			}
+		}
+	}
+}
+
+AFCDungeonManager* AFCGameMode::GetDungeonManager() const
+{
+	if (CachedDungeonManager.IsValid())
+	{
+		return CachedDungeonManager.Get();
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		if (AActor* FoundActor = UGameplayStatics::GetActorOfClass(World, AFCDungeonManager::StaticClass()))
+		{
+			CachedDungeonManager = Cast<AFCDungeonManager>(FoundActor);
+			return CachedDungeonManager.Get();
+		}
+	}
+
+	return nullptr;
+}
+
+void AFCGameMode::SetDungeonManager(AFCDungeonManager* InDungeonManager)
+{
+	CachedDungeonManager = InDungeonManager;
+}
+
+AActor* AFCGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	if (AFCDungeonManager* DungeonMgr = GetDungeonManager())
+	{
+		if (DungeonMgr->GetSpawnedRooms().Num() == 0)
+		{
+			DungeonMgr->GenerateDungeon();
+		}
+
+		if (APlayerStart* StartSpot = DungeonMgr->GetStartRoomPlayerStart())
+		{
+			return StartSpot;
+		}
+
+		if (AFCRoomBase* StartRoom = DungeonMgr->GetStartRoom())
+		{
+			return StartRoom;
+		}
+	}
+
+	if (!GetWorld())
+	{
+		return nullptr;
+	}
+
+	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+AActor* AFCGameMode::FindPlayerStart_Implementation(AController* Player, const FString& IncomingName)
+{
+	if (AFCDungeonManager* DungeonMgr = GetDungeonManager())
+	{
+		if (DungeonMgr->GetSpawnedRooms().Num() == 0)
+		{
+			DungeonMgr->GenerateDungeon();
+		}
+
+		if (APlayerStart* StartSpot = DungeonMgr->GetStartRoomPlayerStart())
+		{
+			return StartSpot;
+		}
+
+		if (AFCRoomBase* StartRoom = DungeonMgr->GetStartRoom())
+		{
+			return StartRoom;
+		}
+	}
+
+	if (!GetWorld())
+	{
+		return nullptr;
+	}
+
+	return Super::FindPlayerStart_Implementation(Player, IncomingName);
+}
+
+void AFCGameMode::RestartPlayerAtPlayerStart(AController* NewPlayer, AActor* StartSpot)
+{
+	if (!NewPlayer || NewPlayer->IsPendingKillPending())
+	{
+		return;
+	}
+
+	if (AFCRoomBase* Room = Cast<AFCRoomBase>(StartSpot))
+	{
+		RestartPlayerAtTransform(NewPlayer, Room->GetPlayerSpawnTransform());
+		return;
+	}
+
+	Super::RestartPlayerAtPlayerStart(NewPlayer, StartSpot);
 }
 
 void AFCGameMode::PostLogin(APlayerController* NewPlayer)
