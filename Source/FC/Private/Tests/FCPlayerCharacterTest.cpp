@@ -4,6 +4,7 @@
 #include "Character/FCCharacterBase.h"
 #include "Character/Mob/FCMobCharacter.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -161,6 +162,39 @@ bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 				PlayerChar->OnKilledEnemy(MobChar);
 				TestEqual(TEXT("Health should increase from 80 to 85 after killing mob"), AttrSet->GetHealth(), 85.0f);
 			}
+		}
+	}
+
+	// =========================================================================
+	// Test 8: Jump Functionality & Death Invalidation
+	// =========================================================================
+	{
+		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
+		TestNotNull(TEXT("Player should be valid for jump test"), PlayerChar);
+
+		if (PlayerChar)
+		{
+			// Character movement jump parameters
+			if (UCharacterMovementComponent* MoveComp = PlayerChar->GetCharacterMovement())
+			{
+				TestEqual(TEXT("JumpZVelocity should be 500.0f"), MoveComp->JumpZVelocity, 500.0f);
+				TestEqual(TEXT("AirControl should be 0.35f"), MoveComp->AirControl, 0.35f);
+			}
+
+			// Calling Jump & StopJumping should execute safely
+			PlayerChar->Jump();
+			PlayerChar->StopJumping();
+
+			// Character can jump when alive
+			TestTrue(TEXT("Alive player should be able to jump"), PlayerChar->CanJump());
+
+			// When dead, player should not be able to jump
+			PlayerChar->Die();
+			TestTrue(TEXT("Player should be dead"), PlayerChar->IsDead());
+			TestFalse(TEXT("Dead player should not be able to jump"), PlayerChar->CanJump());
+
+			// Calling Jump while dead should be safely rejected
+			PlayerChar->Jump();
 		}
 	}
 

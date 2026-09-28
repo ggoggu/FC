@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "EnhancedInputComponent.h"
+#include "InputAction.h"
 #include "InputActionValue.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimMontage.h"
@@ -26,6 +27,8 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 	// Configure character movement
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	GetCharacterMovement()->JumpZVelocity = 500.0f;
+	GetCharacterMovement()->AirControl = 0.35f;
 
 	// Create a camera boom
 	SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComponent"));
@@ -88,6 +91,14 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 		DeathAnim_Right = RightDeathFinder.Object;
 	}
 
+	// Default jump input action
+	static ConstructorHelpers::FObjectFinder<UInputAction> JumpActionFinder(
+		TEXT("/Game/Input/Actions/IA_Jump.IA_Jump"));
+	if (JumpActionFinder.Succeeded())
+	{
+		JumpAction = JumpActionFinder.Object;
+	}
+
 	// Hit reaction animations default to the animations in Character/Mannequins/Anims/Death
 	HitAnim_Front = DeathAnim_Front;
 	HitAnim_Back = DeathAnim_Back;
@@ -132,6 +143,12 @@ void AFCPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 		{
 			EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AFCPlayerCharacter::Look);
 		}
+
+		if (JumpAction)
+		{
+			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFCPlayerCharacter::Jump);
+			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFCPlayerCharacter::StopJumping);
+		}
 	}
 }
 
@@ -163,6 +180,26 @@ void AFCPlayerCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+void AFCPlayerCharacter::Jump()
+{
+	if (IsDead())
+	{
+		return;
+	}
+
+	Super::Jump();
+}
+
+void AFCPlayerCharacter::StopJumping()
+{
+	Super::StopJumping();
+}
+
+bool AFCPlayerCharacter::CanJumpInternal_Implementation() const
+{
+	return !IsDead() && Super::CanJumpInternal_Implementation();
 }
 
 void AFCPlayerCharacter::PossessedBy(AController* NewController)
