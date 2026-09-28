@@ -58,6 +58,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
 	APlayerStart* GetStartRoomPlayerStart() const { return StartRoomPlayerStart.Get(); }
 
+	/** Returns a randomly chosen room class from DefaultRooms based on weights */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	TSubclassOf<AFCRoomBase> GetRandomDefaultRoomClass() const;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	const TArray<FFCDungeonRoomWeight>& GetDefaultRooms() const { return DefaultRooms; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
+	void SetDefaultRooms(const TArray<FFCDungeonRoomWeight>& InDefaultRooms) { DefaultRooms = InDefaultRooms; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
+	void AddDefaultRoom(TSubclassOf<AFCRoomBase> RoomClass, float Weight = 1.0f)
+	{
+		DefaultRooms.Add(FFCDungeonRoomWeight(RoomClass, Weight));
+	}
+
 	/** Teleport all existing player pawns into the Start Room */
 	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
 	void TeleportPlayersToStartRoom();
@@ -100,8 +116,9 @@ protected:
 	float CellSize = 2400.0f;
 
 	// Modular Room Classes
-	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Classes")
-	TSubclassOf<AFCRoomBase> DefaultRoomClass;
+	/** Weighted list of room classes for default/normal rooms. One is randomly selected per room spawn based on weight. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Classes", meta = (DisplayName = "Default Rooms"))
+	TArray<FFCDungeonRoomWeight> DefaultRooms;
 
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Classes")
 	TSubclassOf<AFCRoomBase> StartRoomClass;

@@ -68,22 +68,12 @@ public:
 	void SetHealOnKillAmount(float InAmount) { HealOnKillAmount = FMath::Max(0.0f, InAmount); }
 
 	/** Plays directional death animation on local mesh */
-	UFUNCTION(BlueprintCallable, Category = "FC|Player|Combat")
-	void PlayDeathAnimation(EFCDeathDirection Direction);
-
-	/** Replicated multicast RPC to play cosmetic death animation across network */
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_PlayDeathAnimation(EFCDeathDirection Direction);
+	virtual void PlayDeathAnimation(EFCDeathDirection Direction) override;
 
 	UAnimSequence* GetDeathAnimationForDirection(EFCDeathDirection Direction) const;
 
 	/** Plays directional hit reaction animation on local mesh */
-	UFUNCTION(BlueprintCallable, Category = "FC|Player|Combat")
-	void PlayHitAnimation(EFCDeathDirection Direction);
-
-	/** Replicated multicast RPC to play cosmetic hit animation across network */
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_PlayHitAnimation(EFCDeathDirection Direction);
+	virtual void PlayHitAnimation(EFCDeathDirection Direction) override;
 
 	UAnimSequence* GetHitAnimationForDirection(EFCDeathDirection Direction) const;
 

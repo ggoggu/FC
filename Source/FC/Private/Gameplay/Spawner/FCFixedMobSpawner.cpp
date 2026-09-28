@@ -307,7 +307,6 @@ AFCMobCharacter* AFCFixedMobSpawner::InternalSpawnSlotMob(int32 SlotIndex)
 
 		OnMobSpawned.Broadcast(SpawnedMob);
 		OnFixedSlotSpawned.Broadcast(SlotIndex, SpawnedMob);
-		Multicast_PlaySpawnEffect(SpawnLoc);
 	}
 
 	return SpawnedMob;

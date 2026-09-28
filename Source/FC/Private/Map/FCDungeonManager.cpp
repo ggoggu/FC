@@ -16,7 +16,7 @@ AFCDungeonManager::AFCDungeonManager()
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
-	DefaultRoomClass = AFCRoomBase::StaticClass();
+	DefaultRooms.Add(FFCDungeonRoomWeight(AFCRoomBase::StaticClass(), 1.0f));
 	SecretWallClass = AFCDestructibleWall::StaticClass();
 }
 
@@ -723,7 +723,7 @@ void AFCDungeonManager::SpawnDungeonRooms()
 		TSubclassOf<AFCRoomBase> RoomClass = GetRoomClassForType(Data.RoomType);
 		if (!RoomClass)
 		{
-			RoomClass = DefaultRoomClass ? DefaultRoomClass : TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass());
+			RoomClass = GetRandomDefaultRoomClass();
 		}
 
 		AFCRoomBase* SpawnedRoom = World->SpawnActor<AFCRoomBase>(RoomClass, WorldLocation, WorldRotation, SpawnParams);
@@ -788,23 +788,74 @@ void AFCDungeonManager::SetupSecretPassages()
 	}
 }
 
+TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRandomDefaultRoomClass() const
+{
+	// Calculate total weight of valid entries
+	float TotalWeight = 0.0f;
+	int32 ValidCount = 0;
+	TSubclassOf<AFCRoomBase> FirstValidClass = nullptr;
+
+	for (const FFCDungeonRoomWeight& Entry : DefaultRooms)
+	{
+		if (Entry.RoomClass && Entry.Weight > 0.0f)
+		{
+			TotalWeight += Entry.Weight;
+			ValidCount++;
+			if (!FirstValidClass)
+			{
+				FirstValidClass = Entry.RoomClass;
+			}
+		}
+	}
+
+	// If no valid weighted entry exists, fallback to AFCRoomBase
+	if (ValidCount == 0 || TotalWeight <= 0.0f)
+	{
+		return AFCRoomBase::StaticClass();
+	}
+
+	// Fast path for single option
+	if (ValidCount == 1)
+	{
+		return FirstValidClass;
+	}
+
+	// Weighted random selection
+	const float RandomRoll = FMath::FRandRange(0.0f, TotalWeight);
+	float AccumulatedWeight = 0.0f;
+
+	for (const FFCDungeonRoomWeight& Entry : DefaultRooms)
+	{
+		if (Entry.RoomClass && Entry.Weight > 0.0f)
+		{
+			AccumulatedWeight += Entry.Weight;
+			if (RandomRoll <= AccumulatedWeight)
+			{
+				return Entry.RoomClass;
+			}
+		}
+	}
+
+	return FirstValidClass;
+}
+
 TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRoomClassForType(EFCRoomType Type) const
 {
 	switch (Type)
 	{
 	case EFCRoomType::Start:
-		return StartRoomClass ? StartRoomClass : DefaultRoomClass;
+		return StartRoomClass ? StartRoomClass : GetRandomDefaultRoomClass();
 	case EFCRoomType::Boss:
-		return BossRoomClass ? BossRoomClass : DefaultRoomClass;
+		return BossRoomClass ? BossRoomClass : GetRandomDefaultRoomClass();
 	case EFCRoomType::Shop:
-		return ShopRoomClass ? ShopRoomClass : DefaultRoomClass;
+		return ShopRoomClass ? ShopRoomClass : GetRandomDefaultRoomClass();
 	case EFCRoomType::Treasure:
-		return TreasureRoomClass ? TreasureRoomClass : DefaultRoomClass;
+		return TreasureRoomClass ? TreasureRoomClass : GetRandomDefaultRoomClass();
 	case EFCRoomType::Secret:
-		return SecretRoomClass ? SecretRoomClass : DefaultRoomClass;
+		return SecretRoomClass ? SecretRoomClass : GetRandomDefaultRoomClass();
 	case EFCRoomType::Normal:
 	default:
-		return DefaultRoomClass;
+		return GetRandomDefaultRoomClass();
 	}
 }
 

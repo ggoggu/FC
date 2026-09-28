@@ -130,6 +130,8 @@ protected:
 	UFUNCTION()
 	virtual void OnProjectileOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
+	virtual void Destroyed() override;
+
 	/** Authoritative impact processor */
 	virtual void ProcessImpact(AActor* OtherActor, const FHitResult& HitResult);
 
@@ -144,5 +146,6 @@ protected:
 
 private:
 	int32 CurrentPierceCount = 0;
+	bool bHasPlayedCosmetics = false;
 	TSet<TWeakObjectPtr<AActor>> HitActors;
 };
