@@ -26,7 +26,8 @@ void AFCCharacterBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AFCCharacterBase, bIsDead);
+	DOREPLIFETIME_CONDITION(AFCCharacterBase, bIsDead, COND_None);
+	DOREPLIFETIME_CONDITION(AFCCharacterBase, DeathDirection, COND_None);
 }
 
 UAbilitySystemComponent* AFCCharacterBase::GetAbilitySystemComponent() const
@@ -62,6 +63,7 @@ void AFCCharacterBase::Die(AActor* Killer)
 	}
 
 	bIsDead = true;
+	DeathDirection = CalculateHitDirection(Killer);
 
 	OnDeath.Broadcast(this, Killer);
 
@@ -82,6 +84,8 @@ void AFCCharacterBase::Die(AActor* Killer)
 		MoveComp->StopMovementImmediately();
 		MoveComp->DisableMovement();
 	}
+
+	PlayDeathAnimation(DeathDirection);
 }
 
 void AFCCharacterBase::OnRep_IsDead()
@@ -105,7 +109,40 @@ void AFCCharacterBase::OnRep_IsDead()
 			MoveComp->StopMovementImmediately();
 			MoveComp->DisableMovement();
 		}
+
+		PlayDeathAnimation(DeathDirection);
 	}
+}
+
+void AFCCharacterBase::OnRep_DeathDirection()
+{
+	if (bIsDead)
+	{
+		PlayDeathAnimation(DeathDirection);
+	}
+}
+
+void AFCCharacterBase::PlayDeathAnimation(EFCDeathDirection Direction)
+{
+	// Virtual base implementation - specialized in player and mob subclasses
+}
+
+void AFCCharacterBase::PlayHitAnimation(EFCDeathDirection Direction)
+{
+	// Virtual base implementation - specialized in player and mob subclasses
+}
+
+void AFCCharacterBase::HandleGameplayCue(UObject* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters)
+{
+	const FGameplayTag HitReactionTag = FGameplayTag::RequestGameplayTag(FName("GameplayCue.Combat.HitReaction"), false);
+	if (HitReactionTag.IsValid() && GameplayCueTag.MatchesTag(HitReactionTag))
+	{
+		const int32 DirIndex = FMath::Clamp(FMath::RoundToInt(Parameters.RawMagnitude), 0, 3);
+		PlayHitAnimation(static_cast<EFCDeathDirection>(DirIndex));
+		return;
+	}
+
+	IGameplayCueInterface::HandleGameplayCue(Self, GameplayCueTag, EventType, Parameters);
 }
 
 void AFCCharacterBase::HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult)

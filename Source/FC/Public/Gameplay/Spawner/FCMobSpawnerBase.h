@@ -96,10 +96,6 @@ protected:
 	/** Updates replicated ActiveMobCount from ActiveMobs array */
 	void SynchronizeActiveMobCount();
 
-	/** Multicast cosmetic cue to play particle/sound on clients */
-	UFUNCTION(NetMulticast, Unreliable, Category = "FC|Spawner")
-	void Multicast_PlaySpawnEffect(const FVector& SpawnLocation);
-
 	UFUNCTION()
 	virtual void OnRep_IsActive();
 

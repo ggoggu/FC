@@ -143,6 +143,16 @@ void AFCProjectileBase::OnProjectileOverlap(UPrimitiveComponent* OverlappedComp,
 	ProcessImpact(OtherActor, SweepResult);
 }
 
+void AFCProjectileBase::Destroyed()
+{
+	Super::Destroyed();
+
+	if (GetNetMode() != NM_DedicatedServer && !bHasPlayedCosmetics)
+	{
+		PlayImpactCosmetics(GetActorLocation());
+	}
+}
+
 void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitResult)
 {
 	if (HitActors.Contains(OtherActor))
@@ -192,16 +202,17 @@ void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitR
 			GetWorld()->SpawnActor<AActor>(SpawnActorOnImpact, ImpactLocation, GetActorRotation(), SpawnParams);
 		}
 
-		// Multicast cosmetic impact audio/visuals to simulated proxies
-		Multicast_PlayImpactCosmetics(ImpactLocation);
-
 		// Handle Piercing or Destruction
 		if (bPiercing && CurrentPierceCount < MaxPierceCount)
 		{
 			CurrentPierceCount++;
+			Multicast_PlayImpactCosmetics(ImpactLocation);
 		}
 		else
 		{
+			// Terminal impact: play locally on listen-server/standalone and destroy actor.
+			// Replicated client proxies will safely execute PlayImpactCosmetics via Destroyed() (0-RPC).
+			PlayImpactCosmetics(ImpactLocation);
 			Destroy();
 		}
 	}
@@ -264,6 +275,16 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 
 void AFCProjectileBase::PlayImpactCosmetics(const FVector& Location)
 {
+	if (GetNetMode() == NM_DedicatedServer || bHasPlayedCosmetics)
+	{
+		return;
+	}
+
+	if (!bPiercing || CurrentPierceCount >= MaxPierceCount)
+	{
+		bHasPlayedCosmetics = true;
+	}
+
 	if (ImpactSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, Location);
@@ -279,6 +300,12 @@ void AFCProjectileBase::Multicast_PlayImpactCosmetics_Implementation(const FVect
 {
 	if (GetNetMode() != NM_DedicatedServer)
 	{
+		APawn* InstigatorPawn = GetInstigator();
+		if (InstigatorPawn && InstigatorPawn->IsLocallyControlled())
+		{
+			return;
+		}
+
 		PlayImpactCosmetics(Location);
 	}
 }

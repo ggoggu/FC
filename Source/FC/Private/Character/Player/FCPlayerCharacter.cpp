@@ -199,7 +199,17 @@ void AFCPlayerCharacter::StopJumping()
 
 bool AFCPlayerCharacter::CanJumpInternal_Implementation() const
 {
-	return !IsDead() && Super::CanJumpInternal_Implementation();
+	if (IsDead())
+	{
+		return false;
+	}
+
+	if (!GetWorld())
+	{
+		return GetCharacterMovement() && GetCharacterMovement()->IsJumpAllowed();
+	}
+
+	return Super::CanJumpInternal_Implementation();
 }
 
 void AFCPlayerCharacter::PossessedBy(AController* NewController)
@@ -263,9 +273,6 @@ void AFCPlayerCharacter::Die(AActor* Killer)
 	Super::Die(Killer);
 
 	StopHealthDrain();
-
-	const EFCDeathDirection DeathDir = CalculateHitDirection(Killer);
-	Multicast_PlayDeathAnimation(DeathDir);
 }
 
 void AFCPlayerCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
@@ -282,11 +289,6 @@ void AFCPlayerCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
 		MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 		MeshComp->PlayAnimation(AnimToPlay, /*bLooping=*/false);
 	}
-}
-
-void AFCPlayerCharacter::Multicast_PlayDeathAnimation_Implementation(EFCDeathDirection Direction)
-{
-	PlayDeathAnimation(Direction);
 }
 
 UAnimSequence* AFCPlayerCharacter::GetDeathAnimationForDirection(EFCDeathDirection Direction) const
@@ -344,7 +346,18 @@ void AFCPlayerCharacter::HandleDamageTaken(float DamageAmount, AActor* DamageCau
 	LastHitReactTime = CurrentTime;
 
 	const EFCDeathDirection HitDir = CalculateHitDirection(DamageCauser);
-	Multicast_PlayHitAnimation(HitDir);
+	const FGameplayTag HitReactionTag = FGameplayTag::RequestGameplayTag(FName("GameplayCue.Combat.HitReaction"), false);
+	if (AbilitySystemComponent && AbilitySystemComponent->AbilityActorInfo.IsValid() && HitReactionTag.IsValid())
+	{
+		FGameplayCueParameters CueParams;
+		CueParams.Location = DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation();
+		CueParams.RawMagnitude = static_cast<float>(HitDir);
+		AbilitySystemComponent->ExecuteGameplayCue(HitReactionTag, CueParams);
+	}
+	else
+	{
+		PlayHitAnimation(HitDir);
+	}
 }
 
 void AFCPlayerCharacter::PlayHitAnimation(EFCDeathDirection Direction)
@@ -379,11 +392,6 @@ void AFCPlayerCharacter::PlayHitAnimation(EFCDeathDirection Direction)
 			);
 		}
 	}
-}
-
-void AFCPlayerCharacter::Multicast_PlayHitAnimation_Implementation(EFCDeathDirection Direction)
-{
-	PlayHitAnimation(Direction);
 }
 
 UAnimSequence* AFCPlayerCharacter::GetHitAnimationForDirection(EFCDeathDirection Direction) const

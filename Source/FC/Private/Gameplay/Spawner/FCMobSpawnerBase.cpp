@@ -179,7 +179,6 @@ AFCMobCharacter* AFCMobSpawnerBase::SpawnSingleMob(TSubclassOf<AFCMobCharacter> 
 		SynchronizeActiveMobCount();
 
 		OnMobSpawned.Broadcast(SpawnedMob);
-		Multicast_PlaySpawnEffect(SpawnLoc);
 	}
 
 	return SpawnedMob;
@@ -350,11 +349,6 @@ void AFCMobSpawnerBase::SynchronizeActiveMobCount()
 	});
 
 	ActiveMobCount = ActiveMobs.Num();
-}
-
-void AFCMobSpawnerBase::Multicast_PlaySpawnEffect_Implementation(const FVector& SpawnLocation)
-{
-	// Client presentation hook for visual particles/sound cues
 }
 
 void AFCMobSpawnerBase::OnRep_IsActive()

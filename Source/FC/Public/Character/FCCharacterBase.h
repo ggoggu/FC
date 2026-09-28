@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "AbilitySystemInterface.h"
+#include "GameplayCueInterface.h"
+#include "GameplayTagContainer.h"
 #include "FCCharacterBase.generated.h"
 
 class UAbilitySystemComponent;
@@ -23,7 +25,7 @@ enum class EFCDeathDirection : uint8
 };
 
 UCLASS()
-class FC_API AFCCharacterBase : public ACharacter, public IAbilitySystemInterface
+class FC_API AFCCharacterBase : public ACharacter, public IAbilitySystemInterface, public IGameplayCueInterface
 {
 	GENERATED_BODY()
 
@@ -90,14 +92,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	virtual void RotateTowardsTarget(const FVector& InTargetLocation);
 
+	/** Directional death animation trigger (virtual so subclasses specialize animation sequences) */
+	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
+	virtual void PlayDeathAnimation(EFCDeathDirection Direction);
+
+	/** Directional hit reaction animation trigger (virtual so subclasses specialize animation sequences) */
+	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
+	virtual void PlayHitAnimation(EFCDeathDirection Direction);
+
+	/** IGameplayCueInterface override to handle GameplayCue events (e.g. HitReaction) */
+	virtual void HandleGameplayCue(UObject* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters) override;
+
 protected:
 	virtual void BeginPlay() override;
 
 	UPROPERTY(ReplicatedUsing = OnRep_IsDead, VisibleAnywhere, BlueprintReadOnly, Category = "FC|Combat")
 	bool bIsDead = false;
 
+	UPROPERTY(ReplicatedUsing = OnRep_DeathDirection, VisibleAnywhere, BlueprintReadOnly, Category = "FC|Combat")
+	EFCDeathDirection DeathDirection = EFCDeathDirection::Front;
+
 	UFUNCTION()
 	virtual void OnRep_IsDead();
+
+	UFUNCTION()
+	virtual void OnRep_DeathDirection();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UAbilitySystemComponent> AbilitySystemComponent;

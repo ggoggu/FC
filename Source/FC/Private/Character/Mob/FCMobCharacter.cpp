@@ -247,10 +247,6 @@ void AFCMobCharacter::Die(AActor* Killer)
 			SetLifeSpan(DeathDespawnDelay);
 		}
 	}
-
-	// Calculate hit direction and multicast directional death animation
-	const EFCDeathDirection DeathDir = CalculateHitDirection(Killer);
-	Multicast_PlayDeathAnimation(DeathDir);
 }
 
 AActor* AFCMobCharacter::AttemptDropChest()
@@ -325,11 +321,6 @@ void AFCMobCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
 	}
 }
 
-void AFCMobCharacter::Multicast_PlayDeathAnimation_Implementation(EFCDeathDirection Direction)
-{
-	PlayDeathAnimation(Direction);
-}
-
 UAnimSequence* AFCMobCharacter::GetDeathAnimationForDirection(EFCDeathDirection Direction) const
 {
 	switch (Direction)
@@ -385,7 +376,18 @@ void AFCMobCharacter::HandleDamageTaken(float DamageAmount, AActor* DamageCauser
 	LastHitReactTime = CurrentTime;
 
 	const EFCDeathDirection HitDir = CalculateHitDirection(DamageCauser);
-	Multicast_PlayHitAnimation(HitDir);
+	const FGameplayTag HitReactionTag = FGameplayTag::RequestGameplayTag(FName("GameplayCue.Combat.HitReaction"), false);
+	if (AbilitySystemComponent && AbilitySystemComponent->AbilityActorInfo.IsValid() && HitReactionTag.IsValid())
+	{
+		FGameplayCueParameters CueParams;
+		CueParams.Location = DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation();
+		CueParams.RawMagnitude = static_cast<float>(HitDir);
+		AbilitySystemComponent->ExecuteGameplayCue(HitReactionTag, CueParams);
+	}
+	else
+	{
+		PlayHitAnimation(HitDir);
+	}
 }
 
 void AFCMobCharacter::PlayHitAnimation(EFCDeathDirection Direction)
@@ -420,11 +422,6 @@ void AFCMobCharacter::PlayHitAnimation(EFCDeathDirection Direction)
 			);
 		}
 	}
-}
-
-void AFCMobCharacter::Multicast_PlayHitAnimation_Implementation(EFCDeathDirection Direction)
-{
-	PlayHitAnimation(Direction);
 }
 
 UAnimSequence* AFCMobCharacter::GetHitAnimationForDirection(EFCDeathDirection Direction) const
