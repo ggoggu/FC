@@ -91,6 +91,16 @@ bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
 		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
+	// Explicit alias redirects for Korean localized identifiers (supports both wide TEXT and narrow string literals)
+	if (CardId == FName(TEXT("Card_점화")) || CardId == FName("Card_점화") || CardId == FName(TEXT("점화")) || CardId == FName("점화"))
+	{
+		return FindCardRow(FName(TEXT("Card_Ignite")), OutRow);
+	}
+	if (CardId == FName(TEXT("Card_센드워")) || CardId == FName("Card_센드워") || CardId == FName(TEXT("센드워")) || CardId == FName("센드워") || CardId == FName(TEXT("센드 워")) || CardId == FName("센드 워"))
+	{
+		return FindCardRow(FName(TEXT("Card_SandWall")), OutRow);
+	}
+
 	// 1. Fast in-memory struct lookup
 	if (const FFCCardTableRow* FoundRow = CachedCardRows.Find(CardId))
 	{
@@ -189,6 +199,16 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
+	// Explicit alias redirects for Korean localized identifiers (supports both wide TEXT and narrow string literals)
+	if (CardId == FName(TEXT("Card_점화")) || CardId == FName("Card_점화") || CardId == FName(TEXT("점화")) || CardId == FName("점화"))
+	{
+		return GetCardDataAsset(FName(TEXT("Card_Ignite")));
+	}
+	if (CardId == FName(TEXT("Card_센드워")) || CardId == FName("Card_센드워") || CardId == FName(TEXT("센드워")) || CardId == FName("센드워") || CardId == FName(TEXT("센드 워")) || CardId == FName("센드 워"))
+	{
+		return GetCardDataAsset(FName(TEXT("Card_SandWall")));
+	}
+
 	// 1. Return already instantiated/cached DataAsset wrapper
 	if (const TObjectPtr<UFCCardDataAsset>* Found = CardCatalog.Find(CardId))
 	{
@@ -211,6 +231,7 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		}
 
 		const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(NewAsset);
+		const_cast<UFCCardSubsystem*>(this)->CardCatalog.Add(CardId, NewAsset);
 		return NewAsset;
 	}
 
@@ -267,6 +288,11 @@ void UFCCardSubsystem::RegisterCardDataAsset(UFCCardDataAsset* DataAsset)
 		return;
 	}
 
+	if (!bCatalogLoaded)
+	{
+		LoadCardCatalog();
+	}
+
 	GLastActiveCardSubsystem = this;
 
 	FName CardId = DataAsset->GetCardId();
@@ -283,6 +309,11 @@ void UFCCardSubsystem::RegisterCardDataAsset(UFCCardDataAsset* DataAsset)
 	if (!CardId.IsNone())
 	{
 		CachedCardRows.Add(CardId, Row);
+		FString CardStr = CardId.ToString();
+		if (CardStr.StartsWith(TEXT("Card_")))
+		{
+			CachedCardRows.Add(FName(*(TEXT("DA_") + CardStr)), Row);
+		}
 	}
 	CachedCardRows.Add(DataAsset->GetFName(), Row);
 }
@@ -295,6 +326,12 @@ void UFCCardSubsystem::RegisterCardRow(FName CardId, const FFCCardTableRow& InRo
 	}
 
 	CachedCardRows.Add(CardId, InRow);
+	FString CardStr = CardId.ToString();
+	if (CardStr.StartsWith(TEXT("Card_")))
+	{
+		CachedCardRows.Add(FName(*(TEXT("DA_") + CardStr)), InRow);
+	}
+
 	// If a cached wrapper already exists, update its payload
 	if (TObjectPtr<UFCCardDataAsset>* Found = CardCatalog.Find(CardId))
 	{
@@ -389,37 +426,54 @@ void UFCCardSubsystem::LoadCardCatalog()
 				break;
 			}
 		}
-	}
 
-	// 2. Headless / Standalone Fallback: If uasset DataTable could not be loaded, load from project Content CSV
-	if (!CardDataTable || CardDataTable->GetRowMap().Num() == 0)
-	{
-		const FString CsvPath = FPaths::ProjectContentDir() / TEXT("Card/DT_CardCatalog.csv");
-		if (FPaths::FileExists(CsvPath))
+		if (CardDataTable)
 		{
-			FString CsvContent;
-			if (FFileHelper::LoadFileToString(CsvContent, *CsvPath))
+			for (const auto& RowPair : CardDataTable->GetRowMap())
 			{
-				if (!CardDataTable)
+				const FName RowName = RowPair.Key;
+				const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
+				if (TableRow)
 				{
-					CardDataTable = NewObject<UDataTable>(this, FName("DT_CardCatalog_Fallback"));
-					CardDataTable->RowStruct = FFCCardTableRow::StaticStruct();
+					RegisterCardRow(RowName, *TableRow);
 				}
-				CardDataTable->CreateTableFromCSVString(CsvContent);
 			}
 		}
 	}
 
-	// 3. Register rows from DataTable
-	if (CardDataTable)
+	// 2. Read and merge rows from Content/Card/DT_CardCatalog.csv (source of truth for latest cards and aliases)
+	const FString CsvPath = FPaths::ProjectContentDir() / TEXT("Card/DT_CardCatalog.csv");
+	const bool bCsvExists = FPaths::FileExists(CsvPath);
+	UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] CsvPath: %s, Exists: %d"), *CsvPath, bCsvExists);
+	if (bCsvExists)
 	{
-		for (const auto& RowPair : CardDataTable->GetRowMap())
+		FString CsvContent;
+		const bool bLoaded = FFileHelper::LoadFileToString(CsvContent, *CsvPath);
+		UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] LoadFileToString: %d, Len: %d"), bLoaded, CsvContent.Len());
+		if (bLoaded)
 		{
-			const FName RowName = RowPair.Key;
-			const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
-			if (TableRow)
+			UDataTable* CsvTable = NewObject<UDataTable>(this, FName("DT_CardCatalog_CsvSync"));
+			CsvTable->RowStruct = FFCCardTableRow::StaticStruct();
+			TArray<FString> Problems = CsvTable->CreateTableFromCSVString(CsvContent);
+			UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] CSV Problems: %d, Rows: %d"), Problems.Num(), CsvTable->GetRowMap().Num());
+			for (const FString& Prob : Problems)
 			{
-				RegisterCardRow(RowName, *TableRow);
+				UE_LOG(LogTemp, Warning, TEXT("[FCCardSubsystem] Problem: %s"), *Prob);
+			}
+
+			for (const auto& RowPair : CsvTable->GetRowMap())
+			{
+				const FName RowName = RowPair.Key;
+				const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
+				if (TableRow)
+				{
+					RegisterCardRow(RowName, *TableRow);
+				}
+			}
+
+			if (!CardDataTable)
+			{
+				CardDataTable = CsvTable;
 			}
 		}
 	}
