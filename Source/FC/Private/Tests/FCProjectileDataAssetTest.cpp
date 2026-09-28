@@ -74,13 +74,13 @@ bool FFCProjectileDataAssetTest::RunTest(const FString& Parameters)
 				// Projectile Data Asset Link
 				TestTrue(TEXT("Fire Arrow bSpawnsProjectile must be true"), ResolvedCard->GameplayData.bSpawnsProjectile);
 				TestTrue(TEXT("Fire Arrow must spawn projectile"), ResolvedCard->GameplayData.SpawnsProjectile());
-				TestNotNull(TEXT("Fire Arrow must have valid ProjectileDataAsset"), ResolvedCard->GameplayData.ProjectileDataAsset.Get());
-				if (ResolvedCard->GameplayData.ProjectileDataAsset)
+				TestNotNull(TEXT("Fire Arrow must have valid ProjectileDataAsset"), ResolvedCard->GameplayData.GetProjectileDataAsset());
+				if (const UFCProjectileDataAsset* ProjData = ResolvedCard->GameplayData.GetProjectileDataAsset())
 				{
-					TestEqual(TEXT("Projectile Launch Speed should be 3000.0"), ResolvedCard->GameplayData.ProjectileDataAsset->LaunchSpeed, 3000.0f);
-					TestEqual(TEXT("Projectile Damage should be 1.0"), ResolvedCard->GameplayData.ProjectileDataAsset->Damage, 1.0f);
-					TestTrue(TEXT("Projectile Elements should contain Fire"), ResolvedCard->GameplayData.ProjectileDataAsset->ProjectileElements.Contains(EFCElement::Fire));
-					TestTrue(TEXT("Projectile Template Class should be valid"), ResolvedCard->GameplayData.ProjectileDataAsset->ProjectileClass != nullptr);
+					TestEqual(TEXT("Projectile Launch Speed should be 3000.0"), ProjData->LaunchSpeed, 3000.0f);
+					TestEqual(TEXT("Projectile Damage should be 1.0"), ProjData->Damage, 1.0f);
+					TestTrue(TEXT("Projectile Elements should contain Fire"), ProjData->ProjectileElements.Contains(EFCElement::Fire));
+					TestTrue(TEXT("Projectile Template Class should be valid"), ProjData->ProjectileClass != nullptr);
 				}
 			}
 		}

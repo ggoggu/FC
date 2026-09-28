@@ -151,6 +151,13 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 			TargetAimLocation = TargetActor->GetActorLocation();
 		}
 	}
+	else if (!TargetAimLocation.IsZero())
+	{
+		// When no specific actor target is selected, cursor trace is typically at foot level on the ground.
+		// Level TargetAimLocation to the projectile's spawn height so it travels horizontally in the aim direction,
+		// preventing projectiles from diving steeply into the floor in front of the caster.
+		TargetAimLocation.Z = SpawnLocation.Z;
+	}
 
 	if (!TargetAimLocation.IsZero())
 	{
@@ -158,8 +165,8 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 		if (!AimDirection.IsNearlyZero())
 		{
 			FRotator AimRotator = AimDirection.Rotation();
-			// Clamp pitch angle between -75 and +75 degrees to avoid abnormal extreme elevation
-			AimRotator.Pitch = FMath::ClampAngle(AimRotator.Pitch, -75.0f, 75.0f);
+			// Clamp pitch angle between -35 and +35 degrees to avoid abnormal extreme elevation
+			AimRotator.Pitch = FMath::ClampAngle(AimRotator.Pitch, -35.0f, 35.0f);
 			AimRotator.Roll = 0.0f;
 			SpawnRotation = AimRotator;
 		}

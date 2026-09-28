@@ -11,6 +11,8 @@
 #include "AbilitySystem/FCAttributeSet.h"
 #include "AbilitySystem/Effects/FCGE_Damage.h"
 #include "Combat/FCCombatUtils.h"
+#include "Map/FCRoomBase.h"
+#include "Map/FCBombDamageable.h"
 #include "Engine/OverlapResult.h"
 #include "Net/UnrealNetwork.h"
 
@@ -130,12 +132,61 @@ void AFCProjectileBase::OnProjectileHit(UPrimitiveComponent* HitComp, AActor* Ot
 		return;
 	}
 
+	// Never impact Room container actors or WorldSettings
+	if (OtherActor->IsA<AFCRoomBase>() || OtherActor->IsA<AWorldSettings>())
+	{
+		return;
+	}
+
 	ProcessImpact(OtherActor, Hit);
 }
 
 void AFCProjectileBase::OnProjectileOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	if (!OtherActor || OtherActor == this || OtherActor == GetInstigator() || OtherActor == GetOwner())
+	{
+		return;
+	}
+
+	// Never impact Room container actors or WorldSettings
+	if (OtherActor->IsA<AFCRoomBase>() || OtherActor->IsA<AWorldSettings>())
+	{
+		return;
+	}
+
+	// Filter out non-combat triggers (e.g. RoomBoundsTrigger, InteractionTrigger, etc.)
+	if (OtherComp)
+	{
+		const FName ProfileName = OtherComp->GetCollisionProfileName();
+		const FString CompName = OtherComp->GetName();
+		if (ProfileName == FName("Trigger") || 
+			ProfileName == FName("OverlapAll") || 
+			ProfileName == FName("OverlapAllDynamic") ||
+			CompName.Contains(TEXT("Trigger"), ESearchCase::IgnoreCase) ||
+			CompName.Contains(TEXT("Bounds"), ESearchCase::IgnoreCase))
+		{
+			// Check if the actor itself is a valid damageable combat target (e.g. enemy pawn).
+			const bool bIsCombatTarget = UFCCombatUtils::IsAttackableTarget(GetInstigator(), OtherActor) ||
+				OtherActor->FindComponentByClass<UAbilitySystemComponent>() != nullptr ||
+				Cast<IAbilitySystemInterface>(OtherActor) != nullptr;
+
+			if (!bIsCombatTarget)
+			{
+				return;
+			}
+		}
+	}
+
+	// Only process overlap as an impact if the target is an attackable/damageable entity,
+	// or if the component actually blocks this projectile's collision channel
+	const bool bValidDamageable = UFCCombatUtils::IsAttackableTarget(GetInstigator(), OtherActor) ||
+		OtherActor->FindComponentByClass<UAbilitySystemComponent>() != nullptr ||
+		Cast<IAbilitySystemInterface>(OtherActor) != nullptr ||
+		OtherActor->Implements<UFCBombDamageable>();
+
+	const bool bBlockingComp = OtherComp && (OtherComp->GetCollisionResponseToChannel(CollisionComponent->GetCollisionObjectType()) == ECR_Block);
+
+	if (!bValidDamageable && !bBlockingComp)
 	{
 		return;
 	}
@@ -162,6 +213,9 @@ void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitR
 	HitActors.Add(OtherActor);
 
 	const FVector ImpactLocation = HitResult.ImpactPoint.IsZero() ? GetActorLocation() : FVector(HitResult.ImpactPoint);
+
+	UE_LOG(LogTemp, Log, TEXT("[AFCProjectileBase] ProcessImpact: %s impacted %s at %s"), 
+		*GetName(), *GetNameSafe(OtherActor), *ImpactLocation.ToString());
 
 	// Server-Authoritative Combat Resolution
 	if (HasAuthority())
