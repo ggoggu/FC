@@ -3,6 +3,35 @@
 #include "CoreMinimal.h"
 #include "FCDungeonTypes.generated.h"
 
+class AFCRoomBase;
+
+/**
+ * Room class entry with selection weight for random dungeon room generation.
+ */
+USTRUCT(BlueprintType)
+struct FFCDungeonRoomWeight
+{
+	GENERATED_BODY()
+
+	/** Room actor class to spawn */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon")
+	TSubclassOf<AFCRoomBase> RoomClass = nullptr;
+
+	/** Selection weight (higher value = higher chance). Must be >= 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float Weight = 1.0f;
+
+	FFCDungeonRoomWeight()
+		: RoomClass(nullptr)
+		, Weight(1.0f)
+	{}
+
+	FFCDungeonRoomWeight(TSubclassOf<AFCRoomBase> InRoomClass, float InWeight = 1.0f)
+		: RoomClass(InRoomClass)
+		, Weight(InWeight)
+	{}
+};
+
 UENUM(BlueprintType)
 enum class EFCRoomType : uint8
 {

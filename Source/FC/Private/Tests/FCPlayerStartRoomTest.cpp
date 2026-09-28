@@ -142,6 +142,42 @@ bool FFCPlayerStartRoomTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// =========================================================================
+	// Test 7: DefaultRooms Weighted Random Selection
+	// =========================================================================
+	{
+		AFCDungeonManager* DungeonMgr = NewObject<AFCDungeonManager>();
+		TestNotNull(TEXT("AFCDungeonManager must be valid for random map test"), DungeonMgr);
+
+		if (DungeonMgr)
+		{
+			// 1. Initial DefaultRooms has default element (AFCRoomBase)
+			TestEqual(TEXT("Initial DefaultRooms must return AFCRoomBase"), DungeonMgr->GetRandomDefaultRoomClass(), TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass()));
+
+			// 2. Fallback when DefaultRooms is explicitly emptied
+			DungeonMgr->SetDefaultRooms({});
+			TestEqual(TEXT("Empty DefaultRooms must fallback to AFCRoomBase"), DungeonMgr->GetRandomDefaultRoomClass(), TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass()));
+
+			// 3. Single item in DefaultRooms
+			DungeonMgr->AddDefaultRoom(AFCRoomBase::StaticClass(), 5.0f);
+			TestEqual(TEXT("Single item in DefaultRooms should return AFCRoomBase"), DungeonMgr->GetRandomDefaultRoomClass(), TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass()));
+
+			// 4. Zero-weight filtering test
+			// Add an entry with 0 weight (should never be selected)
+			TArray<FFCDungeonRoomWeight> FilterTestList;
+			FilterTestList.Add(FFCDungeonRoomWeight(AFCRoomBase::StaticClass(), 10.0f));
+			FilterTestList.Add(FFCDungeonRoomWeight(nullptr, 0.0f));
+			DungeonMgr->SetDefaultRooms(FilterTestList);
+
+			for (int32 i = 0; i < 20; ++i)
+			{
+				TSubclassOf<AFCRoomBase> Picked = DungeonMgr->GetRandomDefaultRoomClass();
+				TestNotNull(TEXT("Picked room class must not be null when valid entries exist"), Picked.Get());
+				TestEqual(TEXT("Picked room class must match the positive weighted entry"), Picked, TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass()));
+			}
+		}
+	}
+
 	return true;
 }
 
