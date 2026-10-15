@@ -1,8 +1,12 @@
 #include "Map/FCRoomBase.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/ChildActorComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "Character/FCCharacterBase.h"
+#include "Character/Mob/FCMobCharacter.h"
+#include "Gameplay/Spawner/FCMobSpawnerBase.h"
 #include "Map/FCDoorBase.h"
 #include "Map/FCDestructibleWall.h"
 #include "Map/FCWallBase.h"
@@ -56,9 +60,14 @@ void AFCRoomBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (HasAuthority() && RoomBoundsTrigger)
+	if (HasAuthority())
 	{
-		RoomBoundsTrigger->OnComponentBeginOverlap.AddDynamic(this, &AFCRoomBase::OnRoomBoundsBeginOverlap);
+		if (RoomBoundsTrigger)
+		{
+			RoomBoundsTrigger->OnComponentBeginOverlap.AddDynamic(this, &AFCRoomBase::OnRoomBoundsBeginOverlap);
+		}
+
+		FindAndRegisterChildSpawners();
 	}
 }
 
@@ -68,6 +77,17 @@ void AFCRoomBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	if (HasAuthority())
 	{
+		for (TObjectPtr<AFCMobSpawnerBase>& Spawner : ChildSpawners)
+		{
+			if (Spawner)
+			{
+				Spawner->OnAllMobsDefeated.RemoveAll(this);
+				Spawner->OnMobSpawned.RemoveAll(this);
+			}
+		}
+		ChildSpawners.Empty();
+		ActiveSpawnersRemaining.Empty();
+
 		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
 		{
 			if (Door)
@@ -133,6 +153,13 @@ void AFCRoomBase::SetRoomState(EFCRoomState NewState)
 	}
 	else if (RoomState == EFCRoomState::Cleared)
 	{
+		for (TObjectPtr<AFCMobSpawnerBase>& Spawner : ChildSpawners)
+		{
+			if (Spawner)
+			{
+				Spawner->StopSpawning();
+			}
+		}
 		LockAllDoors(false);
 	}
 
@@ -176,8 +203,122 @@ void AFCRoomBase::LockAllDoors(bool bLock)
 		if (Door)
 		{
 			Door->SetDoorLocked(bLock);
+			if (!bLock)
+			{
+				Door->SetDoorOpen(true);
+			}
 		}
 	}
+}
+
+void AFCRoomBase::RegisterChildSpawner(AFCMobSpawnerBase* Spawner)
+{
+	if (!HasAuthority() || !Spawner || ChildSpawners.Contains(Spawner))
+	{
+		return;
+	}
+
+	ChildSpawners.Add(Spawner);
+
+	// Stop spawner if room is not active yet to prevent premature spawning before player enters
+	if (RoomState != EFCRoomState::Active)
+	{
+		Spawner->StopSpawning();
+	}
+
+	Spawner->OnAllMobsDefeated.AddDynamic(this, &AFCRoomBase::OnChildSpawnerAllMobsDefeated);
+	Spawner->OnMobSpawned.AddDynamic(this, &AFCRoomBase::OnChildSpawnerMobSpawned);
+}
+
+void AFCRoomBase::FindAndRegisterChildSpawners()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	TArray<UChildActorComponent*> ChildActorComponents;
+	GetComponents<UChildActorComponent>(ChildActorComponents);
+
+	for (UChildActorComponent* Comp : ChildActorComponents)
+	{
+		if (!Comp)
+		{
+			continue;
+		}
+
+		if (AFCMobSpawnerBase* Spawner = Cast<AFCMobSpawnerBase>(Comp->GetChildActor()))
+		{
+			RegisterChildSpawner(Spawner);
+		}
+	}
+
+	TArray<AActor*> AttachedActors;
+	GetAttachedActors(AttachedActors);
+	for (AActor* AttachedActor : AttachedActors)
+	{
+		if (AFCMobSpawnerBase* Spawner = Cast<AFCMobSpawnerBase>(AttachedActor))
+		{
+			RegisterChildSpawner(Spawner);
+		}
+	}
+}
+
+void AFCRoomBase::StartRoomSpawners()
+{
+	ActiveSpawnersRemaining.Empty();
+
+	for (TObjectPtr<AFCMobSpawnerBase>& Spawner : ChildSpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->StartSpawning();
+			if (Spawner->GetActiveMobCount() > 0)
+			{
+				ActiveSpawnersRemaining.Add(Spawner);
+			}
+		}
+	}
+}
+
+void AFCRoomBase::OnChildSpawnerMobSpawned(AFCMobCharacter* Mob)
+{
+	if (!HasAuthority() || !Mob)
+	{
+		return;
+	}
+
+	AFCMobSpawnerBase* Spawner = Mob->GetOwningSpawner();
+	if (Spawner && !ActiveSpawnersRemaining.Contains(Spawner))
+	{
+		ActiveSpawnersRemaining.Add(Spawner);
+	}
+}
+
+void AFCRoomBase::OnChildSpawnerAllMobsDefeated(AFCMobSpawnerBase* Spawner)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	ActiveSpawnersRemaining.Remove(Spawner);
+	CheckWaveCleared();
+}
+
+void AFCRoomBase::OnMonsterDeath(AActor* DeadActor, AActor* Killer)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	ActiveMonsters.RemoveAll([DeadActor](const TWeakObjectPtr<APawn>& Monster)
+	{
+		return !Monster.IsValid() || Monster.Get() == DeadActor;
+	});
+
+	CheckWaveCleared();
 }
 
 FTransform AFCRoomBase::GetDoorSocketTransform(uint8 DirectionBit) const
@@ -304,7 +445,7 @@ void AFCRoomBase::OnRoomBoundsBeginOverlap(UPrimitiveComponent* OverlappedCompon
 	}
 }
 
-void AFCRoomBase::HandleCombatTriggered()
+void AFCRoomBase::HandleCombatTriggered_Implementation()
 {
 	// Non-combat rooms clear immediately
 	if (RoomData.RoomType == EFCRoomType::Start ||
@@ -316,18 +457,43 @@ void AFCRoomBase::HandleCombatTriggered()
 		return;
 	}
 
-	// Normal and Boss rooms lock doors and begin monster wave
+	// Normal and Boss rooms lock doors and begin combat
 	LockAllDoors(true);
-	SpawnMonsterWave();
+
+	// Ensure any newly created or late-initialized child spawners are registered
+	FindAndRegisterChildSpawners();
+
+	bool bHasCombatContent = false;
+
+	if (ChildSpawners.Num() > 0)
+	{
+		StartRoomSpawners();
+		if (ActiveSpawnersRemaining.Num() > 0)
+		{
+			bHasCombatContent = true;
+		}
+	}
+
+	if (MonsterClasses.Num() > 0)
+	{
+		SpawnMonsterWave();
+		if (ActiveMonsters.Num() > 0)
+		{
+			bHasCombatContent = true;
+		}
+	}
+
+	if (!bHasCombatContent && ActiveSpawnersRemaining.Num() == 0 && ActiveMonsters.Num() == 0)
+	{
+		SetRoomState(EFCRoomState::Cleared);
+	}
 }
 
-void AFCRoomBase::SpawnMonsterWave()
+void AFCRoomBase::SpawnMonsterWave_Implementation()
 {
 	UWorld* World = GetWorld();
 	if (!World || MonsterClasses.Num() == 0)
 	{
-		// No monsters configured: auto-clear room
-		SetRoomState(EFCRoomState::Cleared);
 		return;
 	}
 
@@ -356,13 +522,12 @@ void AFCRoomBase::SpawnMonsterWave()
 		if (Monster)
 		{
 			Monster->OnDestroyed.AddDynamic(this, &AFCRoomBase::OnMonsterDestroyed);
+			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(Monster))
+			{
+				Char->OnDeath.AddDynamic(this, &AFCRoomBase::OnMonsterDeath);
+			}
 			ActiveMonsters.Add(Monster);
 		}
-	}
-
-	if (ActiveMonsters.Num() == 0)
-	{
-		SetRoomState(EFCRoomState::Cleared);
 	}
 }
 
@@ -383,7 +548,12 @@ void AFCRoomBase::CheckWaveCleared()
 		return !Monster.IsValid();
 	});
 
-	if (ActiveMonsters.Num() == 0)
+	ActiveSpawnersRemaining.RemoveAll([](const TWeakObjectPtr<AFCMobSpawnerBase>& Spawner)
+	{
+		return !Spawner.IsValid();
+	});
+
+	if (ActiveMonsters.Num() == 0 && ActiveSpawnersRemaining.Num() == 0)
 	{
 		SetRoomState(EFCRoomState::Cleared);
 	}

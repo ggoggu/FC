@@ -215,6 +215,20 @@ def run_net_pie_check() -> tuple[bool, dict]:
     }
     return is_ok, summary
 
+def run_inspect_check(asset: str, deep: bool = False) -> tuple[bool, dict]:
+    """Runs asset metadata extraction for BP, WBP, Animation, or other .uasset files."""
+    extra = ["--asset", asset]
+    if deep:
+        extra.append("--deep")
+    retcode, data, _ = run_script_json("dump_asset_metadata.py", extra)
+    is_ok = (retcode == 0 and "error" not in data and data.get("status") != "ERROR")
+    summary = {
+        "mode": "inspect",
+        "passed": is_ok,
+        "details": data
+    }
+    return is_ok, summary
+
 def execute_auto_commit(commit_msg: str | None = None) -> bool:
     """Stages modified and new files, then creates a Git commit."""
     try:
@@ -283,6 +297,27 @@ def print_compact_summary(summary: dict):
         duration = summary.get("duration", 0)
         print(f"[{badge}] {mode.upper()} Simulation ({duration}s): status={summary.get('status')}")
 
+    elif mode == "inspect":
+        data = summary.get("details", {})
+        asset_name = data.get("asset_name", "Unknown")
+        asset_type = data.get("asset_type", "Unknown")
+        mode_used = data.get("inspection_mode", "")
+        print(f"[{badge}] Inspect Asset: {asset_name} ({asset_type}) [{mode_used}]")
+        if "detected_widgets" in data and data["detected_widgets"]:
+            print(f"  - Widgets: {', '.join(data['detected_widgets'][:8])}")
+        if "detected_viewmodels" in data and data["detected_viewmodels"]:
+            print(f"  - ViewModels: {', '.join(data['detected_viewmodels'][:5])}")
+        if "detected_bindings" in data and data["detected_bindings"]:
+            print(f"  - Bindings: {', '.join(data['detected_bindings'][:6])}")
+        if "detected_notifies" in data and data["detected_notifies"]:
+            print(f"  - Notifies: {', '.join(data['detected_notifies'][:8])}")
+        if "detected_slots" in data and data["detected_slots"]:
+            print(f"  - Slots: {', '.join(data['detected_slots'][:5])}")
+        if "detected_components" in data and data["detected_components"]:
+            print(f"  - Components: {', '.join(data['detected_components'][:8])}")
+        if "referenced_engine_classes" in data and data["referenced_engine_classes"]:
+            print(f"  - Classes: {', '.join(data['referenced_engine_classes'][:6])}")
+
     elif mode == "full":
         print(f"[{badge}] Full Pipeline Execution:")
         for step in summary.get("steps", []):
@@ -307,7 +342,7 @@ def main():
         "mode",
         nargs="?",
         default="static",
-        choices=["static", "gas", "replication", "build", "balance", "test", "net", "full"],
+        choices=["static", "gas", "replication", "build", "balance", "test", "net", "inspect", "full"],
         help="Pipeline mode to execute:\n"
              "  static      : Fast static checks (Bandwidth, Replication, GAS)\n"
              "  gas         : Focused GAS static verification (verify_gas.py)\n"
@@ -316,8 +351,11 @@ def main():
              "  balance     : Mathematical TTK and balance benchmark simulation\n"
              "  test        : Automation test execution\n"
              "  net         : Headless PIE multiplayer network degradation simulation\n"
+             "  inspect     : Inspect and dump JSON metadata for BP, WBP, Anim (.uasset)\n"
              "  full        : Sequential full pipeline (static -> build -> test)"
     )
+    parser.add_argument("--asset", "-a", type=str, default=None, help="Asset path for inspect mode (e.g. Content/UI/BP/WBP_HUD.uasset)")
+    parser.add_argument("--deep", action="store_true", help="Perform deep engine reflection inspection in inspect mode")
     parser.add_argument("--json", action="store_true", help="Emit output strictly as aggregated JSON")
     parser.add_argument("--skip-gas", action="store_true", help="Skip GAS static check in static/full mode (useful for non-GAS tasks)")
     parser.add_argument("--clean", action="store_true", help="Clean build before compiling (build/full mode)")
@@ -337,6 +375,12 @@ def main():
 
     elif args.mode == "replication":
         overall_passed, aggregated_report = run_static_checks(json_output=args.json, repl_only=True)
+
+    elif args.mode == "inspect":
+        if not args.asset:
+            print("[ERROR] --asset argument is required for inspect mode (e.g. --asset Content/UI/BP/WBP_HUD.uasset)")
+            sys.exit(1)
+        overall_passed, aggregated_report = run_inspect_check(args.asset, deep=args.deep)
 
     elif args.mode == "build":
         overall_passed, aggregated_report = run_build_check(clean=args.clean)

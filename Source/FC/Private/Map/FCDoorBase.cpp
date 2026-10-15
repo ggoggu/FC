@@ -79,9 +79,18 @@ void AFCDoorBase::OnPlayLockEffect_Implementation(bool bLocked)
 {
 	if (DoorMesh)
 	{
-		// When locked, door blocks passage
-		DoorMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-		DoorMesh->SetVisibility(true);
+		if (bLocked)
+		{
+			// When locked, door blocks passage
+			DoorMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			DoorMesh->SetVisibility(true);
+		}
+		else
+		{
+			// When unlocked, collision and visibility reflect whether the door is open
+			DoorMesh->SetCollisionEnabled(bIsOpen ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+			DoorMesh->SetVisibility(!bIsOpen);
+		}
 	}
 
 	USoundBase* SoundToPlay = bLocked ? LockSound : UnlockSound;

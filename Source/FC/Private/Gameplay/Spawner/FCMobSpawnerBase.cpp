@@ -103,6 +103,11 @@ void AFCMobSpawnerBase::StopSpawning()
 	}
 
 	bIsActive = false;
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(InitialDelayTimerHandle);
+	}
 }
 
 void AFCMobSpawnerBase::ResetSpawner(bool bDestroyActiveMobs)

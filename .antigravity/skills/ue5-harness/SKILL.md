@@ -36,3 +36,7 @@ This skill provides direct terminal entry points and automated diagnostic workfl
 7. **Run Automation Tests (`ue5_run_tests`)**:
    - Command: `python Scripts/run_tests.py --pretty`
    - Executes `UnrealEditor-Cmd.exe` headless automation tests and reports JSON metrics.
+
+8. **Inspect Editor Asset (`ue5_inspect_asset`)**:
+   - Command: `python Scripts/dump_asset_metadata.py --json --asset <path>`
+   - Inspects BP, WBP, Animation (AnimMontage, AnimBlueprint), and other `.uasset` files, outputting structured JSON metadata (widgets, notifies, viewmodels, parent classes, components).

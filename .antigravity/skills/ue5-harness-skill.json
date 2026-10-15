@@ -30,6 +30,10 @@
     "ue5_run_tests": {
       "command": "python Scripts/run_tests.py --pretty",
       "description": "Executes headless automation tests via UnrealEditor-Cmd in null-rhi mode and returns JSON results."
+    },
+    "ue5_inspect_asset": {
+      "command": "python Scripts/dump_asset_metadata.py --json",
+      "description": "Inspects and dumps structured JSON metadata for BP, WBP, Animation, or other .uasset editor files."
     }
   }
 }
