@@ -152,7 +152,7 @@ All autonomous agents and developers must strictly adhere to the principle of le
 
 4. **Ground Truth Over Guessing (에셋 추측 금지 & 메타데이터 확인)**:
    - When interacting with or modifying logic related to existing Blueprints (`BP_*`), Widget Blueprints (`WBP_*`), or Animation assets (`MM_*`, `ABP_*`), never hallucinate internal slots, widgets, or notifies.
-   - Execute `python Scripts/pipeline.py inspect --asset <path>` (or MCP tool `ue5_inspect_asset`) to obtain verified ground-truth JSON metadata before reasoning or modifying code.
+   - Execute `python Scripts/pipeline.py inspect --asset <path>` (or append `--deep` for live reflection) to obtain verified ground-truth JSON metadata before reasoning or modifying code.
 
 
 

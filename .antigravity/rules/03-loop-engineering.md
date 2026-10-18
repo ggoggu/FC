@@ -82,7 +82,7 @@ To guarantee 100% reasoning accuracy and eliminate hallucinations when working w
      ```powershell
      python Scripts/pipeline.py inspect --asset <path>
      ```
-     *(or via MCP tool `ue5_inspect_asset`)*
+     *(or append `--deep` for live reflection)*
 2. **Extracted Schema Utilization**:
    - **Widget Blueprints (WBP)**: Cross-reference `detected_widgets`, `detected_viewmodels`, and `detected_bindings` with C++ `UMVVMViewModelBase` / `FieldNotify` properties.
    - **AnimMontages & AnimBlueprints**: Use `detected_notifies`, `detected_slots`, and `detected_tracks` to verify exact notify names, gameplay tags, and target skeletal slots without guessing.
