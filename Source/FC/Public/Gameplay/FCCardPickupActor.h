@@ -36,9 +36,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Card|Pickup")
 	FName GetDropCardId() const { return DropCardId; }
 
-	/** Server RPC to claim this card pickup into player's deck */
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Pickup")
-	void Server_ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
+	/** Authoritative server execution to claim this card pickup into player's deck */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Pickup")
+	bool ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
 
 	/** Dismisses and closes the Card Reward Widget for the local player */
 	UFUNCTION(BlueprintCallable, Category = "Card|UI")

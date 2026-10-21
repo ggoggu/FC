@@ -2,12 +2,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "AttributeSet.h"
+#include "Data/Card/FCCardTypes.h"
 #include "FCPlayerController.generated.h"
 
 class UInputMappingContext;
 class UFCHUDWidget;
 class UFCHUDViewModel;
 class UFCCardDataAsset;
+class AFCCardPickupActor;
 struct FFCCardTargetInfo;
 
 /**
@@ -35,6 +38,10 @@ public:
 	/** Submits a request to play a card through the authoritative DeckComponent */
 	UFUNCTION(BlueprintCallable, Category = "Card|Actions")
 	void RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo);
+
+	/** Authoritative Server RPC to claim a card pickup actor in the world */
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Pickup")
+	void Server_ClaimCardPickup(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
 
 	/** Resolves targeting info (target actor, target 3D world location) under the current mouse cursor */
 	UFUNCTION(BlueprintCallable, Category = "Card|Targeting")
@@ -139,6 +146,12 @@ private:
 	void InitializeDefaultMappingContext();
 	void BindDeckComponentEvents();
 	void BindAttributeListeners();
+	void UnbindAttributeListeners();
+
+	UPROPERTY(Transient)
+	TWeakObjectPtr<class UAbilitySystemComponent> BoundASC;
+
+	TArray<TTuple<struct FGameplayAttribute, FDelegateHandle>> BoundAttributeHandles;
 
 	void OnNumberKey1Pressed() { HandleNumberKeyInput(0); }
 	void OnNumberKey2Pressed() { HandleNumberKeyInput(1); }

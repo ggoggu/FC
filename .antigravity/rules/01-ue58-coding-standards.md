@@ -130,3 +130,28 @@ private:
     void OnRep_Health(float OldHealth);
 };
 ```
+
+---
+
+## 7. Minimal Footprint & Structural Preservation
+
+- **Minimal Modification Scope (최소한의 수정)**:
+  - Keep diffs tight and focused strictly on the user request.
+  - Do not rewrite, reformat, or refactor working code outside the task scope.
+- **Maximize Existing Code Utilization (기존 구조 및 코드 최대한 활용)**:
+  - Always survey existing modules, helper methods, classes, and project structures before authoring new implementations.
+  - Extend and leverage existing code rather than creating redundant parallel systems or reinventing logic.
+- **Documentation & Intent Preservation**:
+  - Retain existing comments, docstrings, and author intent across unmodified sections.
+
+---
+
+## 8. Hardcoding & Delegate Hygiene
+
+1. **No Hardcoded Asset Paths in C++ Constructors**:
+   - Do NOT use `ConstructorHelpers::FObjectFinder` or hardcoded `TEXT("/Game/...")` strings in C++ constructors.
+   - Asset references (Meshes, Materials, Animations, InputActions) must be configured via `TSoftObjectPtr`, `UPrimaryDataAsset`, or subclassed Blueprint defaults (`BP_*`).
+2. **Single Source of Truth (SSOT)**:
+   - Never duplicate lists of identifiers (e.g. Starter Decks, Ability IDs) across multiple classes (`GameMode`, `Subsystem`, etc.). Read them from a single DataAsset or DataTable.
+3. **Delegate Lifecycle Safety**:
+   - In functions called repeatedly (`SetupHUD`, `PossessedBy`), never register raw lambdas (`.AddLambda([this])`) without removing previous handles. Use `AddWeakLambda(this, ...)` or ensure explicit `RemoveAll(this)`.

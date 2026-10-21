@@ -318,6 +318,11 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 	{
 		// Generic Actor Damage fallback
 		UGameplayStatics::ApplyPointDamage(TargetActor, Damage, GetVelocity().GetSafeNormal(), HitResult, GetInstigatorController(), this, nullptr);
+
+		if (TargetActor->Implements<UFCBombDamageable>())
+		{
+			IFCBombDamageable::Execute_ReceiveBombDamage(TargetActor, Damage, HitResult.ImpactPoint, GetInstigator());
+		}
 	}
 
 	// Apply on-hit combat traits (e.g. Mage attack card applies element stacks)

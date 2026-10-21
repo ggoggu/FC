@@ -70,3 +70,22 @@ The project provides a unified master runner for all verification tasks:
 | **`UHT Error: Replicated property missing LifetimeProps`** | Replicated variable declared without `GetLifetimeReplicatedProps` | Implement `GetLifetimeReplicatedProps` with `DOREPLIFETIME_CONDITION`. |
 | **`LNK2019 / LNK2001: unresolved external symbol`** | Missing Module dependency in `Build.cs` or unimplemented member | Add missing module to `FC.Build.cs` (e.g. `NetCore`, `EnhancedInput`) or define the function body. |
 | **Replication Verification Failure** | Server header includes widget or missing `bReplicates` | Move widget includes to `.cpp` / use forward declaration; ensure `bReplicates = true;` in constructor. |
+
+---
+
+## 5. Editor Asset Inspection Protocol (BP / WBP / Animation)
+
+To guarantee 100% reasoning accuracy and eliminate hallucinations when working with binary `.uasset` files:
+
+1. **Mandatory Ground Truth Inspection**:
+   - Before reasoning about or modifying code that interfaces with existing Blueprints (`BP_*`), Widget Blueprints (`WBP_*`), or Animation assets (`MM_*`, `ABP_*`), autonomous agents **MUST** inspect the asset metadata using:
+     ```powershell
+     python Scripts/pipeline.py inspect --asset <path>
+     ```
+     *(or append `--deep` for live reflection)*
+2. **Extracted Schema Utilization**:
+   - **Widget Blueprints (WBP)**: Cross-reference `detected_widgets`, `detected_viewmodels`, and `detected_bindings` with C++ `UMVVMViewModelBase` / `FieldNotify` properties.
+   - **AnimMontages & AnimBlueprints**: Use `detected_notifies`, `detected_slots`, and `detected_tracks` to verify exact notify names, gameplay tags, and target skeletal slots without guessing.
+   - **Actor Blueprints (BP)**: Verify `detected_components`, `detected_variables`, and parent C++ classes before adding or binding components.
+3. **Deep Engine Reflection Fallback**:
+   - When exact property values or runtime CDO numbers are required, append `--deep` to execute headless reflection extraction via Unreal Engine.

@@ -2,8 +2,7 @@
 #include "Net/UnrealNetwork.h"
 #include "GameplayEffectExtension.h"
 #include "Character/FCCharacterBase.h"
-#include "Gameplay/FCChestActor.h"
-
+#include "Engine/DamageEvents.h"
 UFCAttributeSet::UFCAttributeSet()
 {
 	InitHealth(100.f);
@@ -204,25 +203,23 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 					Char->HandleDamageTaken(IncomingDamage, DamageCauser, HitResult ? *HitResult : FHitResult());
 				}
 			}
-			else if (AFCChestActor* Chest = Cast<AFCChestActor>(TargetActor))
+			else if (TargetActor)
 			{
 				const float IncomingDamage = -Data.EvaluatedData.Magnitude;
-				if (IncomingDamage >= Chest->GetDamageThreshold())
+				AController* InstigatorController = nullptr;
+				if (AActor* InstigatorActor = Data.EffectSpec.GetEffectContext().GetInstigator())
 				{
-					AController* InstigatorController = nullptr;
-					if (AActor* InstigatorActor = Data.EffectSpec.GetEffectContext().GetInstigator())
+					if (APawn* InstigatorPawn = Cast<APawn>(InstigatorActor))
 					{
-						if (APawn* InstigatorPawn = Cast<APawn>(InstigatorActor))
-						{
-							InstigatorController = InstigatorPawn->GetController();
-						}
-						else if (AController* AsController = Cast<AController>(InstigatorActor))
-						{
-							InstigatorController = AsController;
-						}
+						InstigatorController = InstigatorPawn->GetController();
 					}
-					Chest->DestroyAndSpawnDrops(InstigatorController, DamageCauser);
+					else if (AController* AsController = Cast<AController>(InstigatorActor))
+					{
+						InstigatorController = AsController;
+					}
 				}
+				FDamageEvent DamageEvent;
+				TargetActor->TakeDamage(IncomingDamage, DamageEvent, InstigatorController, DamageCauser);
 			}
 		}
 	}

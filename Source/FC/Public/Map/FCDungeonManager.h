@@ -19,8 +19,6 @@ class FC_API AFCDungeonManager : public AActor
 public:
 	AFCDungeonManager();
 
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
 	// Server-side generation of both logic grid and 3D world actors
 	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
 	void GenerateDungeon();

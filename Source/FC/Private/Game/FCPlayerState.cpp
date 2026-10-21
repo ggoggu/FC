@@ -14,7 +14,7 @@ void AFCPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AFCPlayerState, CharacterClass);
+	DOREPLIFETIME_CONDITION(AFCPlayerState, CharacterClass, COND_None);
 }
 
 void AFCPlayerState::CopyProperties(APlayerState* NewPlayerState)

@@ -10,6 +10,8 @@ class USceneComponent;
 class AFCDoorBase;
 class AFCDestructibleWall;
 class AFCWallBase;
+class AFCMobSpawnerBase;
+class AFCMobCharacter;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnFCRoomStateChanged, AFCRoomBase*, Room, EFCRoomState, NewState);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnFCRoomDiscoveryChanged, AFCRoomBase*, Room, bool, bDiscovered);
@@ -42,6 +44,15 @@ public:
 	// Door Control (Server)
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
 	void LockAllDoors(bool bLock);
+
+	// Spawner Registration & Management
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Combat")
+	void RegisterChildSpawner(AFCMobSpawnerBase* Spawner);
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Combat")
+	void FindAndRegisterChildSpawners();
+
+	const TArray<TObjectPtr<AFCMobSpawnerBase>>& GetChildSpawners() const { return ChildSpawners; }
 
 	// Sockets accessors
 	UFUNCTION(BlueprintPure, Category = "FC|Room|Sockets")
@@ -89,12 +100,28 @@ protected:
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 	// Combat & Wave handling
-	virtual void HandleCombatTriggered();
-	virtual void SpawnMonsterWave();
+	UFUNCTION(BlueprintNativeEvent, Category = "FC|Room|Combat")
+	void HandleCombatTriggered();
+	virtual void HandleCombatTriggered_Implementation();
+
+	UFUNCTION(BlueprintNativeEvent, Category = "FC|Room|Combat")
+	void SpawnMonsterWave();
+	virtual void SpawnMonsterWave_Implementation();
+
+	virtual void StartRoomSpawners();
 	virtual void CheckWaveCleared();
 
 	UFUNCTION()
 	virtual void OnMonsterDestroyed(AActor* DestroyedActor);
+
+	UFUNCTION()
+	virtual void OnMonsterDeath(AActor* DeadActor, AActor* Killer);
+
+	UFUNCTION()
+	virtual void OnChildSpawnerAllMobsDefeated(AFCMobSpawnerBase* Spawner);
+
+	UFUNCTION()
+	virtual void OnChildSpawnerMobSpawned(AFCMobCharacter* Mob);
 
 	UFUNCTION()
 	virtual void OnSecretWallDestroyed(AFCDestructibleWall* Wall);
@@ -150,6 +177,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Room|Combat")
 	int32 MonsterWaveCount = 3;
 
+	// Spawners attached to or managed by this room
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Combat")
+	TArray<TObjectPtr<AFCMobSpawnerBase>> ChildSpawners;
+
 	// Replicated State
 	UPROPERTY(ReplicatedUsing = OnRep_RoomData, BlueprintReadOnly, Category = "FC|Room")
 	FFCRoomData RoomData;
@@ -174,4 +205,5 @@ protected:
 
 private:
 	TArray<TWeakObjectPtr<APawn>> ActiveMonsters;
+	TArray<TWeakObjectPtr<AFCMobSpawnerBase>> ActiveSpawnersRemaining;
 };

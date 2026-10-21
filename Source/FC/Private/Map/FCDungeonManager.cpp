@@ -14,7 +14,7 @@
 AFCDungeonManager::AFCDungeonManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	bReplicates = true;
+	bReplicates = false; // Pure server-authoritative manager; rooms and contents replicate individually
 
 	DefaultRooms.Add(FFCDungeonRoomWeight(AFCRoomBase::StaticClass(), 1.0f));
 	SecretWallClass = AFCDestructibleWall::StaticClass();
@@ -60,11 +60,6 @@ void AFCDungeonManager::BeginPlay()
 			TeleportPlayersToStartRoom();
 		}
 	}
-}
-
-void AFCDungeonManager::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 }
 
 void AFCDungeonManager::GenerateDungeon()

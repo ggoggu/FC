@@ -441,43 +441,6 @@ void UFCCardSubsystem::LoadCardCatalog()
 		}
 	}
 
-	// 2. Read and merge rows from Content/Card/DT_CardCatalog.csv (source of truth for latest cards and aliases)
-	const FString CsvPath = FPaths::ProjectContentDir() / TEXT("Card/DT_CardCatalog.csv");
-	const bool bCsvExists = FPaths::FileExists(CsvPath);
-	UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] CsvPath: %s, Exists: %d"), *CsvPath, bCsvExists);
-	if (bCsvExists)
-	{
-		FString CsvContent;
-		const bool bLoaded = FFileHelper::LoadFileToString(CsvContent, *CsvPath);
-		UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] LoadFileToString: %d, Len: %d"), bLoaded, CsvContent.Len());
-		if (bLoaded)
-		{
-			UDataTable* CsvTable = NewObject<UDataTable>(this, FName("DT_CardCatalog_CsvSync"));
-			CsvTable->RowStruct = FFCCardTableRow::StaticStruct();
-			TArray<FString> Problems = CsvTable->CreateTableFromCSVString(CsvContent);
-			UE_LOG(LogTemp, Log, TEXT("[FCCardSubsystem] CSV Problems: %d, Rows: %d"), Problems.Num(), CsvTable->GetRowMap().Num());
-			for (const FString& Prob : Problems)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[FCCardSubsystem] Problem: %s"), *Prob);
-			}
-
-			for (const auto& RowPair : CsvTable->GetRowMap())
-			{
-				const FName RowName = RowPair.Key;
-				const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
-				if (TableRow)
-				{
-					RegisterCardRow(RowName, *TableRow);
-				}
-			}
-
-			if (!CardDataTable)
-			{
-				CardDataTable = CsvTable;
-			}
-		}
-	}
-
 	// 4. AssetManager metadata scan: Only register already-in-memory PrimaryDataAssets without blocking disk loads
 	if (UAssetManager* AssetManager = UAssetManager::GetIfInitialized())
 	{

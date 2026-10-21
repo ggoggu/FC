@@ -173,3 +173,8 @@ All Gameplay Tags must follow a structured hierarchical taxonomy:
 3. **Strict UI Decoupling**:
    - `UGameplayAbility` classes and `UAttributeSet` classes must never reference UMG widgets or HUD classes.
    - UI widgets observe attribute changes by binding to `UAbilitySystemComponent::GetGameplayAttributeValueChangeDelegate`.
+4. **Strict Concrete Actor Decoupling (OCP)**:
+   - `UFCAttributeSet` and core GAS classes must **never** include or cast to concrete gameplay actor classes.
+   - Core gameplay systems and attribute sets should notify world objects through standard engine damage (`AActor::TakeDamage`, `FDamageEvent`), event delegates, or generalized interfaces, preserving an open-closed architecture.
+5. **Non-Replicated Damage Meta-Attribute Pattern**:
+   - Do not subtract damage directly from `Health` inside GameplayEffects if shields or mitigation exist. Define an un-replicated `Damage` meta-attribute in `UFCAttributeSet` to absorb `Shield` first in `PostGameplayEffectExecute`, apply remainder to `Health`, and reset `Damage = 0.0f`. (Eliminates the anti-pattern of adding back subtracted health).
