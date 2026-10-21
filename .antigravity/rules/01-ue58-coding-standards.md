@@ -143,3 +143,15 @@ private:
   - Extend and leverage existing code rather than creating redundant parallel systems or reinventing logic.
 - **Documentation & Intent Preservation**:
   - Retain existing comments, docstrings, and author intent across unmodified sections.
+
+---
+
+## 8. Hardcoding & Delegate Hygiene
+
+1. **No Hardcoded Asset Paths in C++ Constructors**:
+   - Do NOT use `ConstructorHelpers::FObjectFinder` or hardcoded `TEXT("/Game/...")` strings in C++ constructors.
+   - Asset references (Meshes, Materials, Animations, InputActions) must be configured via `TSoftObjectPtr`, `UPrimaryDataAsset`, or subclassed Blueprint defaults (`BP_*`).
+2. **Single Source of Truth (SSOT)**:
+   - Never duplicate lists of identifiers (e.g. Starter Decks, Ability IDs) across multiple classes (`GameMode`, `Subsystem`, etc.). Read them from a single DataAsset or DataTable.
+3. **Delegate Lifecycle Safety**:
+   - In functions called repeatedly (`SetupHUD`, `PossessedBy`), never register raw lambdas (`.AddLambda([this])`) without removing previous handles. Use `AddWeakLambda(this, ...)` or ensure explicit `RemoveAll(this)`.

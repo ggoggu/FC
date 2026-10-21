@@ -61,6 +61,7 @@ All gameplay systems must be designed for authoritative server-client synchroniz
 - **Implementation & Validation Pair**:
   - `Server_ExecuteAttack_Validate(const FFCAttackParameters& Params)`: Validate parameters against cheating, impossible distances, invalid indices, or cooldown states. Return `false` to kick/flag malicious requests.
   - `Server_ExecuteAttack_Implementation(const FFCAttackParameters& Params)`: Authoritative gameplay execution.
+- **Owning Connection Prerequisite**: Calling a Server RPC on a field actor without an owning connection (`NetOwner == nullptr`, e.g. dropped cards, chests) will silently fail. World interaction/pickup requests must be routed through the client's own actor (e.g. `PlayerController->Server_ClaimPickup(TargetActor)` or `DeckComponent->Server_Interact(TargetActor)`).
 
 ### 2. Client RPCs (`Client_*`)
 - Use Client RPCs for targeted notifications directed to the owning controller/client:
@@ -109,3 +110,9 @@ if (HasAuthority()) // or GetLocalRole() == ROLE_Authority
 - **Never** instantiate, reference, or modify UMG Widgets or HUDs on the server.
 - Server-side code must not include `#include "Blueprint/UserWidget.h"` or Slate headers.
 - UI elements must react passively to replicated property updates (`OnRep_*`) or Client RPC triggers on the autonomous client.
+
+---
+
+## 5. Multiplayer Level Transitions
+
+- **ServerTravel Mandatory**: Always use `GetWorld()->ServerTravel(MapURL, false)` for server-initiated map changes. Never call `UGameplayStatics::OpenLevel()` on the server, as it disconnects remote clients.

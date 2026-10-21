@@ -261,13 +261,6 @@ void AFCGameMode::TransitionToLevel(const FString& MapURL, bool bSeamless)
 		}
 	}
 
-	if (bSeamless)
-	{
-		bUseSeamlessTravel = true;
-		GetWorld()->ServerTravel(MapURL, false);
-	}
-	else
-	{
-		UGameplayStatics::OpenLevel(this, FName(*MapURL));
-	}
+	bUseSeamlessTravel = bSeamless;
+	GetWorld()->ServerTravel(MapURL, false);
 }

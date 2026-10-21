@@ -2,7 +2,7 @@
 #include "UI/ViewModel/FCCardRewardViewModel.h"
 #include "Gameplay/FCCardPickupActor.h"
 #include "Data/Card/FCCardSubsystem.h"
-#include "GameFramework/PlayerController.h"
+#include "Controller/Player/FCPlayerController.h"
 
 UFCCardRewardWidget::UFCCardRewardWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -62,7 +62,10 @@ void UFCCardRewardWidget::OnAcquireClicked()
 {
 	if (SourcePickupActor.IsValid())
 	{
-		SourcePickupActor->Server_ClaimPickup(GetOwningPlayerPawn());
+		if (AFCPlayerController* PC = Cast<AFCPlayerController>(GetOwningPlayer()))
+		{
+			PC->Server_ClaimCardPickup(SourcePickupActor.Get());
+		}
 	}
 
 	CloseRewardWidget();

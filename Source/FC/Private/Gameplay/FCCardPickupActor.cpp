@@ -41,8 +41,8 @@ void AFCCardPickupActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AFCCardPickupActor, DropCardId);
-	DOREPLIFETIME(AFCCardPickupActor, bIsClaimed);
+	DOREPLIFETIME_CONDITION(AFCCardPickupActor, DropCardId, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AFCCardPickupActor, bIsClaimed, COND_None);
 }
 
 void AFCCardPickupActor::BeginPlay()
@@ -164,16 +164,11 @@ UFCCardRewardWidget* AFCCardPickupActor::GetActiveRewardWidget() const
 	return ActiveRewardWidget;
 }
 
-bool AFCCardPickupActor::Server_ClaimPickup_Validate(APawn* ClaimerPawn, EFCCardAddDestination Destination)
+bool AFCCardPickupActor::ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination)
 {
-	return !bIsClaimed && !DropCardId.IsNone() && ClaimerPawn != nullptr;
-}
-
-void AFCCardPickupActor::Server_ClaimPickup_Implementation(APawn* ClaimerPawn, EFCCardAddDestination Destination)
-{
-	if (!HasAuthority() || bIsClaimed || !ClaimerPawn)
+	if (!HasAuthority() || bIsClaimed || !ClaimerPawn || DropCardId.IsNone())
 	{
-		return;
+		return false;
 	}
 
 	bIsClaimed = true;
@@ -197,6 +192,7 @@ void AFCCardPickupActor::Server_ClaimPickup_Implementation(APawn* ClaimerPawn, E
 	}
 
 	Destroy();
+	return true;
 }
 
 void AFCCardPickupActor::OnRep_DropCardId()

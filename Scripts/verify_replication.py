@@ -103,6 +103,23 @@ class ReplicationVerifier:
                         message="Server RPC declared without 'WithValidation'. All Server RPCs must declare WithValidation and implement _Validate()."
                     )
 
+        # Check: Server RPC declared on Actor not owned by connection
+        for class_match in re.finditer(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)\s*:\s*public\s+(?P<parent>\w+)[^{]*\{(?P<body>.*?)\};', clean_content, re.DOTALL):
+            c_name = class_match.group("classname")
+            c_parent = class_match.group("parent")
+            c_body = class_match.group("body")
+            is_connection_owned = any(base in c_parent for base in ["PlayerController", "Controller", "Pawn", "Character", "PlayerState", "ActorComponent", "Component"])
+            if not is_connection_owned:
+                for rpc_match in re.finditer(r'UFUNCTION\s*\([^)]*\bServer\b[^)]*\)[^;]*?\s+(?P<rpcname>\w+)\s*\(', c_body, re.IGNORECASE):
+                    rpc_name = rpc_match.group("rpcname")
+                    self.add_violation(
+                        rule_id="REPL_SERVER_RPC_UNOWNED_ACTOR",
+                        file_path=h_file,
+                        line_number=content[:class_match.start() + rpc_match.start()].count('\n') + 1,
+                        severity="ERROR",
+                        message=f"Server RPC '{rpc_name}' declared on '{c_name}' (parent '{c_parent}'). Clients can ONLY invoke Server RPCs on actors owned by their connection (PlayerController, PlayerState, Pawn, or their components)."
+                    )
+
         # Check 3: RepNotify naming conventions & Replicated without GetLifetimeReplicatedProps
         # Match class definitions
         class_pattern = re.compile(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)[^{]*\{(?P<body>.*?)\};', re.DOTALL)
@@ -224,6 +241,40 @@ class ReplicationVerifier:
                             severity="WARNING",
                             message=f"Component constructor '{class_name}::{class_name}' does not set 'SetIsReplicatedByDefault(true)' despite replicating properties."
                         )
+
+        # Check 7: OpenLevel in GameMode
+        if "GameMode" in cpp_file.stem:
+            for idx, line in enumerate(lines, start=1):
+                if re.search(r'UGameplayStatics::OpenLevel\b', line):
+                    self.add_violation(
+                        rule_id="REPL_OPENLEVEL_IN_GAMEMODE",
+                        file_path=cpp_file,
+                        line_number=idx,
+                        severity="ERROR",
+                        message="UGameplayStatics::OpenLevel called in GameMode. Use GetWorld()->ServerTravel(MapURL, false) to preserve multiplayer client sessions."
+                    )
+
+        # Check 8: Loose CSV file reads
+        for idx, line in enumerate(lines, start=1):
+            if re.search(r'FPaths::ProjectContentDir\(\)\s*/\s*TEXT\([^)]*\.csv', line):
+                self.add_violation(
+                    rule_id="DATA_RUNTIME_CSV_READ",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="ERROR",
+                    message="Direct runtime disk CSV access detected. Cooked/packaged builds do not package loose CSVs. Reference UDataTable or UPrimaryDataAsset directly."
+                )
+
+        # Check 9: ConstructorHelpers::FObjectFinder with /Game/ in constructor
+        for idx, line in enumerate(lines, start=1):
+            if re.search(r'ConstructorHelpers::FObjectFinder<[^>]+>\s+\w+\s*\(\s*TEXT\(\s*"/Game/', line):
+                self.add_violation(
+                    rule_id="CODE_HARDCODED_ASSET_PATH",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="WARNING",
+                    message="Hardcoded asset path in constructor using ConstructorHelpers. Configure assets via DataAsset, TSoftObjectPtr, or Blueprint Class Defaults."
+                )
 
 def run_verification(source_path: Path) -> dict:
     verifier = ReplicationVerifier(source_path)

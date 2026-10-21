@@ -58,6 +58,7 @@ All code and assets must adhere strictly to the following four-tier authority se
   - Spawning gameplay actors and loot drops.
   - Validation of incoming `Server_*` RPC payloads.
 - **Guarantees**: Wrapped in `if (HasAuthority())` or `if (GetLocalRole() == ROLE_Authority)`.
+- **Cooked Asset SSOT**: Gameplay data must strictly originate from Engine Assets (`UDataTable`, `UPrimaryDataAsset`, `DeveloperSettings`). Direct runtime filesystem I/O on loose disk files (`FPaths::ProjectContentDir() / *.csv`) is strictly forbidden to prevent packaging failures.
 
 ### 2. Replicated State (Server-to-Client Propagation)
 - **Classes**: `AGameStateBase`, `APlayerState`, `UActorComponent` derivatives.
@@ -72,6 +73,7 @@ All code and assets must adhere strictly to the following four-tier authority se
   - Processing player input via Enhanced Input.
   - Local movement prediction and instant feedback.
   - Dispatches requests to the server via validated `Server_*` RPCs (`WithValidation`).
+  - **RPC Ownership Prerequisite**: Server RPCs (`Server_*`) can ONLY be executed on actors owned by the calling client's Connection (`APlayerController`, `APlayerState`, possessed `APawn`, or their components). Never place Server RPCs on unowned world interactable actors.
 
 ### 4. Simulated Client & UI (Presentation Tier)
 - **Classes**: `AHUD`, `UUserWidget`, `UNiagaraComponent`, Audio Components.

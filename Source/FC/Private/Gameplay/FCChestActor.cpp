@@ -64,7 +64,7 @@ void AFCChestActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AFCChestActor, bIsOpened);
+	DOREPLIFETIME_CONDITION(AFCChestActor, bIsOpened, COND_None);
 }
 
 UAbilitySystemComponent* AFCChestActor::GetAbilitySystemComponent() const

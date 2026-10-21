@@ -16,6 +16,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Character/FCCharacterBase.h"
+#include "Gameplay/FCCardPickupActor.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 
@@ -182,12 +183,27 @@ void AFCPlayerController::BindDeckComponentEvents()
 	HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
 }
 
+void AFCPlayerController::UnbindAttributeListeners()
+{
+	if (UAbilitySystemComponent* CurrentASC = BoundASC.Get())
+	{
+		for (const auto& Entry : BoundAttributeHandles)
+		{
+			CurrentASC->GetGameplayAttributeValueChangeDelegate(Entry.Key).Remove(Entry.Value);
+		}
+	}
+	BoundAttributeHandles.Empty();
+	BoundASC.Reset();
+}
+
 void AFCPlayerController::BindAttributeListeners()
 {
 	if (!IsLocalPlayerController() || !HUDViewModel)
 	{
 		return;
 	}
+
+	UnbindAttributeListeners();
 
 	APawn* ControlledPawn = GetPawn();
 	UAbilitySystemComponent* ASC = nullptr;
@@ -206,6 +222,8 @@ void AFCPlayerController::BindAttributeListeners()
 		return;
 	}
 
+	BoundASC = ASC;
+
 	const UFCAttributeSet* AttrSet = ASC->GetSet<UFCAttributeSet>();
 	if (AttrSet)
 	{
@@ -217,59 +235,43 @@ void AFCPlayerController::BindAttributeListeners()
 		HUDViewModel->SetMaxShield(FMath::RoundToInt(AttrSet->GetMaxShield()));
 	}
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetHealthAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
+	auto RegisterAttrListener = [this, ASC](const FGameplayAttribute& Attribute, auto&& Callback)
+	{
+		FDelegateHandle Handle = ASC->GetGameplayAttributeValueChangeDelegate(Attribute).AddWeakLambda(
+			this,
+			[this, Callback](const FOnAttributeChangeData& Data)
 			{
-				HUDViewModel->SetCurrentHealth(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+				if (HUDViewModel)
+				{
+					Callback(Data);
+				}
+			});
+		BoundAttributeHandles.Add(MakeTuple(Attribute, Handle));
+	};
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetMaxHealthAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
-			{
-				HUDViewModel->SetMaxHealth(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+	RegisterAttrListener(UFCAttributeSet::GetHealthAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetCurrentHealth(FMath::RoundToInt(Data.NewValue));
+	});
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetManaAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
-			{
-				HUDViewModel->SetCurrentMana(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+	RegisterAttrListener(UFCAttributeSet::GetMaxHealthAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetMaxHealth(FMath::RoundToInt(Data.NewValue));
+	});
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetMaxManaAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
-			{
-				HUDViewModel->SetMaxMana(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+	RegisterAttrListener(UFCAttributeSet::GetManaAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetCurrentMana(FMath::RoundToInt(Data.NewValue));
+	});
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetShieldAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
-			{
-				HUDViewModel->SetCurrentShield(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+	RegisterAttrListener(UFCAttributeSet::GetMaxManaAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetMaxMana(FMath::RoundToInt(Data.NewValue));
+	});
 
-	ASC->GetGameplayAttributeValueChangeDelegate(UFCAttributeSet::GetMaxShieldAttribute()).AddLambda(
-		[this](const FOnAttributeChangeData& Data)
-		{
-			if (HUDViewModel)
-			{
-				HUDViewModel->SetMaxShield(FMath::RoundToInt(Data.NewValue));
-			}
-		});
+	RegisterAttrListener(UFCAttributeSet::GetShieldAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetCurrentShield(FMath::RoundToInt(Data.NewValue));
+	});
+
+	RegisterAttrListener(UFCAttributeSet::GetMaxShieldAttribute(), [this](const FOnAttributeChangeData& Data) {
+		HUDViewModel->SetMaxShield(FMath::RoundToInt(Data.NewValue));
+	});
 }
 
 void AFCPlayerController::SyncHandToViewModel()
@@ -588,4 +590,32 @@ void AFCPlayerController::OnRightMouseButtonPressed()
 			HandWidget->ClearHeldCard();
 		}
 	}
+}
+
+
+bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
+{
+	return PickupActor != nullptr && !PickupActor->IsPendingKillPending();
+}
+
+void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
+{
+	if (!HasAuthority() || !PickupActor)
+	{
+		return;
+	}
+
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn)
+	{
+		return;
+	}
+
+	const float DistSq = FVector::DistSquared(ControlledPawn->GetActorLocation(), PickupActor->GetActorLocation());
+	if (DistSq > FMath::Square(800.0f))
+	{
+		return;
+	}
+
+	PickupActor->ClaimPickup(ControlledPawn, Destination);
 }

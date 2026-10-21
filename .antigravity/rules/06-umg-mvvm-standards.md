@@ -233,3 +233,13 @@ public:
 |  - Zero Tick Overhead                                                             |
 +-----------------------------------------------------------------------------------+
 ```
+
+---
+
+## 7. Unidirectional Control Flow & Input Consolidation
+
+1. **Unidirectional Control Flow (Controller -> ViewModel -> View)**:
+   - UI Views (`UUserWidget`) must NEVER manage gameplay state (e.g. held card tracking, world target resolution) or invoke Controller RPCs.
+   - Gameplay selection and target resolution belong to the `PlayerController` and `ViewModel`. The View strictly displays state and surfaces user clicks/drags.
+2. **Consolidate Input Handling**:
+   - Never duplicate raw key/click listeners inside widgets (`NativeOnKeyDown`, `NativeOnMouseButtonDown`) to mirror PlayerController bindings. All gameplay actions must be routed through Enhanced Input on the `PlayerController`.
