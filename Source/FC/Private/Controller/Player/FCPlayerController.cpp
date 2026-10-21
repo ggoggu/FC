@@ -88,6 +88,18 @@ void AFCPlayerController::OnPossess(APawn* InPawn)
 	}
 }
 
+void AFCPlayerController::OnUnPossess()
+{
+	UnbindAttributeListeners();
+	Super::OnUnPossess();
+}
+
+void AFCPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UnbindAttributeListeners();
+	Super::EndPlay(EndPlayReason);
+}
+
 void AFCPlayerController::AcknowledgePossession(APawn* P)
 {
 	Super::AcknowledgePossession(P);
