@@ -239,6 +239,12 @@ void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitR
 					}
 				}
 			}
+
+			// If directly impacted actor is valid and not a Pawn (e.g. wall, chest), apply damage directly
+			if (OtherActor && !OtherActor->IsA<APawn>())
+			{
+				ApplyDamageToActor(OtherActor, HitResult);
+			}
 		}
 		else
 		{
