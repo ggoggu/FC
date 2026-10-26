@@ -24,25 +24,25 @@ AFCRoomBase::AFCRoomBase()
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
 
-	// Sockets based on 2400x2400 cm grid
+	// Sockets based on 7200x7200 cm grid (3x width & length of original 2400x2400)
 	NorthDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("NorthDoorSocket"));
 	NorthDoorSocket->SetupAttachment(SceneRoot);
-	NorthDoorSocket->SetRelativeLocation(FVector(0.0f, 1200.0f, 0.0f));
+	NorthDoorSocket->SetRelativeLocation(FVector(0.0f, 3600.0f, 0.0f));
 	NorthDoorSocket->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
 
 	SouthDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("SouthDoorSocket"));
 	SouthDoorSocket->SetupAttachment(SceneRoot);
-	SouthDoorSocket->SetRelativeLocation(FVector(0.0f, -1200.0f, 0.0f));
+	SouthDoorSocket->SetRelativeLocation(FVector(0.0f, -3600.0f, 0.0f));
 	SouthDoorSocket->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
 
 	EastDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("EastDoorSocket"));
 	EastDoorSocket->SetupAttachment(SceneRoot);
-	EastDoorSocket->SetRelativeLocation(FVector(1200.0f, 0.0f, 0.0f));
+	EastDoorSocket->SetRelativeLocation(FVector(3600.0f, 0.0f, 0.0f));
 	EastDoorSocket->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
 
 	WestDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("WestDoorSocket"));
 	WestDoorSocket->SetupAttachment(SceneRoot);
-	WestDoorSocket->SetRelativeLocation(FVector(-1200.0f, 0.0f, 0.0f));
+	WestDoorSocket->SetRelativeLocation(FVector(-3600.0f, 0.0f, 0.0f));
 	WestDoorSocket->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	PlayerSpawnPoint = CreateDefaultSubobject<USceneComponent>(TEXT("PlayerSpawnPoint"));
@@ -51,7 +51,7 @@ AFCRoomBase::AFCRoomBase()
 
 	RoomBoundsTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("RoomBoundsTrigger"));
 	RoomBoundsTrigger->SetupAttachment(SceneRoot);
-	RoomBoundsTrigger->SetBoxExtent(FVector(1000.0f, 1000.0f, 300.0f));
+	RoomBoundsTrigger->SetBoxExtent(FVector(3000.0f, 3000.0f, 300.0f));
 	RoomBoundsTrigger->SetRelativeLocation(FVector(0.0f, 0.0f, 300.0f));
 	RoomBoundsTrigger->SetCollisionProfileName(TEXT("Trigger"));
 }

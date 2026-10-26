@@ -111,7 +111,7 @@ protected:
 	int32 MaxSecretRooms = 1;
 
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Config", meta = (ClampMin = "500.0"))
-	float CellSize = 2400.0f;
+	float CellSize = 7200.0f;
 
 	// Modular Room Classes
 	/** Weighted list of room classes for default/normal rooms. One is randomly selected per room spawn based on weight. */
