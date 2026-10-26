@@ -143,7 +143,7 @@ def main():
                 
                 mgr_cdo.set_editor_property("target_room_count", 15)
                 mgr_cdo.set_editor_property("max_secret_rooms", 1)
-                mgr_cdo.set_editor_property("cell_size", 2400.0)
+                mgr_cdo.set_editor_property("cell_size", 7200.0)
                 try:
                     mgr_cdo.set_editor_property("layout_pattern", unreal.FCDungeonLayoutPattern.ASYMMETRIC)
                     mgr_cdo.set_editor_property("start_location_mode", unreal.FCDungeonStartLocation.CENTER)

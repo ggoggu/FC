@@ -28,6 +28,17 @@ void UFCHandWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
+	// Dynamically adjust proportional hand layout on viewport / container resize
+	if (bUseProportionalLayout)
+	{
+		const FVector2D CurrentSize = MyGeometry.GetLocalSize();
+		if (CurrentSize.X > 200.0f && !CurrentSize.Equals(LastCachedContainerSize, 2.0f))
+		{
+			LastCachedContainerSize = CurrentSize;
+			UpdateFanLayout(false);
+		}
+	}
+
 	// Update held card target position to follow mouse cursor precisely
 	if (HeldCardWidget.IsValid())
 	{
@@ -610,12 +621,28 @@ void UFCHandWidget::CalculateFanTransformForIndex(
 	FVector2D& OutScale,
 	int32& OutZOrder) const
 {
+	float EffectiveMaxHandWidth = MaxHandWidth;
+	float EffectiveArcHeight = ArcHeight;
+
+	if (bUseProportionalLayout)
+	{
+		const FVector2D LocalSize = GetCachedGeometry().GetLocalSize();
+		if (LocalSize.X > 200.0f)
+		{
+			EffectiveMaxHandWidth = FMath::Clamp(LocalSize.X * HandWidthRatio, 500.0f, 1800.0f);
+		}
+		if (LocalSize.Y > 50.0f)
+		{
+			EffectiveArcHeight = FMath::Clamp(LocalSize.Y * ArcHeightRatio, 15.0f, 80.0f);
+		}
+	}
+
 	UFCHandViewModel::CalculateCardFanTransform(
 		CardIndex,
 		TotalCards,
 		CardSpacing,
-		MaxHandWidth,
-		ArcHeight,
+		EffectiveMaxHandWidth,
+		EffectiveArcHeight,
 		MaxFanAngle,
 		AngleStep,
 		OutTranslation,

@@ -183,6 +183,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hand|DragDrop")
 	bool bAutoPlayOnDragDrop = true;
 
+	/** Whether to dynamically scale MaxHandWidth and ArcHeight based on container / viewport size */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hand|FanLayout")
+	bool bUseProportionalLayout = true;
+
+	/** Ratio of container width used for MaxHandWidth (e.g. 0.65 = 65% of available width) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hand|FanLayout", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+	float HandWidthRatio = 0.65f;
+
+	/** Ratio of container height used for ArcHeight (e.g. 0.12 = 12% of available height) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hand|FanLayout", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float ArcHeightRatio = 0.12f;
+
 	/** Whether hovering over a card straightens its angle to 0 degrees */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hand|FanLayout")
 	bool bStraightenOnHover = false;
@@ -245,4 +257,8 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Hand|ViewModel")
 	TObjectPtr<UFCHandViewModel> HandViewModel;
+
+	/** Cached container size to detect window / viewport resizes without polling overhead */
+	UPROPERTY(Transient)
+	FVector2D LastCachedContainerSize = FVector2D::ZeroVector;
 };
