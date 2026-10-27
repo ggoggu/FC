@@ -21,28 +21,32 @@ AFCRoomBase::AFCRoomBase()
 	DefaultSecretWallClass = AFCDestructibleWall::StaticClass();
 	DefaultWallClass = AFCWallBase::StaticClass();
 
+	DirectionDoorClasses.Init(nullptr, 4);
+
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
 
-	// Sockets based on 7200x7200 cm grid (3x width & length of original 2400x2400)
+	DoorOffset = 3600.0f;
+
+	// Sockets based on DoorOffset (defaults to 3600 cm half-extent for 7200x7200 cm grid)
 	NorthDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("NorthDoorSocket"));
 	NorthDoorSocket->SetupAttachment(SceneRoot);
-	NorthDoorSocket->SetRelativeLocation(FVector(0.0f, 3600.0f, 0.0f));
+	NorthDoorSocket->SetRelativeLocation(FVector(0.0f, DoorOffset, 0.0f));
 	NorthDoorSocket->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
 
 	SouthDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("SouthDoorSocket"));
 	SouthDoorSocket->SetupAttachment(SceneRoot);
-	SouthDoorSocket->SetRelativeLocation(FVector(0.0f, -3600.0f, 0.0f));
+	SouthDoorSocket->SetRelativeLocation(FVector(0.0f, -DoorOffset, 0.0f));
 	SouthDoorSocket->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
 
 	EastDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("EastDoorSocket"));
 	EastDoorSocket->SetupAttachment(SceneRoot);
-	EastDoorSocket->SetRelativeLocation(FVector(3600.0f, 0.0f, 0.0f));
+	EastDoorSocket->SetRelativeLocation(FVector(DoorOffset, 0.0f, 0.0f));
 	EastDoorSocket->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
 
 	WestDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("WestDoorSocket"));
 	WestDoorSocket->SetupAttachment(SceneRoot);
-	WestDoorSocket->SetRelativeLocation(FVector(-3600.0f, 0.0f, 0.0f));
+	WestDoorSocket->SetRelativeLocation(FVector(-DoorOffset, 0.0f, 0.0f));
 	WestDoorSocket->SetRelativeRotation(FRotator(0.0f, 180.0f, 0.0f));
 
 	PlayerSpawnPoint = CreateDefaultSubobject<USceneComponent>(TEXT("PlayerSpawnPoint"));
@@ -54,6 +58,12 @@ AFCRoomBase::AFCRoomBase()
 	RoomBoundsTrigger->SetBoxExtent(FVector(3000.0f, 3000.0f, 300.0f));
 	RoomBoundsTrigger->SetRelativeLocation(FVector(0.0f, 0.0f, 300.0f));
 	RoomBoundsTrigger->SetCollisionProfileName(TEXT("Trigger"));
+}
+
+void AFCRoomBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	UpdateDoorSockets();
 }
 
 void AFCRoomBase::BeginPlay()
@@ -90,7 +100,7 @@ void AFCRoomBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
 		{
-			if (Door)
+			if (IsValid(Door) && !Door->IsActorBeingDestroyed())
 			{
 				Door->Destroy();
 			}
@@ -116,6 +126,7 @@ void AFCRoomBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 	DOREPLIFETIME_CONDITION(AFCRoomBase, RoomState, COND_None);
 	DOREPLIFETIME_CONDITION(AFCRoomBase, bIsDiscovered, COND_None);
 	DOREPLIFETIME_CONDITION(AFCRoomBase, bIsVisited, COND_None);
+	DOREPLIFETIME_CONDITION(AFCRoomBase, DoorOffset, COND_None);
 }
 
 void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
@@ -396,10 +407,18 @@ void AFCRoomBase::OnSetupDoorsAndWalls_Implementation(uint8 DoorMask)
 
 		if (DoorMask & DirectionBit)
 		{
-			AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DoorClassToSpawn, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
-			if (NewDoor)
+			if (!bManageDoorsExternally)
 			{
-				ConnectedDoors.Add(NewDoor);
+				TSubclassOf<AFCDoorBase> DirDoorClass = GetDirectionDoorClass(DirectionBit);
+				if (!DirDoorClass)
+				{
+					DirDoorClass = DoorClassToSpawn;
+				}
+				AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DirDoorClass, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
+				if (NewDoor)
+				{
+					ConnectedDoors.Add(NewDoor);
+				}
 			}
 		}
 		else if (RoomData.SecretDoorMask & DirectionBit)
@@ -583,4 +602,80 @@ void AFCRoomBase::OnRep_IsDiscovered()
 void AFCRoomBase::OnRep_IsVisited()
 {
 	// UI update triggers
+}
+
+void AFCRoomBase::SetDoorOffset(float NewDoorOffset)
+{
+	DoorOffset = FMath::Max(100.0f, NewDoorOffset);
+	UpdateDoorSockets();
+}
+
+void AFCRoomBase::UpdateDoorSockets()
+{
+	if (NorthDoorSocket)
+	{
+		NorthDoorSocket->SetRelativeLocation(FVector(0.0f, GetDoorOffsetForDirection(EFCDungeonDoor::North), 0.0f));
+	}
+	if (SouthDoorSocket)
+	{
+		SouthDoorSocket->SetRelativeLocation(FVector(0.0f, -GetDoorOffsetForDirection(EFCDungeonDoor::South), 0.0f));
+	}
+	if (EastDoorSocket)
+	{
+		EastDoorSocket->SetRelativeLocation(FVector(GetDoorOffsetForDirection(EFCDungeonDoor::East), 0.0f, 0.0f));
+	}
+	if (WestDoorSocket)
+	{
+		WestDoorSocket->SetRelativeLocation(FVector(-GetDoorOffsetForDirection(EFCDungeonDoor::West), 0.0f, 0.0f));
+	}
+}
+
+void AFCRoomBase::SetDirectionDoorClass(uint8 DirectionBit, TSubclassOf<AFCDoorBase> InDoorClass)
+{
+	const int32 Idx = EFCDungeonDoor::DirectionBitToIndex(DirectionBit);
+	if (Idx != INDEX_NONE)
+	{
+		if (DirectionDoorClasses.Num() < 4)
+		{
+			DirectionDoorClasses.Init(nullptr, 4);
+		}
+		DirectionDoorClasses[Idx] = InDoorClass;
+		UpdateDoorSockets();
+	}
+}
+
+TSubclassOf<AFCDoorBase> AFCRoomBase::GetDirectionDoorClass(uint8 DirectionBit) const
+{
+	const int32 Idx = EFCDungeonDoor::DirectionBitToIndex(DirectionBit);
+	if (DirectionDoorClasses.IsValidIndex(Idx) && DirectionDoorClasses[Idx])
+	{
+		return DirectionDoorClasses[Idx];
+	}
+	return DefaultDoorClass;
+}
+
+float AFCRoomBase::GetDoorOffsetForDirection(uint8 DirectionBit) const
+{
+	float Modifier = 0.0f;
+	if (TSubclassOf<AFCDoorBase> DoorClass = GetDirectionDoorClass(DirectionBit))
+	{
+		if (const AFCDoorBase* DoorCDO = GetDefault<AFCDoorBase>(DoorClass))
+		{
+			Modifier = DoorCDO->GetPlacementOffsetModifier();
+		}
+	}
+	return FMath::Max(100.0f, DoorOffset + Modifier);
+}
+
+void AFCRoomBase::RegisterConnectedDoor(AFCDoorBase* Door)
+{
+	if (Door && !ConnectedDoors.Contains(Door))
+	{
+		ConnectedDoors.Add(Door);
+	}
+}
+
+void AFCRoomBase::OnRep_DoorOffset()
+{
+	UpdateDoorSockets();
 }

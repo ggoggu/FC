@@ -4,6 +4,7 @@
 #include "FCDungeonTypes.generated.h"
 
 class AFCRoomBase;
+class AFCDoorBase;
 
 /**
  * Room class entry with selection weight for random dungeon room generation.
@@ -28,6 +29,33 @@ struct FFCDungeonRoomWeight
 
 	FFCDungeonRoomWeight(TSubclassOf<AFCRoomBase> InRoomClass, float InWeight = 1.0f)
 		: RoomClass(InRoomClass)
+		, Weight(InWeight)
+	{}
+};
+
+/**
+ * Door class entry with selection weight for random doorway generation.
+ */
+USTRUCT(BlueprintType)
+struct FFCDungeonDoorWeight
+{
+	GENERATED_BODY()
+
+	/** Door actor class to spawn */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon")
+	TSubclassOf<AFCDoorBase> DoorClass = nullptr;
+
+	/** Selection weight (higher value = higher chance). Must be >= 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float Weight = 1.0f;
+
+	FFCDungeonDoorWeight()
+		: DoorClass(nullptr)
+		, Weight(1.0f)
+	{}
+
+	FFCDungeonDoorWeight(TSubclassOf<AFCDoorBase> InDoorClass, float InWeight = 1.0f)
+		: DoorClass(InDoorClass)
 		, Weight(InWeight)
 	{}
 };
@@ -72,7 +100,75 @@ namespace EFCDungeonDoor
 	constexpr uint8 South = 1 << 1; // 2
 	constexpr uint8 East  = 1 << 2; // 4
 	constexpr uint8 West  = 1 << 3; // 8
+
+	inline int32 DirectionBitToIndex(uint8 DirectionBit)
+	{
+		switch (DirectionBit)
+		{
+		case North: return 0;
+		case South: return 1;
+		case East:  return 2;
+		case West:  return 3;
+		default:    return INDEX_NONE;
+		}
+	}
+
+	inline uint8 IndexToDirectionBit(int32 Index)
+	{
+		switch (Index)
+		{
+		case 0:  return North;
+		case 1:  return South;
+		case 2:  return East;
+		case 3:  return West;
+		default: return 0;
+		}
+	}
 }
+
+/**
+ * Hash-safe canonical undirected edge key connecting two room grid coordinates.
+ */
+USTRUCT(BlueprintType)
+struct FFCDungeonEdgeKey
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "FC|Dungeon")
+	FIntPoint RoomA;
+
+	UPROPERTY(BlueprintReadWrite, Category = "FC|Dungeon")
+	FIntPoint RoomB;
+
+	FFCDungeonEdgeKey()
+		: RoomA(ForceInitToZero)
+		, RoomB(ForceInitToZero)
+	{}
+
+	FFCDungeonEdgeKey(const FIntPoint& InA, const FIntPoint& InB)
+	{
+		if (InA.X < InB.X || (InA.X == InB.X && InA.Y < InB.Y))
+		{
+			RoomA = InA;
+			RoomB = InB;
+		}
+		else
+		{
+			RoomA = InB;
+			RoomB = InA;
+		}
+	}
+
+	bool operator==(const FFCDungeonEdgeKey& Other) const
+	{
+		return RoomA == Other.RoomA && RoomB == Other.RoomB;
+	}
+
+	friend uint32 GetTypeHash(const FFCDungeonEdgeKey& Key)
+	{
+		return HashCombine(GetTypeHash(Key.RoomA), GetTypeHash(Key.RoomB));
+	}
+};
 
 USTRUCT(BlueprintType)
 struct FFCRoomData

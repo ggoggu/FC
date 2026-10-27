@@ -7,6 +7,7 @@
 #include "GameFramework/Pawn.h"
 #include "Game/FCGameMode.h"
 #include "Map/FCDestructibleWall.h"
+#include "Map/FCDoorBase.h"
 #include "Map/FCRoomBase.h"
 #include "Math/RandomStream.h"
 #include "Net/UnrealNetwork.h"
@@ -18,6 +19,11 @@ AFCDungeonManager::AFCDungeonManager()
 
 	DefaultRooms.Add(FFCDungeonRoomWeight(AFCRoomBase::StaticClass(), 1.0f));
 	SecretWallClass = AFCDestructibleWall::StaticClass();
+
+	DefaultDoorPool.Add(FFCDungeonDoorWeight(AFCDoorBase::StaticClass(), 1.0f));
+	BossDoorClass = AFCDoorBase::StaticClass();
+	ShopDoorClass = AFCDoorBase::StaticClass();
+	TreasureDoorClass = AFCDoorBase::StaticClass();
 }
 
 void AFCDungeonManager::PostInitializeComponents()
@@ -78,8 +84,12 @@ void AFCDungeonManager::GenerateDungeon()
 	AssignRoomRoles();
 	CalculateDoorMasks();
 
+	// Step 3: Resolve Edge Door Classes (Special Rooms vs Random Pool)
+	ResolveEdgeDoorways();
+
 	// Step 4: 3D World Instantiation
 	SpawnDungeonRooms();
+	SpawnSharedDoorways();
 
 	// Step 5: Secret Wall connections
 	SetupSecretPassages();
@@ -118,7 +128,17 @@ void AFCDungeonManager::ClearDungeon()
 		}
 	}
 
+	for (TObjectPtr<AFCDoorBase>& Door : SpawnedSharedDoors)
+	{
+		if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+		{
+			Door->Destroy();
+		}
+	}
+
 	SpawnedRooms.Empty();
+	SpawnedSharedDoors.Empty();
+	EdgeDoorMap.Empty();
 	RoomGrid.Empty();
 }
 
@@ -724,9 +744,108 @@ void AFCDungeonManager::SpawnDungeonRooms()
 		AFCRoomBase* SpawnedRoom = World->SpawnActor<AFCRoomBase>(RoomClass, WorldLocation, WorldRotation, SpawnParams);
 		if (SpawnedRoom)
 		{
+			SpawnedRoom->SetManageDoorsExternally(true);
+
+			if (bAutoSyncDoorOffsetToCellSize)
+			{
+				SpawnedRoom->SetDoorOffset(CellSize * 0.5f);
+			}
+
+			auto ConfigureDirectionDoor = [&](uint8 DirectionBit, const FIntPoint& NeighborCoord)
+			{
+				if (Data.DoorMask & DirectionBit)
+				{
+					const FFCDungeonEdgeKey EdgeKey(Coord, NeighborCoord);
+					if (const TSubclassOf<AFCDoorBase>* FoundClass = EdgeDoorMap.Find(EdgeKey))
+					{
+						SpawnedRoom->SetDirectionDoorClass(DirectionBit, *FoundClass);
+					}
+				}
+			};
+
+			ConfigureDirectionDoor(EFCDungeonDoor::North, FIntPoint(Coord.X, Coord.Y + 1));
+			ConfigureDirectionDoor(EFCDungeonDoor::South, FIntPoint(Coord.X, Coord.Y - 1));
+			ConfigureDirectionDoor(EFCDungeonDoor::East,  FIntPoint(Coord.X + 1, Coord.Y));
+			ConfigureDirectionDoor(EFCDungeonDoor::West,  FIntPoint(Coord.X - 1, Coord.Y));
+
+			SpawnedRoom->UpdateDoorSockets();
 			SpawnedRoom->InitializeRoom(Data);
 			SpawnedRoom->OnRoomStateChanged.AddDynamic(this, &AFCDungeonManager::HandleRoomStateChanged);
 			SpawnedRooms.Add(SpawnedRoom);
+		}
+	}
+}
+
+void AFCDungeonManager::ResolveEdgeDoorways()
+{
+	EdgeDoorMap.Empty();
+
+	auto CheckAndRegisterEdge = [&](const FIntPoint& Pos, uint8 DirectionBit, const FIntPoint& NeighborPos)
+	{
+		const FFCRoomData* CurrentData = RoomGrid.Find(Pos);
+		if (!CurrentData || !(CurrentData->DoorMask & DirectionBit))
+		{
+			return;
+		}
+
+		const FFCDungeonEdgeKey EdgeKey(Pos, NeighborPos);
+		if (!EdgeDoorMap.Contains(EdgeKey))
+		{
+			TSubclassOf<AFCDoorBase> ResolvedClass = ResolveDoorClassBetween(Pos, NeighborPos);
+			EdgeDoorMap.Add(EdgeKey, ResolvedClass);
+		}
+	};
+
+	for (const auto& Pair : RoomGrid)
+	{
+		const FIntPoint& Pos = Pair.Key;
+		CheckAndRegisterEdge(Pos, EFCDungeonDoor::North, FIntPoint(Pos.X, Pos.Y + 1));
+		CheckAndRegisterEdge(Pos, EFCDungeonDoor::South, FIntPoint(Pos.X, Pos.Y - 1));
+		CheckAndRegisterEdge(Pos, EFCDungeonDoor::East,  FIntPoint(Pos.X + 1, Pos.Y));
+		CheckAndRegisterEdge(Pos, EFCDungeonDoor::West,  FIntPoint(Pos.X - 1, Pos.Y));
+	}
+}
+
+void AFCDungeonManager::SpawnSharedDoorways()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	for (const auto& Pair : EdgeDoorMap)
+	{
+		const FFCDungeonEdgeKey& Edge = Pair.Key;
+		TSubclassOf<AFCDoorBase> DoorClass = Pair.Value ? Pair.Value : TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass());
+
+		AFCRoomBase* RoomA = GetRoomAt(Edge.RoomA);
+		AFCRoomBase* RoomB = GetRoomAt(Edge.RoomB);
+
+		if (!RoomA || !RoomB)
+		{
+			continue;
+		}
+
+		// Determine direction from RoomA to RoomB
+		uint8 DirectionFromA = 0;
+		if (Edge.RoomB.Y > Edge.RoomA.Y) DirectionFromA = EFCDungeonDoor::North;
+		else if (Edge.RoomB.Y < Edge.RoomA.Y) DirectionFromA = EFCDungeonDoor::South;
+		else if (Edge.RoomB.X > Edge.RoomA.X) DirectionFromA = EFCDungeonDoor::East;
+		else if (Edge.RoomB.X < Edge.RoomA.X) DirectionFromA = EFCDungeonDoor::West;
+
+		const FTransform SocketTransform = RoomA->GetDoorSocketTransform(DirectionFromA);
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = this;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DoorClass, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
+		if (NewDoor)
+		{
+			RoomA->RegisterConnectedDoor(NewDoor);
+			RoomB->RegisterConnectedDoor(NewDoor);
+			SpawnedSharedDoors.Add(NewDoor);
 		}
 	}
 }
@@ -832,6 +951,86 @@ TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRandomDefaultRoomClass() const
 	}
 
 	return FirstValidClass;
+}
+
+TSubclassOf<AFCDoorBase> AFCDungeonManager::GetRandomDoorFromPool() const
+{
+	float TotalWeight = 0.0f;
+	int32 ValidCount = 0;
+	TSubclassOf<AFCDoorBase> FirstValidClass = nullptr;
+
+	for (const FFCDungeonDoorWeight& Entry : DefaultDoorPool)
+	{
+		if (Entry.DoorClass && Entry.Weight > 0.0f)
+		{
+			TotalWeight += Entry.Weight;
+			ValidCount++;
+			if (!FirstValidClass)
+			{
+				FirstValidClass = Entry.DoorClass;
+			}
+		}
+	}
+
+	if (ValidCount == 0 || TotalWeight <= 0.0f)
+	{
+		return FirstValidClass ? FirstValidClass : TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass());
+	}
+
+	if (ValidCount == 1)
+	{
+		return FirstValidClass;
+	}
+
+	const float RandomRoll = FMath::FRandRange(0.0f, TotalWeight);
+	float AccumulatedWeight = 0.0f;
+
+	for (const FFCDungeonDoorWeight& Entry : DefaultDoorPool)
+	{
+		if (Entry.DoorClass && Entry.Weight > 0.0f)
+		{
+			AccumulatedWeight += Entry.Weight;
+			if (RandomRoll <= AccumulatedWeight)
+			{
+				return Entry.DoorClass;
+			}
+		}
+	}
+
+	return FirstValidClass ? FirstValidClass : TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass());
+}
+
+TSubclassOf<AFCDoorBase> AFCDungeonManager::ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const
+{
+	const FFCRoomData* DataA = RoomGrid.Find(RoomA);
+	const FFCRoomData* DataB = RoomGrid.Find(RoomB);
+
+	const EFCRoomType TypeA = DataA ? DataA->RoomType : EFCRoomType::Normal;
+	const EFCRoomType TypeB = DataB ? DataB->RoomType : EFCRoomType::Normal;
+
+	if (TypeA == EFCRoomType::Boss || TypeB == EFCRoomType::Boss)
+	{
+		if (BossDoorClass)
+		{
+			return BossDoorClass;
+		}
+	}
+	else if (TypeA == EFCRoomType::Shop || TypeB == EFCRoomType::Shop)
+	{
+		if (ShopDoorClass)
+		{
+			return ShopDoorClass;
+		}
+	}
+	else if (TypeA == EFCRoomType::Treasure || TypeB == EFCRoomType::Treasure)
+	{
+		if (TreasureDoorClass)
+		{
+			return TreasureDoorClass;
+		}
+	}
+
+	return GetRandomDoorFromPool();
 }
 
 TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRoomClassForType(EFCRoomType Type) const

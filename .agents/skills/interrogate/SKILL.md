@@ -35,15 +35,24 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
 
 ## Execution Workflow
 
-### Step 1: Collect Context & State Intent
-1. Run `git diff HEAD` (or staged diff) to obtain the exact character-level code changes.
-2. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
+### Step 1: Collect Context & State Intent (Filtering & Staging)
+1. Run `git add -N .` to ensure newly created untracked C++ files are recognized by git diff.
+2. Extract the text-only C++ diff (excluding binary `.uasset` / `.umap` assets):
+   ```powershell
+   git diff HEAD -- "*.h" "*.cpp" "*.cs"
+   ```
+   *(Or run `python Scripts/pipeline.py audit --json` to get an aggregated diff & static replication status).*
+3. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
 
 ### Step 2: Invoke the Adversarial Auditor Subagent
+Select the appropriate model tier based on the audit scope:
+- **`flash`**: Fast iterative checks on small changes (<150 diff lines, local component logic).
+- **`pro`** (Recommended for Multiplayer/Architecture): Core replication changes, RPC declarations, GAS abilities/attributes, or large architectural refactors.
+
 Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
 - **TypeName**: `adversarial-auditor`
 - **Role**: `Adversarial Code Auditor`
-- **Model**: `inherit` or `pro` (use `pro` for complex networking/architectural audits)
+- **Model**: `pro` (or `flash` for fast track)
 - **Prompt**:
   ```text
   Please perform a rigorous adversarial audit on the following changes.
@@ -64,11 +73,12 @@ Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
   Provide the structured Markdown report with your Verdict.
   ```
 
-### Step 3: Triage Findings & Apply Fixes
-- If Verdict is **`CHANGES REQUESTED`**:
-  - Address all `BLOCKING` issues first.
-  - Review `WARNING` and `SUGGESTION` items for practical value.
-  - Re-run UBT compilation / static verification via `python Scripts/pipeline.py static`.
+### Step 3: Triage Findings & Closed-Loop Remediation
+- If Verdict is **`CHANGES REQUESTED (BLOCKING)`**:
+  - The main agent must **autonomously resolve all `BLOCKING` issues immediately** (e.g. adding missing `HasAuthority()` guards, changing `COND_None` to `COND_InitialOnly`, fixing RPC ownership).
+  - Review `WARNING` and `SUGGESTION` items for practical value and apply where clean.
+  - Re-verify using `python Scripts/pipeline.py static` (or `pipeline.py build`).
+  - Present the audit findings alongside the applied fix comparison to the user.
 - If Verdict is **`APPROVED (LGTM)`**:
   - Present the audit summary to the user.
-  - Proceed with commit or testing.
+  - Proceed with commit or testing (`python Scripts/pipeline.py full`).

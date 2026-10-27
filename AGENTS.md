@@ -100,7 +100,8 @@ To maintain high development velocity and optimize AI token consumption, the pro
 │ 4. Combat Balance (`balance`) : Mathematical TTK & effective DPS curves (~1s)        │
 │ 5. Automation Test (`test`)   : Headless Unreal automation tests                     │
 │ 6. Asset Inspect (`inspect`)  : Dump JSON metadata for BP/WBP/Anim (~0.01s)         │
-│ 7. Full Release (`full`)      : Sequential (Static -> Build -> Test -> [Auto-Commit])│
+│ 7. Audit Diff (`audit`)       : Package C++ diff & static checks for SubAgent review │
+│ 8. Full Release (`full`)      : Sequential (Static -> Build -> Test -> [Auto-Commit])│
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -115,6 +116,7 @@ To maintain high development velocity and optimize AI token consumption, the pro
      - **Compilation & Patching**: `python Scripts/pipeline.py build` (Parse JSON diagnostics, auto-patch up to 5 cycles)
      - **Combat Balance**: `python Scripts/pipeline.py balance`
      - **Asset Inspection**: `python Scripts/pipeline.py inspect --asset <path>` (Dump JSON metadata for BP, WBP, or Anim)
+     - **Audit Diff & Static**: `python Scripts/pipeline.py audit` (Package clean C++ diff & replication check for subagent)
      - **Full Validation & Commit**: `python Scripts/pipeline.py full --auto-commit -m "<conventional_commit_msg>"`
 
 3. **Compact Reporting**:
