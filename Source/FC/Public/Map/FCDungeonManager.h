@@ -56,6 +56,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
 	APlayerStart* GetStartRoomPlayerStart() const { return StartRoomPlayerStart.Get(); }
 
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	float GetCellSize() const { return CellSize; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
+	void SetCellSize(float NewCellSize) { CellSize = FMath::Max(500.0f, NewCellSize); }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	bool IsAutoSyncDoorOffsetToCellSize() const { return bAutoSyncDoorOffsetToCellSize; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
+	void SetAutoSyncDoorOffsetToCellSize(bool bEnable) { bAutoSyncDoorOffsetToCellSize = bEnable; }
+
 	/** Returns a randomly chosen room class from DefaultRooms based on weights */
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
 	TSubclassOf<AFCRoomBase> GetRandomDefaultRoomClass() const;
@@ -71,6 +83,25 @@ public:
 	{
 		DefaultRooms.Add(FFCDungeonRoomWeight(RoomClass, Weight));
 	}
+
+	/** Returns a randomly chosen door class from DefaultDoorPool based on weights (fallbacks safely to AFCDoorBase) */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	TSubclassOf<AFCDoorBase> GetRandomDoorFromPool() const;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	const TArray<FFCDungeonDoorWeight>& GetDefaultDoorPool() const { return DefaultDoorPool; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon|Doors")
+	void SetDefaultDoorPool(const TArray<FFCDungeonDoorWeight>& InPool) { DefaultDoorPool = InPool; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon|Doors")
+	void AddDefaultDoor(TSubclassOf<AFCDoorBase> DoorClass, float Weight = 1.0f)
+	{
+		DefaultDoorPool.Add(FFCDungeonDoorWeight(DoorClass, Weight));
+	}
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	TSubclassOf<AFCDoorBase> ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const;
 
 	/** Teleport all existing player pawns into the Start Room */
 	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
@@ -113,6 +144,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Config", meta = (ClampMin = "500.0"))
 	float CellSize = 7200.0f;
 
+	/** If true, automatically synchronizes spawned rooms' DoorOffset to CellSize * 0.5f for seamless room-to-room door alignment. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Config")
+	bool bAutoSyncDoorOffsetToCellSize = true;
+
 	// Modular Room Classes
 	/** Weighted list of room classes for default/normal rooms. One is randomly selected per room spawn based on weight. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Classes", meta = (DisplayName = "Default Rooms"))
@@ -136,21 +171,44 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Classes")
 	TSubclassOf<AFCDestructibleWall> SecretWallClass;
 
+	// Modular Door Classes & Pools
+	/** Weighted list of door classes for default/normal room connections. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Doors", meta = (DisplayName = "Default Doors"))
+	TArray<FFCDungeonDoorWeight> DefaultDoorPool;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|SpecialDoors")
+	TSubclassOf<AFCDoorBase> BossDoorClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|SpecialDoors")
+	TSubclassOf<AFCDoorBase> ShopDoorClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|SpecialDoors")
+	TSubclassOf<AFCDoorBase> TreasureDoorClass;
+
 	// Local cached list of spawned room actors (Actors replicate themselves individually)
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "FC|Dungeon")
 	TArray<TObjectPtr<AFCRoomBase>> SpawnedRooms;
+
+	// Local cached list of spawned shared door actors
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "FC|Dungeon|Doors")
+	TArray<TObjectPtr<AFCDoorBase>> SpawnedSharedDoors;
 
 private:
 	// In-memory 2D grid of rooms (Server Authority)
 	TMap<FIntPoint, FFCRoomData> RoomGrid;
 
+	// Canonical mapping from edge connecting RoomA and RoomB to assigned DoorClass
+	TMap<FFCDungeonEdgeKey, TSubclassOf<AFCDoorBase>> EdgeDoorMap;
+
 	// Core Generation Steps (Logic)
 	void BuildSkeleton();
 	void AssignRoomRoles();
 	void CalculateDoorMasks();
+	void ResolveEdgeDoorways();
 
 	// Step 4 & 5: World Spawner & Connectors
 	void SpawnDungeonRooms();
+	void SpawnSharedDoorways();
 	void SetupSecretPassages();
 	TSubclassOf<AFCRoomBase> GetRoomClassForType(EFCRoomType Type) const;
 

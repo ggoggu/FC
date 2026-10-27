@@ -1,6 +1,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Map/FCRoomBase.h"
+#include "Map/FCDoorBase.h"
 #include "Map/FCDungeonManager.h"
 #include "Map/FCDungeonTypes.h"
 #include "Game/FCGameMode.h"
@@ -176,6 +177,97 @@ bool FFCPlayerStartRoomTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("Picked room class must match the positive weighted entry"), Picked, TSubclassOf<AFCRoomBase>(AFCRoomBase::StaticClass()));
 			}
 		}
+	}
+
+	// =========================================================================
+	// Test 7: DoorOffset, DoorWidth, and CellSize Customization
+	// =========================================================================
+	{
+		AFCRoomBase* Room = NewObject<AFCRoomBase>();
+		TestNotNull(TEXT("AFCRoomBase must be instantiable for DoorOffset test"), Room);
+		if (Room)
+		{
+			TestEqual(TEXT("Default DoorOffset should be 3600.0f"), Room->GetDoorOffset(), 3600.0f);
+			Room->SetDoorOffset(2400.0f);
+			TestEqual(TEXT("Updated DoorOffset should be 2400.0f"), Room->GetDoorOffset(), 2400.0f);
+		}
+
+		AFCDoorBase* Door = NewObject<AFCDoorBase>();
+		TestNotNull(TEXT("AFCDoorBase must be instantiable for DoorWidth test"), Door);
+		if (Door)
+		{
+			TestEqual(TEXT("Default DoorWidth should be 300.0f"), Door->GetDoorWidth(), 300.0f);
+			Door->SetDoorWidth(450.0f);
+			TestEqual(TEXT("Updated DoorWidth should be 450.0f"), Door->GetDoorWidth(), 450.0f);
+		}
+
+		AFCDungeonManager* DungeonMgr = NewObject<AFCDungeonManager>();
+		TestNotNull(TEXT("AFCDungeonManager must be instantiable for CellSize test"), DungeonMgr);
+		if (DungeonMgr)
+		{
+			TestEqual(TEXT("Default CellSize should be 7200.0f"), DungeonMgr->GetCellSize(), 7200.0f);
+			TestTrue(TEXT("Default bAutoSyncDoorOffsetToCellSize should be true"), DungeonMgr->IsAutoSyncDoorOffsetToCellSize());
+			DungeonMgr->SetCellSize(6000.0f);
+			TestEqual(TEXT("Updated CellSize should be 6000.0f"), DungeonMgr->GetCellSize(), 6000.0f);
+		}
+	}
+
+	// =========================================================================
+	// Test 8: Dynamic Directional DoorOffset & Door Pool Selection
+	// =========================================================================
+	{
+		// 1. Bit-to-index conversion safety
+		TestEqual(TEXT("North bit to index"), EFCDungeonDoor::DirectionBitToIndex(EFCDungeonDoor::North), 0);
+		TestEqual(TEXT("South bit to index"), EFCDungeonDoor::DirectionBitToIndex(EFCDungeonDoor::South), 1);
+		TestEqual(TEXT("East bit to index"),  EFCDungeonDoor::DirectionBitToIndex(EFCDungeonDoor::East),  2);
+		TestEqual(TEXT("West bit to index"),  EFCDungeonDoor::DirectionBitToIndex(EFCDungeonDoor::West),  3);
+		TestEqual(TEXT("Invalid bit to index"), EFCDungeonDoor::DirectionBitToIndex(0), INDEX_NONE);
+
+		TestEqual(TEXT("Index 0 to North bit"), EFCDungeonDoor::IndexToDirectionBit(0), EFCDungeonDoor::North);
+		TestEqual(TEXT("Index 1 to South bit"), EFCDungeonDoor::IndexToDirectionBit(1), EFCDungeonDoor::South);
+		TestEqual(TEXT("Index 2 to East bit"),  EFCDungeonDoor::IndexToDirectionBit(2), EFCDungeonDoor::East);
+		TestEqual(TEXT("Index 3 to West bit"),  EFCDungeonDoor::IndexToDirectionBit(3), EFCDungeonDoor::West);
+
+		// 2. Door PlacementOffsetModifier
+		AFCDoorBase* Door = NewObject<AFCDoorBase>();
+		if (Door)
+		{
+			TestEqual(TEXT("Default PlacementOffsetModifier should be 0.0f"), Door->GetPlacementOffsetModifier(), 0.0f);
+			Door->SetPlacementOffsetModifier(150.0f);
+			TestEqual(TEXT("Updated PlacementOffsetModifier should be 150.0f"), Door->GetPlacementOffsetModifier(), 150.0f);
+		}
+
+		// 3. Directional door offset on room
+		AFCRoomBase* Room = NewObject<AFCRoomBase>();
+		if (Room)
+		{
+			Room->SetDoorOffset(3600.0f);
+			TestEqual(TEXT("Default North offset without custom class modifier should be 3600.0f"), Room->GetDoorOffsetForDirection(EFCDungeonDoor::North), 3600.0f);
+			Room->SetDirectionDoorClass(EFCDungeonDoor::North, AFCDoorBase::StaticClass());
+			TestEqual(TEXT("North offset with base DoorBase (0 modifier) should remain 3600.0f"), Room->GetDoorOffsetForDirection(EFCDungeonDoor::North), 3600.0f);
+
+			TestFalse(TEXT("Default bManageDoorsExternally should be false"), Room->IsManagingDoorsExternally());
+			Room->SetManageDoorsExternally(true);
+			TestTrue(TEXT("Updated bManageDoorsExternally should be true"), Room->IsManagingDoorsExternally());
+		}
+
+		// 4. DungeonManager Door Pool selection
+		AFCDungeonManager* DungeonMgr = NewObject<AFCDungeonManager>();
+		if (DungeonMgr)
+		{
+			TestNotNull(TEXT("DefaultDoorPool selection should return valid class"), DungeonMgr->GetRandomDoorFromPool().Get());
+			DungeonMgr->SetDefaultDoorPool({});
+			TestEqual(TEXT("Empty DefaultDoorPool should fallback to AFCDoorBase"), DungeonMgr->GetRandomDoorFromPool(), TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass()));
+
+			DungeonMgr->AddDefaultDoor(AFCDoorBase::StaticClass(), 10.0f);
+			TestEqual(TEXT("Single entry DefaultDoorPool should return AFCDoorBase"), DungeonMgr->GetRandomDoorFromPool(), TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass()));
+		}
+
+		// 5. Canonical Edge Key symmetry
+		FFCDungeonEdgeKey KeyA(FIntPoint(0, 0), FIntPoint(0, 1));
+		FFCDungeonEdgeKey KeyB(FIntPoint(0, 1), FIntPoint(0, 0));
+		TestTrue(TEXT("Edge keys constructed in reverse should be identical"), KeyA == KeyB);
+		TestEqual(TEXT("Edge keys hash should match"), GetTypeHash(KeyA), GetTypeHash(KeyB));
 	}
 
 	return true;

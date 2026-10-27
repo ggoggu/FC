@@ -58,6 +58,34 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|Room|Sockets")
 	FTransform GetDoorSocketTransform(uint8 DirectionBit) const;
 
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
+	float GetDoorOffset() const { return DoorOffset; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void SetDoorOffset(float NewDoorOffset);
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void UpdateDoorSockets();
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void SetDirectionDoorClass(uint8 DirectionBit, TSubclassOf<AFCDoorBase> InDoorClass);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
+	TSubclassOf<AFCDoorBase> GetDirectionDoorClass(uint8 DirectionBit) const;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
+	float GetDoorOffsetForDirection(uint8 DirectionBit) const;
+
+	/** Register an externally spawned door actor (e.g. shared doorway) to this room's combat lock list */
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void RegisterConnectedDoor(AFCDoorBase* Door);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
+	bool IsManagingDoorsExternally() const { return bManageDoorsExternally; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void SetManageDoorsExternally(bool bEnable) { bManageDoorsExternally = bEnable; }
+
 	UFUNCTION(BlueprintPure, Category = "FC|Room")
 	const FFCRoomData& GetRoomData() const { return RoomData; }
 
@@ -88,6 +116,7 @@ public:
 	FOnFCRoomDiscoveryChanged OnRoomDiscoveryChanged;
 
 protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -137,6 +166,9 @@ protected:
 
 	UFUNCTION()
 	virtual void OnRep_IsVisited();
+
+	UFUNCTION()
+	virtual void OnRep_DoorOffset();
 
 protected:
 	// Scene components
@@ -193,6 +225,18 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_IsVisited, BlueprintReadOnly, Category = "FC|Room|Exploration")
 	bool bIsVisited = false;
+
+	/** Distance from room center to door/wall sockets (half-width of room). Defaults to 3600 cm (half of 7200 grid). */
+	UPROPERTY(ReplicatedUsing = OnRep_DoorOffset, EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors", meta = (ClampMin = "100.0"))
+	float DoorOffset = 3600.0f;
+
+	/** If true, doorway actors are managed and spawned externally (e.g. by AFCDungeonManager for canonical shared edges) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
+	bool bManageDoorsExternally = false;
+
+	/** Server-authoritative assigned door classes [0: North, 1: South, 2: East, 3: West]. Transient, not replicated. */
+	UPROPERTY(Transient)
+	TArray<TSubclassOf<AFCDoorBase>> DirectionDoorClasses;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "FC|Room|Doors")
 	TArray<TObjectPtr<AFCDoorBase>> ConnectedDoors;

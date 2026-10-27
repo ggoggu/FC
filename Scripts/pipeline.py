@@ -229,6 +229,37 @@ def run_inspect_check(asset: str, deep: bool = False) -> tuple[bool, dict]:
     }
     return is_ok, summary
 
+def run_audit_check() -> tuple[bool, dict]:
+    """Packages C++ git diff and runs replication/bandwidth static checks for SubAgent audit."""
+    subprocess.run(["git", "add", "-N", "."], cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc_files = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        text=True
+    )
+    changed_files = [f.strip() for f in proc_files.stdout.splitlines() if f.strip()]
+    proc_diff = subprocess.run(
+        ["git", "diff", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        text=True
+    )
+    diff_text = proc_diff.stdout
+    diff_lines = len(diff_text.splitlines())
+
+    passed_repl, repl_data = run_static_checks(json_output=True, repl_only=True)
+    summary = {
+        "mode": "audit",
+        "passed": passed_repl,
+        "changed_files_count": len(changed_files),
+        "changed_files": changed_files,
+        "diff_line_count": diff_lines,
+        "static_replication_passed": passed_repl,
+        "static_details": repl_data
+    }
+    return passed_repl, summary
+
 def execute_auto_commit(commit_msg: str | None = None) -> bool:
     """Stages modified and new files, then creates a Git commit."""
     try:
@@ -318,6 +349,16 @@ def print_compact_summary(summary: dict):
         if "referenced_engine_classes" in data and data["referenced_engine_classes"]:
             print(f"  - Classes: {', '.join(data['referenced_engine_classes'][:6])}")
 
+    elif mode == "audit":
+        f_count = summary.get("changed_files_count", 0)
+        l_count = summary.get("diff_line_count", 0)
+        repl_pass = summary.get("static_replication_passed", False)
+        print(f"[{badge}] Audit Package: {f_count} C++ files, {l_count} diff lines. Static check: {'PASS' if repl_pass else 'FAIL'}")
+        for f in summary.get("changed_files", [])[:5]:
+            print(f"  - {f}")
+        if f_count > 5:
+            print(f"  ... and {f_count - 5} more files")
+
     elif mode == "full":
         print(f"[{badge}] Full Pipeline Execution:")
         for step in summary.get("steps", []):
@@ -342,7 +383,7 @@ def main():
         "mode",
         nargs="?",
         default="static",
-        choices=["static", "gas", "replication", "build", "balance", "test", "net", "inspect", "full"],
+        choices=["static", "gas", "replication", "build", "balance", "test", "net", "inspect", "audit", "full"],
         help="Pipeline mode to execute:\n"
              "  static      : Fast static checks (Bandwidth, Replication, GAS)\n"
              "  gas         : Focused GAS static verification (verify_gas.py)\n"
@@ -352,6 +393,7 @@ def main():
              "  test        : Automation test execution\n"
              "  net         : Headless PIE multiplayer network degradation simulation\n"
              "  inspect     : Inspect and dump JSON metadata for BP, WBP, Anim (.uasset)\n"
+             "  audit       : Package C++ diff & run static checks for SubAgent audit\n"
              "  full        : Sequential full pipeline (static -> build -> test)"
     )
     parser.add_argument("--asset", "-a", type=str, default=None, help="Asset path for inspect mode (e.g. Content/UI/BP/WBP_HUD.uasset)")
@@ -393,6 +435,9 @@ def main():
 
     elif args.mode == "net":
         overall_passed, aggregated_report = run_net_pie_check()
+
+    elif args.mode == "audit":
+        overall_passed, aggregated_report = run_audit_check()
 
     elif args.mode == "full":
         steps = []

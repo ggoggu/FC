@@ -100,7 +100,8 @@ To maintain high development velocity and optimize AI token consumption, the pro
 │ 4. Combat Balance (`balance`) : Mathematical TTK & effective DPS curves (~1s)        │
 │ 5. Automation Test (`test`)   : Headless Unreal automation tests                     │
 │ 6. Asset Inspect (`inspect`)  : Dump JSON metadata for BP/WBP/Anim (~0.01s)         │
-│ 7. Full Release (`full`)      : Sequential (Static -> Build -> Test -> [Auto-Commit])│
+│ 7. Audit Diff (`audit`)       : Package C++ diff & static checks for SubAgent review │
+│ 8. Full Release (`full`)      : Sequential (Static -> Build -> Test -> [Auto-Commit])│
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -115,6 +116,7 @@ To maintain high development velocity and optimize AI token consumption, the pro
      - **Compilation & Patching**: `python Scripts/pipeline.py build` (Parse JSON diagnostics, auto-patch up to 5 cycles)
      - **Combat Balance**: `python Scripts/pipeline.py balance`
      - **Asset Inspection**: `python Scripts/pipeline.py inspect --asset <path>` (Dump JSON metadata for BP, WBP, or Anim)
+     - **Audit Diff & Static**: `python Scripts/pipeline.py audit` (Package clean C++ diff & replication check for subagent)
      - **Full Validation & Commit**: `python Scripts/pipeline.py full --auto-commit -m "<conventional_commit_msg>"`
 
 3. **Compact Reporting**:
@@ -129,6 +131,7 @@ Feature-specific standards are modularized in `.antigravity/rules/` and applied 
 - **General C++20 Coding Standards**: Refer to `.antigravity/rules/01-ue58-coding-standards.md` (TObjectPtr, IWYU, PascalCase).
 - **Multiplayer Conventions**: Refer to `.antigravity/rules/02-multiplayer-conventions.md` (RPC validation, Server Authority).
 - **Loop Engineering & Asset Inspection**: Refer to `.antigravity/rules/03-loop-engineering.md` (Self-healing loop, BP/WBP/Anim inspection protocol).
+- **Adversarial Subagent Audit (`/interrogate`)**: Refer to `.agents/skills/interrogate/SKILL.md` and `.antigravity/rules/07-adversarial-audit-standards.md` (Read-only subagent review across 5 core dimensions).
 - **Gameplay Ability System (GAS)**: When implementing GAS-based attributes, abilities, or effects, refer to `.antigravity/rules/04-gameplay-ability-system.md` (Attribute accessors, RepNotify, Gameplay Cues). Standard C++ components can be used for features where GAS is not required.
 - **Fast Array & Inventory Networking**: When implementing dynamic replicated item lists or inventories, refer to `.antigravity/rules/05-combat-and-inventory-networking.md` (FFastArraySerializer, COND_OwnerOnly).
 - **UMG Model-View-ViewModel (MVVM)**: When implementing UI presentation models, viewmodel collections, or field notification bindings, refer to `.antigravity/rules/06-umg-mvvm-standards.md` (UMVVMViewModelBase, FieldNotify, UE_MVVM_SET_PROPERTY_VALUE).

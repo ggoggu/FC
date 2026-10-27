@@ -22,8 +22,14 @@ AFCDoorBase::AFCDoorBase()
 
 	InteractionTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionTrigger"));
 	InteractionTrigger->SetupAttachment(SceneRoot);
-	InteractionTrigger->SetBoxExtent(FVector(100.0f, 150.0f, 200.0f));
+	InteractionTrigger->SetBoxExtent(FVector(100.0f, DoorWidth * 0.5f, 200.0f));
 	InteractionTrigger->SetCollisionProfileName(TEXT("Trigger"));
+}
+
+void AFCDoorBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	UpdateDoorDimensions();
 }
 
 void AFCDoorBase::BeginPlay()
@@ -41,6 +47,7 @@ void AFCDoorBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 
 	DOREPLIFETIME_CONDITION(AFCDoorBase, bIsLocked, COND_None);
 	DOREPLIFETIME_CONDITION(AFCDoorBase, bIsOpen, COND_None);
+	DOREPLIFETIME_CONDITION(AFCDoorBase, DoorWidth, COND_InitialOnly);
 }
 
 void AFCDoorBase::SetDoorLocked(bool bNewLocked)
@@ -124,4 +131,35 @@ void AFCDoorBase::OnRep_IsOpen()
 {
 	OnPlayOpenEffect(bIsOpen);
 	OnDoorOpenChanged.Broadcast(bIsOpen);
+}
+
+void AFCDoorBase::SetDoorWidth(float NewDoorWidth)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	const float ClampedWidth = FMath::Max(50.0f, NewDoorWidth);
+	if (FMath::IsNearlyEqual(DoorWidth, ClampedWidth))
+	{
+		return;
+	}
+
+	DoorWidth = ClampedWidth;
+	UpdateDoorDimensions();
+}
+
+void AFCDoorBase::UpdateDoorDimensions()
+{
+	if (InteractionTrigger)
+	{
+		const FVector CurrentExtent = InteractionTrigger->GetUnscaledBoxExtent();
+		InteractionTrigger->SetBoxExtent(FVector(CurrentExtent.X, DoorWidth * 0.5f, CurrentExtent.Z));
+	}
+}
+
+void AFCDoorBase::OnRep_DoorWidth()
+{
+	UpdateDoorDimensions();
 }
