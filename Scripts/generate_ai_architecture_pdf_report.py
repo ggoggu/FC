@@ -12,8 +12,8 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-OUTPUT_PDF = PROJECT_ROOT / "Report" / "FC_Agent_Rules_Skills_MCP_Architecture_Report.pdf"
-TEMP_HTML = PROJECT_ROOT / "Report" / "FC_Agent_Rules_Skills_MCP_Architecture_Report.html"
+OUTPUT_PDF = PROJECT_ROOT / "Report" / "Architecture" / "FC_Agent_Rules_Skills_MCP_Architecture_Report.pdf"
+TEMP_HTML = PROJECT_ROOT / "Intermediate" / "temp_ai_architecture_report.html"
 
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="ko">
@@ -262,7 +262,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div class="cover-header">
             <span class="badge-top">Architecture Audit & Streamlining</span>
             <h1>FC 프로젝트 AI 개발 아키텍처 종합 분석 보고서</h1>
-            <div class="subtitle">AGENTS.md 최상위 헌장, 6대 도메인 룰(Rules), 단일 파이프라인(pipeline.py) 일원화 및 Live Editor MCP 정밀 해설</div>
+            <div class="subtitle">AGENTS.md 최상위 헌장, 7대 도메인 룰(Rules), 단일 파이프라인(pipeline.py) 일원화 및 Live Editor MCP 정밀 해설</div>
             <div class="meta-box">
                 <div class="meta-item">
                     <strong>Target Engine</strong>
@@ -278,7 +278,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
                 <div class="meta-item">
                     <strong>Report Date & Version</strong>
-                    2026-10-18 • Version 1.4 (Architecture Slimming Edition)
+                    2026-10-28 • Version 1.5 (Multi-Model Subagent & Closed-Loop Remediation Edition)
                 </div>
             </div>
         </div>
@@ -313,10 +313,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div>• <strong>04-gameplay-ability-system.md</strong>: GAS 어트리뷰트, RepNotify & Cue</div>
                     <div>• <strong>05-combat-and-inventory-networking.md</strong>: FastArray, 판정 스윕</div>
                     <div>• <strong>06-umg-mvvm-standards.md</strong>: MVVM ViewModel, Zero-Tick 바인딩</div>
+                    <div>• <strong>07-adversarial-audit-standards.md</strong>: 간결성/기존구조/확장성/네트워크/일반 5대 심사</div>
                 </div>
                 <div style="width: 48%;">
                     <div style="color: #34d399; font-weight: 700; margin-bottom: 3px;">▼ Unified Pipeline & Live MCP (Execution Tier)</div>
-                    <div>• <strong>Scripts/pipeline.py</strong>: 7대 모드 통합 마스터 러너 (단일 진입점)</div>
+                    <div>• <strong>Scripts/pipeline.py</strong>: 8대 모드 통합 마스터 러너 (단일 진입점)</div>
                     <div>• <strong>pipeline.ps1 / pipeline.bat</strong>: 윈도우 초고속 원클릭 래퍼</div>
                     <div>• <strong>unreal-engine MCP</strong>: 포트 8000 라이브 에디터 조작/리플렉션</div>
                     <div>• <strong>Scripts/dump_asset_metadata.py</strong>: BP/WBP/Anim 헤더 고속 추출</div>
@@ -425,7 +426,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <h2>3. 모듈형 도메인 규칙 체계 (.antigravity/rules/)</h2>
         <p>
-            모든 규칙을 상시 프롬프트에 담을 경우 발생하는 컨텍스트 낭비와 환각(Hallucination)을 방지하기 위해, 세부 구현 표준은 <span class="code-inline">.antigravity/rules/</span> 디렉토리에 6개의 모듈형 문서로 분리되어 필요 시점에만 온디맨드(On-Demand)로 참조됩니다.
+            모든 규칙을 상시 프롬프트에 담을 경우 발생하는 컨텍스트 낭비와 환각(Hallucination)을 방지하기 위해, 세부 구현 표준은 <span class="code-inline">.antigravity/rules/</span> 디렉토리에 7개의 모듈형 문서로 분리되어 필요 시점에만 온디맨드(On-Demand)로 참조됩니다.
         </p>
 
         <div class="grid-2">
@@ -503,10 +504,20 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <span class="badge badge-slate">UMG MVVM</span>
                 </div>
                 <ul>
-                    <li><strong>클라이언트 전용 뷰모델:</strong> <span class="code-inline">UMVVMViewModelBase</span> 상속, 뷰모델 복제 금지 (OnRep/델리게이트 수신 후 로컬 주입).</li>
-                    <li><strong>Zero-Tick 바인딩:</strong> Tick 감시 제거, <span class="code-inline">FieldNotify</span> 브로드캐스트 기반 UI 이벤트 트리거.</li>
-                    <li><strong>변이 매크로:</strong> 값 변경 감지 시 <span class="code-inline">UE_MVVM_SET_PROPERTY_VALUE</span>, 컬렉션 갱신 시 <span class="code-inline">UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED</span>.</li>
-                    <li><strong>소프트 에셋 참조:</strong> 아이콘/텍스처는 <span class="code-inline">TSoftObjectPtr&lt;UTexture2D&gt;</span> 사용.</li>
+                    <li><strong>클라이언트 전용 뷰모델:</strong> <span class="code-inline">UMVVMViewModelBase</span> 상속, 뷰모델 복제 금지.</li>
+                    <li><strong>Zero-Tick 바인딩:</strong> Tick 감시 제거, <span class="code-inline">FieldNotify</span> 브로드캐스트 기반 UI 트리거.</li>
+                    <li><strong>변이 매크로:</strong> <span class="code-inline">UE_MVVM_SET_PROPERTY_VALUE</span> 및 <span class="code-inline">TSoftObjectPtr</span> 사용.</li>
+                </ul>
+            </div>
+            <div class="card" style="border-left: 3.5px solid #0284c7;">
+                <div class="card-header">
+                    <span class="card-title">07-adversarial-audit-standards.md</span>
+                    <span class="badge badge-primary">ADVERSARIAL AUDIT</span>
+                </div>
+                <ul>
+                    <li><strong>5대 핵심 심사 차원:</strong> 간결성, 기존 구조 활용, 범위 내 적정 확장성, 네트워크, 일반 성능 최적화.</li>
+                    <li><strong>멀티플레이어 보안:</strong> HasAuthority 가드, BlueprintSetter 캡슐화 강제, COND_InitialOnly 대역폭 절약.</li>
+                    <li><strong>자율 치유 폐루프:</strong> BLOCKING 결함 발견 시 자동 패치 적용 및 UBT 무오류 통과 검증.</li>
                 </ul>
             </div>
         </div>
@@ -578,6 +589,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <td>UnrealEditor-Cmd.exe 헤드리스 자동화 스펙(NullRHI 모드) 실행 및 단위 테스트 상태 리포트</td>
                 </tr>
                 <tr>
+                    <td><strong>서브에이전트 감사 패키징</strong></td>
+                    <td><span class="code-inline">python Scripts/pipeline.py audit</span></td>
+                    <td>git add -N . 및 C++ diff 추출(-- *.h *.cpp *.cs), 정적 복제/대역폭 검사(0.2s) 병합 정형화</td>
+                </tr>
+                <tr>
                     <td><strong>원클릭 릴리즈 커밋</strong></td>
                     <td><span class="code-inline">python Scripts/pipeline.py full --auto-commit</span></td>
                     <td>Static 검증 → Build 하네스 → Test 검증을 순차 통과할 경우 Conventional Commit 자동 생성</td>
@@ -585,26 +601,37 @@ HTML_CONTENT = """<!DOCTYPE html>
             </tbody>
         </table>
 
-        <h3>🌐 Antigravity 글로벌 Built-in 스킬과의 명확한 역할 분담</h3>
-        <div class="grid-2">
+        <h3>🌐 Antigravity 스킬 및 서브에이전트 체계 (Skills & SubAgent Tier)</h3>
+        <div class="grid-3">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">서브에이전트 적대적 심사</span>
+                    <span class="badge badge-primary">/interrogate</span>
+                </div>
+                <ul>
+                    <li><strong>독립 감사관:</strong> <span class="code-inline">adversarial-auditor</span> Read-Only 서브에이전트 호출.</li>
+                    <li><strong>온디맨드 자동 티어링:</strong> 기본은 <span class="code-inline">inherit</span>(메인 상속), "자동 티어링" 명시적 요청 시에만 diff 기반 <span class="code-inline">pro</span>/<span class="code-inline">flash</span> 자동 선정.</li>
+                    <li><strong>바이너리 배제:</strong> 순수 C++ diff만을 추출하여 토큰 낭비 방지.</li>
+                </ul>
+            </div>
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">시스템 & 환경 제어 스킬</span>
                     <span class="badge badge-slate">GLOBAL BUILT-IN</span>
                 </div>
                 <ul>
-                    <li><strong>agy-customizations / antigravity-guide:</strong> Antigravity 커스터마이징 메커니즘, 우선순위, 규칙 로딩, IDE 환경 전반을 안내하는 시스템 레벨 스킬.</li>
-                    <li><strong>automation:</strong> 백그라운드 타이머 및 주기적 cron 자동화 작업을 설계하고 스케줄링하는 범용 자동화 스킬.</li>
+                    <li><strong>agy-customizations / antigravity-guide:</strong> Antigravity 커스터마이징 우선순위, 룰 로딩 및 IDE 안내.</li>
+                    <li><strong>automation:</strong> 백그라운드 타이머 및 주기적 cron 자동화 스케줄링.</li>
                 </ul>
             </div>
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">시각화 & 단일 파이프라인 러너</span>
-                    <span class="badge badge-primary">PIPELINE & UI</span>
+                    <span class="card-title">통합 러너 & 시각화</span>
+                    <span class="badge badge-success">PIPELINE & UI</span>
                 </div>
                 <ul>
-                    <li><strong>generative_ui:</strong> 대화창 내 반응형 HTML 위젯이나 구조 다이어그램을 동적으로 시각화하는 프레젠테이션 스킬.</li>
-                    <li><strong>Scripts/pipeline.py (통합 러너):</strong> 프로젝트 내부의 모든 빌드/검증/인스펙션을 터미널 레벨에서 초고속으로 전담 처리하는 마스터 엔진.</li>
+                    <li><strong>pipeline.py (8대 모드):</strong> 빌드, 정적 검증, 감사, 에셋 덤프 전담.</li>
+                    <li><strong>generative_ui:</strong> 반응형 HTML 다이어그램 및 시각화.</li>
                 </ul>
             </div>
         </div>
@@ -774,6 +801,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <td>BP/WBP/Anim 메타데이터 실측 추출. <span class="code-inline">--deep</span> 추가 시 정밀 엔진 리플렉션 수행</td>
                 </tr>
                 <tr>
+                    <td><strong>audit</strong></td>
+                    <td><span class="code-inline">python Scripts/pipeline.py audit</span></td>
+                    <td>~0.25s</td>
+                    <td>C++ 텍스트 diff 패키징(라인수, 파일수) 및 복제/대역폭 정적 분석을 일괄 수행하여 서브에이전트 감사 준비</td>
+                </tr>
+                <tr>
                     <td><strong>full</strong></td>
                     <td><span class="code-inline">python Scripts/pipeline.py full --auto-commit</span></td>
                     <td>순차 실행</td>
@@ -789,11 +822,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <span class="badge badge-primary">AUTONOMOUS LOOP</span>
             </div>
             <ol>
-                <li><strong>에이전트 코드 수정:</strong> C++ 소스 또는 헤더 파일 작성.</li>
-                <li><strong>검증 호출:</strong> <span class="code-inline">pipeline.py build</span> 또는 <span class="code-inline">pipeline.py static</span> 단일 호출.</li>
-                <li><strong>JSON 파싱 & 진단:</strong> 에러 발생 시 UBT 또는 AST 스크립트가 표준 JSON(<span class="code-inline">file</span>, <span class="code-inline">line</span>, <span class="code-inline">code</span>, <span class="code-inline">message</span>) 출력.</li>
-                <li><strong>원인 추론 및 코드 패치:</strong> 사용자 개입 없이 에이전트가 해당 라인 전후 컨텍스트를 읽고 즉각 패치 적용.</li>
-                <li><strong>루프 반복 (Max 5 Cycles):</strong> 정상 통과할 때까지 최대 5회 재컴파일 수행. 5회 초과 실패 시에만 원인 분석 리포트 제출 후 사용자 피드백 요청.</li>
+                <li><strong>1단계 (코드 작성 및 감사 패키징):</strong> C++ 코드 작성 후 <span class="code-inline">/interrogate</span> 또는 <span class="code-inline">pipeline.py audit</span>으로 C++ diff 추출.</li>
+                <li><strong>2단계 (서브에이전트 독립 심사):</strong> Read-Only 감사관이 5대 기준(권한, 대역폭, 캡슐화, 간결성 등)에 따라 비판적 채점 수행.</li>
+                <li><strong>3단계 (자율 치유 자동 패치):</strong> BLOCKING 결함 발견 시 메인 에이전트가 HasAuthority, BlueprintSetter, COND_InitialOnly 등 즉각 자동 패치 적용.</li>
+                <li><strong>4단계 (UBT 컴파일 & 재심사):</strong> <span class="code-inline">pipeline.py build</span>로 컴파일 무오류 검증 후 서브에이전트 재심사로 10/10 APPROVED(LGTM) 최종 승인 획득.</li>
+                <li><strong>5단계 (안전 릴리즈):</strong> <span class="code-inline">pipeline.py full --auto-commit</span>으로 무결점 안전 커밋 완료.</li>
             </ol>
         </div>
 
@@ -875,15 +908,21 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <td>모든 세션에 Always-On 자동 주입되며 Rules와 파이프라인을 총괄 지휘</td>
                 </tr>
                 <tr>
-                    <td><strong>Rules (6대 모듈)</strong></td>
+                    <td><strong>Rules (7대 모듈)</strong></td>
                     <td><span class="code-inline">.antigravity/rules/*.md</span></td>
-                    <td>C++20, 리플리케이션, 루프 엔지니어링, GAS, 인벤토리, MVVM 도메인별 세부 구현 명세</td>
-                    <td>해당 시스템 작업 시에만 온디맨드로 참조되어 토큰 예산(24KB) 최적화</td>
+                    <td>C++20, 복제, 루프, GAS, 인벤토리, MVVM 및 <strong>07-적대적 심사 기준</strong></td>
+                    <td>작업 도메인 및 서브에이전트 심사 시 온디맨드 주입되어 토큰 최적화</td>
+                </tr>
+                <tr>
+                    <td><strong>SubAgent & Skill</strong></td>
+                    <td><span class="code-inline">adversarial-auditor</span><br><span class="code-inline">.agents/skills/interrogate/</span></td>
+                    <td>Read-Only 독립 심사 서브에이전트 및 /interrogate 원클릭 실행 인터페이스</td>
+                    <td>코드 커밋 전 메인 모델의 확증 편향과 멀티플레이어 결함을 교차 검증 및 자율 치유</td>
                 </tr>
                 <tr>
                     <td><strong>Unified Pipeline</strong></td>
                     <td><span class="code-inline">Scripts/pipeline.py</span><br>(<span class="code-inline">pipeline.ps1/bat</span>)</td>
-                    <td>7대 모드를 단일 엔트리포인트로 총괄하는 고성능 마스터 실행기 (빌드, 검증, 밸런스, 에셋 덤프)</td>
+                    <td>8대 모드를 단일 엔트리포인트로 총괄하는 고성능 마스터 실행기 (빌드, 검증, 밸런스, 에셋 덤프)</td>
                     <td>에이전트가 터미널에서 단일 명령어로 호출하는 유일한 오프라인 개발 하네스</td>
                 </tr>
                 <tr>
@@ -907,6 +946,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <li><strong>스킬 및 상태이상 추가:</strong> <span class="code-inline">04-gameplay-ability-system.md</span>를 참조하여 <span class="code-inline">ATTRIBUTE_ACCESSORS</span>와 <span class="code-inline">GameplayCue</span>를 적용하고 <span class="code-inline">pipeline.py static</span> 검증.</li>
                 <li><strong>인벤토리/아이템 목록 추가:</strong> <span class="code-inline">05-combat-and-inventory-networking.md</span>를 참조하여 <span class="code-inline">FFastArraySerializer</span>와 <span class="code-inline">COND_OwnerOnly</span> 구현.</li>
                 <li><strong>UI 개발:</strong> <span class="code-inline">06-umg-mvvm-standards.md</span>에 따라 서버 독립적인 <span class="code-inline">UMVVMViewModelBase</span> 및 <span class="code-inline">FieldNotify</span> 바인딩 구축.</li>
+                <li><strong>커밋 전 서브에이전트 교차 검증:</strong> <span class="code-inline">/interrogate</span> 호출로 5대 축 심사 수행 → BLOCKING 결함 자율 치유 → 10/10 LGTM 승인 획득.</li>
                 <li><strong>커밋 전 최종 릴리즈:</strong> <span class="code-inline">python Scripts/pipeline.py full --auto-commit -m "feat: ..."</span> 단일 명령어로 정적 검증, 컴파일, 유닛 테스트를 일괄 통과.</li>
             </ul>
         </div>
@@ -914,10 +954,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div class="callout" style="border-left-color: #10b981; background: #f0fdf4;">
             <div class="callout-title" style="color: #047857;">
                 <span>🏁 결론 및 총평 (Conclusion)</span>
-                <span class="badge badge-success">PRODUCTION READY V1.4</span>
+                <span class="badge badge-success">PRODUCTION READY V1.5</span>
             </div>
             <div style="font-size: 8pt; color: #1e293b;">
-                FC 프로젝트의 AI 개발 아키텍처는 전수 점검을 통해 <strong>비표준 로컬 MCP와 레거시 스킬 등의 잉여 레이어를 완벽히 걷어내고, 최상위 헌장(AGENTS.md)의 4계층 권한과 최소 수정 통율, 6대 도메인 룰(Rules)의 온디맨드 주입, 단일 마스터 파이프라인(pipeline.py), 그리고 실시간 라이브 MCP(unreal-engine)의 4대 핵심 축으로 완벽하게 일원화</strong>되었습니다. 이로써 불필요한 호출 지연과 토큰 낭비가 0%로 줄어들었으며, AAA급 언리얼 엔진 5.8 환경에서 가장 기민하고 견고한 AI 페어 프로그래밍 생산성을 발휘합니다.
+                FC 프로젝트의 AI 개발 아키텍처는 전수 점검을 통해 <strong>비표준 로컬 MCP와 레거시 스킬 등의 잉여 레이어를 완벽히 걷어내고, 최상위 헌장(AGENTS.md)의 4계층 권한과 최소 수정 통율, 7대 도메인 룰(Rules)의 온디맨드 주입, 단일 마스터 파이프라인(pipeline.py), 그리고 실시간 라이브 MCP(unreal-engine)의 4대 핵심 축으로 완벽하게 일원화</strong>되었습니다. 이로써 불필요한 호출 지연과 토큰 낭비가 0%로 줄어들었으며, AAA급 언리얼 엔진 5.8 환경에서 가장 기민하고 견고한 AI 페어 프로그래밍 생산성을 발휘합니다.
             </div>
         </div>
     </div>

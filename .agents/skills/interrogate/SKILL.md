@@ -45,14 +45,17 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
 3. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
 
 ### Step 2: Invoke the Adversarial Auditor Subagent
-Select the appropriate model tier based on the audit scope:
-- **`flash`**: Fast iterative checks on small changes (<150 diff lines, local component logic).
-- **`pro`** (Recommended for Multiplayer/Architecture): Core replication changes, RPC declarations, GAS abilities/attributes, or large architectural refactors.
+- **기본 모드 (Default)**: 항상 `Model: inherit` (일반적인 `/interrogate` 또는 "코드 검사해줘" 요청 시에는 모델 티어링을 수행하지 않고 기본 모델을 그대로 상속).
+- **자동 티어링 모드 (On-Demand Auto-Tiering)**:
+  사용자가 모델명을 일일이 지정할 필요 없이, **"자동 티어링 적용해줘"**, **"규모에 맞춰 알아서 모델 골라 검사해줘"** 와 같이 자동 티어링을 명시적으로 요청한 경우에만 diff를 분석하여 최적 모델을 자동 선택:
+  - 경량 로컬 로직 (<150 diff lines, 단일 컴포넌트 경미한 수정): `Model: flash` 자동 할당
+  - 복제/아키텍처 (>150 diff lines, Replication, RPC, GAS, 핵심 시스템): `Model: pro` 자동 할당
+  - **사용자의 자동 티어링 요청이 없는 기본 검사에서는 임의로 모델을 분기하지 않고 항상 `Model: inherit` 유지.**
 
 Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
 - **TypeName**: `adversarial-auditor`
 - **Role**: `Adversarial Code Auditor`
-- **Model**: `pro` (or `flash` for fast track)
+- **Model**: `inherit` (사용자의 '자동 티어링' 요청 시에만 diff 분석에 따라 `pro` 또는 `flash` 자동 선정)
 - **Prompt**:
   ```text
   Please perform a rigorous adversarial audit on the following changes.

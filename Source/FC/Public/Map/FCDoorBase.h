@@ -41,7 +41,7 @@ public:
 	void SetDoorWidth(float NewDoorWidth);
 
 	UFUNCTION(BlueprintCallable, Category = "FC|Door")
-	void UpdateDoorDimensions();
+	virtual void UpdateDoorDimensions();
 
 	UFUNCTION(BlueprintPure, Category = "FC|Door")
 	float GetPlacementOffsetModifier() const { return PlacementOffsetModifier; }
@@ -77,7 +77,7 @@ protected:
 	virtual void OnRep_DoorWidth();
 
 	/** Lateral width of the door passage in cm. Adjusts trigger volume extent. Defaults to 300 cm. */
-	UPROPERTY(ReplicatedUsing = OnRep_DoorWidth, EditAnywhere, BlueprintReadWrite, Category = "FC|Door|Config", meta = (ClampMin = "50.0"))
+	UPROPERTY(ReplicatedUsing = OnRep_DoorWidth, EditAnywhere, BlueprintSetter = SetDoorWidth, BlueprintReadWrite, Category = "FC|Door|Config", meta = (ClampMin = "50.0"))
 	float DoorWidth = 300.0f;
 
 	/** Fine-tuning placement offset modifier along the doorway axis (default 0.0f = flush with room boundary). */
