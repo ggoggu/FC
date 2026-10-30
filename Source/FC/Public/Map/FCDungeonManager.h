@@ -101,6 +101,15 @@ public:
 	}
 
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	float GetDoorWidth() const { return DoorWidth; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon|Doors")
+	void SetDoorWidth(float NewDoorWidth) { DoorWidth = FMath::Max(0.0f, NewDoorWidth); }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	float GetDoorWidthForEdge(const FIntPoint& RoomA, const FIntPoint& RoomB) const;
+
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
 	TSubclassOf<AFCDoorBase> ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const;
 
 	/** Teleport all existing player pawns into the Start Room */
@@ -142,9 +151,13 @@ protected:
 	int32 MaxSecretRooms = 1;
 
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Config", meta = (ClampMin = "500.0"))
-	float CellSize = 7200.0f;
+	float CellSize = 6300.0f;
 
-	/** If true, automatically synchronizes spawned rooms' DoorOffset to CellSize * 0.5f for seamless room-to-room door alignment. */
+	/** Spacing / passage width allocated for door actors between adjacent rooms in cm. Sockets are separated by DoorWidth. Defaults to 300 cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon|Config", meta = (ClampMin = "0.0"))
+	float DoorWidth = 300.0f;
+
+	/** If true, automatically synchronizes spawned rooms' DoorOffset to (CellSize - DoorWidth) * 0.5f for seamless room-to-room door alignment. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Config")
 	bool bAutoSyncDoorOffsetToCellSize = true;
 

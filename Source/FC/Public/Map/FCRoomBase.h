@@ -226,9 +226,13 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_IsVisited, BlueprintReadOnly, Category = "FC|Room|Exploration")
 	bool bIsVisited = false;
 
-	/** Distance from room center to door/wall sockets (half-width of room). Defaults to 3600 cm (half of 7200 grid). */
+	/** Distance from room center to door/wall sockets (half-width of room). Defaults to 3000 cm (half of 6000 grid / matches RoomBoundsTrigger). */
 	UPROPERTY(ReplicatedUsing = OnRep_DoorOffset, EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors", meta = (ClampMin = "100.0"))
-	float DoorOffset = 3600.0f;
+	float DoorOffset = 3000.0f;
+
+	/** If true, automatically synchronizes DoorOffset to RoomBoundsTrigger's extent */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
+	bool bSyncDoorOffsetToTrigger = true;
 
 	/** If true, doorway actors are managed and spawned externally (e.g. by AFCDungeonManager for canonical shared edges) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
