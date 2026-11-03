@@ -1,5 +1,6 @@
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
+#include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
 
 UFCHandViewModel* UFCHUDViewModel::GetOrCreateHandViewModel()
 {
@@ -9,6 +10,16 @@ UFCHandViewModel* UFCHUDViewModel::GetOrCreateHandViewModel()
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HandViewModel);
 	}
 	return HandViewModel;
+}
+
+UFCStatusToggleContainerViewModel* UFCHUDViewModel::GetOrCreateStatusContainerViewModel()
+{
+	if (!StatusContainerViewModel)
+	{
+		StatusContainerViewModel = NewObject<UFCStatusToggleContainerViewModel>(this);
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(StatusContainerViewModel);
+	}
+	return StatusContainerViewModel;
 }
 
 void UFCHUDViewModel::SetCurrentHealth(int32 InHealth)

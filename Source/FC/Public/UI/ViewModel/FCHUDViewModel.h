@@ -5,6 +5,7 @@
 #include "FCHUDViewModel.generated.h"
 
 class UFCHandViewModel;
+class UFCStatusToggleContainerViewModel;
 
 /**
  * UFCHUDViewModel
@@ -61,8 +62,12 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Hand")
 	TObjectPtr<UFCHandViewModel> HandViewModel;
 
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Status")
+	TObjectPtr<UFCStatusToggleContainerViewModel> StatusContainerViewModel;
+
 public:
 	UFCHandViewModel* GetOrCreateHandViewModel();
+	UFCStatusToggleContainerViewModel* GetOrCreateStatusContainerViewModel();
 
 	// Setters utilizing UE_MVVM_SET_PROPERTY_VALUE
 	void SetCurrentHealth(int32 InHealth);

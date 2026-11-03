@@ -6,6 +6,7 @@
 
 class UFCHUDViewModel;
 class UFCHandWidget;
+class UFCStatusToggleContainerWidget;
 
 /**
  * UFCHUDWidget
@@ -37,6 +38,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD|Widgets")
 	void SetHandWidget(UFCHandWidget* InHandWidget) { HandWidget = InHandWidget; }
 
+	/** Gets the child status toggle container widget */
+	UFUNCTION(BlueprintPure, Category = "HUD|Widgets")
+	UFCStatusToggleContainerWidget* GetStatusToggleContainerWidget() const { return StatusToggleContainerWidget; }
+
+	/** Sets the child status toggle container widget */
+	UFUNCTION(BlueprintCallable, Category = "HUD|Widgets")
+	void SetStatusToggleContainerWidget(UFCStatusToggleContainerWidget* InWidget) { StatusToggleContainerWidget = InWidget; }
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -44,6 +53,10 @@ protected:
 	/** Optional child hand widget (named HandWidget in Blueprint) automatically linked to HUDViewModel's HandViewModel */
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
 	TObjectPtr<UFCHandWidget> HandWidget;
+
+	/** Optional child status toggle container widget (placed in PlayerInfoContainer in Blueprint) */
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
+	TObjectPtr<UFCStatusToggleContainerWidget> StatusToggleContainerWidget;
 
 	/** Blueprint hook triggered whenever a new ViewModel is bound */
 	UFUNCTION(BlueprintImplementableEvent, Category = "HUD|Events")

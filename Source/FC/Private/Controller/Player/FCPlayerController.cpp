@@ -8,6 +8,8 @@
 #include "UI/View/FCHUDWidget.h"
 #include "UI/View/FCHandWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
+#include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
+#include "UI/Data/FCStatusToggleTypes.h" 
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
@@ -630,4 +632,27 @@ void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupAct
 	}
 
 	PickupActor->ClaimPickup(ControlledPawn, Destination);
+}
+
+
+void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
+{
+	if (HUDViewModel)
+	{
+		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
+		{
+			StatusVM->AddOrUpdateStatus(InData);
+		}
+	}
+}
+
+void AFCPlayerController::RemoveStatusToggle(FName InStatusId)
+{
+	if (HUDViewModel)
+	{
+		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
+		{
+			StatusVM->RemoveStatusById(InStatusId);
+		}
+	}
 }
