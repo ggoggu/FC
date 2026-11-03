@@ -26,9 +26,9 @@ AFCRoomBase::AFCRoomBase()
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
 
-	DoorOffset = 3600.0f;
+	DoorOffset = 3000.0f;
 
-	// Sockets based on DoorOffset (defaults to 3600 cm half-extent for 7200x7200 cm grid)
+	// Sockets based on DoorOffset (defaults to 3000 cm half-extent for 6000x6000 cm grid)
 	NorthDoorSocket = CreateDefaultSubobject<USceneComponent>(TEXT("NorthDoorSocket"));
 	NorthDoorSocket->SetupAttachment(SceneRoot);
 	NorthDoorSocket->SetRelativeLocation(FVector(0.0f, DoorOffset, 0.0f));
@@ -63,6 +63,10 @@ AFCRoomBase::AFCRoomBase()
 void AFCRoomBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
+	if (bSyncDoorOffsetToTrigger && RoomBoundsTrigger)
+	{
+		DoorOffset = RoomBoundsTrigger->GetUnscaledBoxExtent().X;
+	}
 	UpdateDoorSockets();
 }
 
@@ -145,6 +149,13 @@ void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
 		SetVisited(true);
 		SetRoomState(EFCRoomState::Cleared);
 	}
+
+	if (bSyncDoorOffsetToTrigger && !bManageDoorsExternally && RoomBoundsTrigger)
+	{
+		DoorOffset = RoomBoundsTrigger->GetUnscaledBoxExtent().X;
+	}
+
+	UpdateDoorSockets();
 
 	OnSetupDoorsAndWalls(RoomData.DoorMask);
 }
@@ -586,6 +597,7 @@ void AFCRoomBase::OnSecretWallDestroyed(AFCDestructibleWall* Wall)
 
 void AFCRoomBase::OnRep_RoomData()
 {
+	UpdateDoorSockets();
 	OnSetupDoorsAndWalls(RoomData.DoorMask);
 }
 
@@ -656,15 +668,31 @@ TSubclassOf<AFCDoorBase> AFCRoomBase::GetDirectionDoorClass(uint8 DirectionBit) 
 
 float AFCRoomBase::GetDoorOffsetForDirection(uint8 DirectionBit) const
 {
-	float Modifier = 0.0f;
-	if (TSubclassOf<AFCDoorBase> DoorClass = GetDirectionDoorClass(DirectionBit))
+	// When doors are managed externally (e.g. by AFCDungeonManager), CellSize (6300cm)
+	// already allocates the DoorWidth (300cm) gap between room boundaries.
+	// Therefore, sockets remain flush with the room boundary (DoorOffset = 3000cm).
+	if (bManageDoorsExternally)
 	{
-		if (const AFCDoorBase* DoorCDO = GetDefault<AFCDoorBase>(DoorClass))
-		{
-			Modifier = DoorCDO->GetPlacementOffsetModifier();
-		}
+		return DoorOffset;
 	}
-	return FMath::Max(100.0f, DoorOffset + Modifier);
+
+	// For standalone rooms spawning their own doors internally:
+	if (RoomData.DoorMask & DirectionBit)
+	{
+		float CustomDoorWidth = 300.0f;
+		if (TSubclassOf<AFCDoorBase> DoorClass = GetDirectionDoorClass(DirectionBit))
+		{
+			if (const AFCDoorBase* DoorCDO = GetDefault<AFCDoorBase>(DoorClass))
+			{
+				CustomDoorWidth = DoorCDO->GetDoorWidth();
+			}
+		}
+		// Adjust door socket so the gap between adjacent room door sockets equals CustomDoorWidth
+		return FMath::Max(100.0f, DoorOffset - CustomDoorWidth * 0.5f);
+	}
+
+	// Where a wall is located (non-door direction), remain strictly at DoorOffset (flush with room boundary)
+	return DoorOffset;
 }
 
 void AFCRoomBase::RegisterConnectedDoor(AFCDoorBase* Door)

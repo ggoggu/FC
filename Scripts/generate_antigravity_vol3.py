@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-OUTPUT_DIR = PROJECT_ROOT / "Report" / "Architecture"
+OUTPUT_DIR = PROJECT_ROOT / "Report" / "03_AI_and_Antigravity"
 OUTPUT_PDF = OUTPUT_DIR / "FC_Antigravity_Vol3_FC_Project_Engineering_and_Loop.pdf"
 TEMP_HTML = PROJECT_ROOT / "Scripts" / "temp_antigravity_vol3.html"
 

@@ -1,7 +1,9 @@
 #include "UI/View/FCHUDWidget.h"
 #include "UI/View/FCHandWidget.h"
+#include "UI/View/FCStatusToggleContainerWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
+#include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Card/FCCardDeckComponent.h"
@@ -10,6 +12,7 @@
 UFCHUDWidget::UFCHUDWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, HandWidget(nullptr)
+	, StatusToggleContainerWidget(nullptr)
 	, HUDViewModel(nullptr)
 {
 }
@@ -32,6 +35,16 @@ void UFCHUDWidget::NativeConstruct()
 				View->ExecuteViewModelBindings(TEXT("FCHUDViewModel"));
 			}
 		}
+
+		if (HandWidget)
+		{
+			HandWidget->SetHandViewModel(HUDViewModel->GetOrCreateHandViewModel());
+		}
+
+		if (StatusToggleContainerWidget)
+		{
+			StatusToggleContainerWidget->SetContainerViewModel(HUDViewModel->GetOrCreateStatusContainerViewModel());
+		}
 	}
 }
 
@@ -52,9 +65,17 @@ void UFCHUDWidget::SetHUDViewModel(UFCHUDViewModel* InViewModel)
 		}
 	}
 
-	if (HUDViewModel && HandWidget)
+	if (HUDViewModel)
 	{
-		HandWidget->SetHandViewModel(HUDViewModel->GetOrCreateHandViewModel());
+		if (HandWidget)
+		{
+			HandWidget->SetHandViewModel(HUDViewModel->GetOrCreateHandViewModel());
+		}
+
+		if (StatusToggleContainerWidget)
+		{
+			StatusToggleContainerWidget->SetContainerViewModel(HUDViewModel->GetOrCreateStatusContainerViewModel());
+		}
 	}
 
 	OnHUDViewModelAssigned(InViewModel);

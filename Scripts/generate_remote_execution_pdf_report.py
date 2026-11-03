@@ -12,9 +12,9 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-BENCHMARK_JSON = PROJECT_ROOT / "Report" / "benchmark_remote_vs_cmdlet.json"
-OUTPUT_PDF = PROJECT_ROOT / "Report" / "FC_Python_Remote_Execution_Speed_Benchmark_Report.pdf"
-TEMP_HTML = PROJECT_ROOT / "Report" / "FC_Python_Remote_Execution_Speed_Benchmark_Report.html"
+BENCHMARK_JSON = PROJECT_ROOT / "Report" / "03_AI_and_Antigravity" / "benchmark_remote_vs_cmdlet.json"
+OUTPUT_PDF = PROJECT_ROOT / "Report" / "03_AI_and_Antigravity" / "FC_Python_Remote_Execution_Speed_Benchmark_Report.pdf"
+TEMP_HTML = PROJECT_ROOT / "Intermediate" / "temp_remote_execution_benchmark.html"
 
 def load_benchmark_data():
     if BENCHMARK_JSON.exists():
@@ -572,6 +572,7 @@ def main():
     html_content = build_html_content(data)
     
     OUTPUT_PDF.parent.mkdir(parents=True, exist_ok=True)
+    TEMP_HTML.parent.mkdir(parents=True, exist_ok=True)
     with open(TEMP_HTML, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"Temporary HTML saved: {TEMP_HTML}")

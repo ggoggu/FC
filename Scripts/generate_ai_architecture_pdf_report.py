@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-OUTPUT_PDF = PROJECT_ROOT / "Report" / "Architecture" / "FC_Agent_Rules_Skills_MCP_Architecture_Report.pdf"
+OUTPUT_PDF = PROJECT_ROOT / "Report" / "03_AI_and_Antigravity" / "FC_Agent_Rules_Skills_MCP_Architecture_Report.pdf"
 TEMP_HTML = PROJECT_ROOT / "Intermediate" / "temp_ai_architecture_report.html"
 
 HTML_CONTENT = """<!DOCTYPE html>

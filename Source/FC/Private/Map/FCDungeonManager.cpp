@@ -748,7 +748,7 @@ void AFCDungeonManager::SpawnDungeonRooms()
 
 			if (bAutoSyncDoorOffsetToCellSize)
 			{
-				SpawnedRoom->SetDoorOffset(CellSize * 0.5f);
+				SpawnedRoom->SetDoorOffset((CellSize - DoorWidth) * 0.5f);
 			}
 
 			auto ConfigureDirectionDoor = [&](uint8 DirectionBit, const FIntPoint& NeighborCoord)
@@ -827,20 +827,42 @@ void AFCDungeonManager::SpawnSharedDoorways()
 			continue;
 		}
 
-		// Determine direction from RoomA to RoomB
+		// Determine direction from RoomA to RoomB, and opposite from RoomB to RoomA
 		uint8 DirectionFromA = 0;
-		if (Edge.RoomB.Y > Edge.RoomA.Y) DirectionFromA = EFCDungeonDoor::North;
-		else if (Edge.RoomB.Y < Edge.RoomA.Y) DirectionFromA = EFCDungeonDoor::South;
-		else if (Edge.RoomB.X > Edge.RoomA.X) DirectionFromA = EFCDungeonDoor::East;
-		else if (Edge.RoomB.X < Edge.RoomA.X) DirectionFromA = EFCDungeonDoor::West;
+		uint8 DirectionFromB = 0;
+		if (Edge.RoomB.Y > Edge.RoomA.Y)
+		{
+			DirectionFromA = EFCDungeonDoor::North;
+			DirectionFromB = EFCDungeonDoor::South;
+		}
+		else if (Edge.RoomB.Y < Edge.RoomA.Y)
+		{
+			DirectionFromA = EFCDungeonDoor::South;
+			DirectionFromB = EFCDungeonDoor::North;
+		}
+		else if (Edge.RoomB.X > Edge.RoomA.X)
+		{
+			DirectionFromA = EFCDungeonDoor::East;
+			DirectionFromB = EFCDungeonDoor::West;
+		}
+		else if (Edge.RoomB.X < Edge.RoomA.X)
+		{
+			DirectionFromA = EFCDungeonDoor::West;
+			DirectionFromB = EFCDungeonDoor::East;
+		}
 
-		const FTransform SocketTransform = RoomA->GetDoorSocketTransform(DirectionFromA);
+		const FTransform SocketTransformA = RoomA->GetDoorSocketTransform(DirectionFromA);
+		const FTransform SocketTransformB = RoomB->GetDoorSocketTransform(DirectionFromB);
+
+		// Door is placed at the exact midpoint bridging Room A's boundary and Room B's boundary
+		const FVector DoorLocation = (SocketTransformA.GetLocation() + SocketTransformB.GetLocation()) * 0.5f;
+		const FRotator DoorRotation = SocketTransformA.GetRotation().Rotator();
 
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.Owner = this;
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-		AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DoorClass, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
+		AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DoorClass, DoorLocation, DoorRotation, SpawnParams);
 		if (NewDoor)
 		{
 			RoomA->RegisterConnectedDoor(NewDoor);
@@ -998,6 +1020,22 @@ TSubclassOf<AFCDoorBase> AFCDungeonManager::GetRandomDoorFromPool() const
 	}
 
 	return FirstValidClass ? FirstValidClass : TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass());
+}
+
+float AFCDungeonManager::GetDoorWidthForEdge(const FIntPoint& RoomA, const FIntPoint& RoomB) const
+{
+	const FFCDungeonEdgeKey EdgeKey(RoomA, RoomB);
+	if (const TSubclassOf<AFCDoorBase>* FoundClass = EdgeDoorMap.Find(EdgeKey))
+	{
+		if (*FoundClass)
+		{
+			if (const AFCDoorBase* DoorCDO = GetDefault<AFCDoorBase>(*FoundClass))
+			{
+				return DoorCDO->GetDoorWidth();
+			}
+		}
+	}
+	return DoorWidth;
 }
 
 TSubclassOf<AFCDoorBase> AFCDungeonManager::ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const

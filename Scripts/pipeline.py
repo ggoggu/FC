@@ -236,14 +236,18 @@ def run_audit_check() -> tuple[bool, dict]:
         ["git", "diff", "--name-only", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace"
     )
     changed_files = [f.strip() for f in proc_files.stdout.splitlines() if f.strip()]
     proc_diff = subprocess.run(
         ["git", "diff", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        errors="replace"
     )
     diff_text = proc_diff.stdout
     diff_lines = len(diff_text.splitlines())

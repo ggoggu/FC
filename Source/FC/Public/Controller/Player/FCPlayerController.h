@@ -75,6 +75,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UI")
 	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
 
+	/** Adds or updates a circular status toggle in the HUD */
+	UFUNCTION(BlueprintCallable, Category = "UI|Status")
+	void SetStatusToggle(const struct FFCStatusToggleData& InData);
+
+	/** Removes a status toggle from the HUD by Id */
+	UFUNCTION(BlueprintCallable, Category = "UI|Status")
+	void RemoveStatusToggle(FName InStatusId);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

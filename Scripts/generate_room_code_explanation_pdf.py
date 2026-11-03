@@ -3,19 +3,17 @@
 """
 Generates an executive PDF report:
 "FC 프로젝트 방(Room) 시스템 아키텍처 및 소스 코드 정밀 해설서"
-Target location: Report/Explanation/FC_Room_Code_Explanation.pdf and Explantion/FC_Room_Code_Explanation.pdf
+Target location: Report/02_Gameplay_Systems/Dungeon_and_Rooms/FC_Room_Code_Explanation.pdf
 Features authentic Python IDLE-style code viewer rendering without character corruption.
 """
 
 import os
 import sys
-import shutil
 import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-REPORT_EXPLANATION_DIR = PROJECT_ROOT / "Report" / "Explanation"
-ROOT_EXPLANATION_DIR = PROJECT_ROOT / "Explantion"
+REPORT_TARGET_DIR = PROJECT_ROOT / "Report" / "02_Gameplay_Systems" / "Dungeon_and_Rooms"
 
 OUTPUT_PDF_NAME = "FC_Room_Code_Explanation.pdf"
 TEMP_HTML = PROJECT_ROOT / "Scripts" / "temp_room_explanation.html"
@@ -1702,11 +1700,9 @@ Yaw=180°       |                 +                   |  Yaw=0°
 
 def generate_pdf():
     print("Ensuring output directories exist...")
-    REPORT_EXPLANATION_DIR.mkdir(parents=True, exist_ok=True)
-    ROOT_EXPLANATION_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_TARGET_DIR.mkdir(parents=True, exist_ok=True)
 
-    target_pdf_in_report = REPORT_EXPLANATION_DIR / OUTPUT_PDF_NAME
-    target_pdf_in_root = ROOT_EXPLANATION_DIR / OUTPUT_PDF_NAME
+    target_pdf = REPORT_TARGET_DIR / OUTPUT_PDF_NAME
 
     print(f"Writing temporary HTML to {TEMP_HTML}...")
     html_content = build_html()
@@ -1734,42 +1730,36 @@ def generate_pdf():
         "--disable-gpu",
         "--no-sandbox",
         "--no-pdf-header-footer",
-        f"--print-to-pdf={target_pdf_in_report}",
+        f"--print-to-pdf={target_pdf}",
         str(TEMP_HTML)
     ]
 
-    print(f"Generating PDF: {target_pdf_in_report}...")
+    print(f"Generating PDF: {target_pdf}...")
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         print(f"[ERROR] Browser failed with code {proc.returncode}:\n{proc.stderr}")
         sys.exit(1)
 
-    if not target_pdf_in_report.exists():
-        print(f"[ERROR] PDF generation failed, file not found: {target_pdf_in_report}")
+    if not target_pdf.exists():
+        print(f"[ERROR] PDF generation failed, file not found: {target_pdf}")
         sys.exit(1)
 
-    size_kb = round(target_pdf_in_report.stat().st_size / 1024, 1)
-    print(f"[SUCCESS] Report PDF generated: {target_pdf_in_report} ({size_kb} KB)")
-
-    # Also copy to Explantion at root
-    shutil.copy2(target_pdf_in_report, target_pdf_in_root)
-    print(f"[SUCCESS] Mirrored PDF to: {target_pdf_in_root}")
+    size_kb = round(target_pdf.stat().st_size / 1024, 1)
+    print(f"[SUCCESS] Report PDF generated: {target_pdf} ({size_kb} KB)")
 
     # Clean up temporary HTML file
     if TEMP_HTML.exists():
         TEMP_HTML.unlink()
         print(f"[CLEANUP] Removed temporary file: {TEMP_HTML}")
 
-    # Verify that Report/Explanation and Explantion contain ONLY .pdf files
-    for folder in [REPORT_EXPLANATION_DIR, ROOT_EXPLANATION_DIR]:
-        non_pdf = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() != ".pdf"]
-        for np in non_pdf:
-            print(f"[WARNING] Non-pdf file found in {folder}: {np.name}, removing...")
-            np.unlink()
+    # Enforce strictly .pdf files only in target dir
+    non_pdf = [f for f in REPORT_TARGET_DIR.iterdir() if f.is_file() and f.suffix.lower() != ".pdf"]
+    for np in non_pdf:
+        print(f"[WARNING] Non-pdf file found in {REPORT_TARGET_DIR}: {np.name}, removing...")
+        np.unlink()
 
     print("\n=== Directory Check ===")
-    print(f"Files in {REPORT_EXPLANATION_DIR}: {[f.name for f in REPORT_EXPLANATION_DIR.iterdir()]}")
-    print(f"Files in {ROOT_EXPLANATION_DIR}: {[f.name for f in ROOT_EXPLANATION_DIR.iterdir()]}")
+    print(f"Files in {REPORT_TARGET_DIR}: {[f.name for f in REPORT_TARGET_DIR.iterdir()]}")
 
 if __name__ == "__main__":
     generate_pdf()

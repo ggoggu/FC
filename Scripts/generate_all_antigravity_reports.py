@@ -6,7 +6,7 @@ Orchestrates the generation of all 3 volumes of the Antigravity Architecture Rep
 2. FC_Antigravity_Vol2_Customization_and_Extensibility.pdf
 3. FC_Antigravity_Vol3_FC_Project_Engineering_and_Loop.pdf
 
-Outputs are placed in Report/Architecture/ (and accessible via Report/Archtecture/).
+Outputs are placed in Report/03_AI_and_Antigravity/.
 """
 
 import sys
@@ -31,7 +31,7 @@ def main():
     run_script("generate_antigravity_vol2.py")
     run_script("generate_antigravity_vol3.py")
     print("\n=======================================================")
-    print("[ALL SUCCESS] All 3 volumes generated successfully in Report/Architecture/")
+    print("[ALL SUCCESS] All 3 volumes generated successfully in Report/03_AI_and_Antigravity/")
     print("=======================================================")
 
 if __name__ == "__main__":
