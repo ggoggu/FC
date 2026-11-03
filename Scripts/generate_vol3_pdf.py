@@ -3,7 +3,7 @@
 """
 Generates Volume 3 of FC Project Analysis Report:
 "FC 프로젝트 종합 기술 분석 보고서 [제3권: AI 몹 행동 트리, 풀링 스포너, UMG MVVM 및 자동화 파이프라인]"
-Target: Report/Explanation/FC_Project_Analysis_Vol3_AI_MVVM_and_Pipeline.pdf
+Target: Report/01_Project_Architecture/FC_Project_Analysis_Vol3_AI_MVVM_and_Pipeline.pdf
 """
 
 import os
@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"C:\Users\oogg\Documents\Unreal Projects\FC")
-REPORT_EXPLANATION_DIR = PROJECT_ROOT / "Report" / "Explanation"
+REPORT_TARGET_DIR = PROJECT_ROOT / "Report" / "01_Project_Architecture"
 OUTPUT_PDF_NAME = "FC_Project_Analysis_Vol3_AI_MVVM_and_Pipeline.pdf"
 TEMP_HTML = PROJECT_ROOT / "Scripts" / "temp_vol3_report.html"
 
@@ -1043,9 +1043,9 @@ def build_vol3_html() -> str:
 
 def generate_pdf():
     print("Ensuring output directories exist...")
-    REPORT_EXPLANATION_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_TARGET_DIR.mkdir(parents=True, exist_ok=True)
 
-    target_pdf = REPORT_EXPLANATION_DIR / OUTPUT_PDF_NAME
+    target_pdf = REPORT_TARGET_DIR / OUTPUT_PDF_NAME
 
     print(f"Writing temporary HTML to {TEMP_HTML}...")
     html_content = build_vol3_html()
@@ -1095,10 +1095,10 @@ def generate_pdf():
         TEMP_HTML.unlink()
         print(f"[CLEANUP] Removed temporary file: {TEMP_HTML}")
 
-    # Enforce strictly .pdf files only in Report/Explanation
-    non_pdf = [f for f in REPORT_EXPLANATION_DIR.iterdir() if f.is_file() and f.suffix.lower() != ".pdf"]
+    # Enforce strictly .pdf files only in target dir
+    non_pdf = [f for f in REPORT_TARGET_DIR.iterdir() if f.is_file() and f.suffix.lower() != ".pdf"]
     for np in non_pdf:
-        print(f"[WARNING] Non-pdf file found in {REPORT_EXPLANATION_DIR}: {np.name}, removing...")
+        print(f"[WARNING] Non-pdf file found in {REPORT_TARGET_DIR}: {np.name}, removing...")
         np.unlink()
 
 if __name__ == "__main__":

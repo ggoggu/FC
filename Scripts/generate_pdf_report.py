@@ -11,8 +11,8 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_PDF = PROJECT_ROOT / "FC_NetMulticast_Optimization_Report.pdf"
-TEMP_HTML = PROJECT_ROOT / "FC_NetMulticast_Optimization_Report.html"
+OUTPUT_PDF = PROJECT_ROOT / "Report" / "02_Gameplay_Systems" / "Combat_and_Networking" / "FC_NetMulticast_Optimization_Report.pdf"
+TEMP_HTML = PROJECT_ROOT / "Intermediate" / "temp_netmulticast_report.html"
 
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="ko">
@@ -425,6 +425,8 @@ if (AbilitySystemComponent && AbilitySystemComponent->AbilityActorInfo.IsValid()
 """
 
 def main():
+    OUTPUT_PDF.parent.mkdir(parents=True, exist_ok=True)
+    TEMP_HTML.parent.mkdir(parents=True, exist_ok=True)
     print(f"Writing temporary HTML to {TEMP_HTML}...")
     with open(TEMP_HTML, "w", encoding="utf-8") as f:
         f.write(HTML_CONTENT)
