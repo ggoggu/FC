@@ -135,6 +135,7 @@ Feature-specific standards are modularized in `.antigravity/rules/` and applied 
 - **Gameplay Ability System (GAS)**: When implementing GAS-based attributes, abilities, or effects, refer to `.antigravity/rules/04-gameplay-ability-system.md` (Attribute accessors, RepNotify, Gameplay Cues). Standard C++ components can be used for features where GAS is not required.
 - **Fast Array & Inventory Networking**: When implementing dynamic replicated item lists or inventories, refer to `.antigravity/rules/05-combat-and-inventory-networking.md` (FFastArraySerializer, COND_OwnerOnly).
 - **UMG Model-View-ViewModel (MVVM)**: When implementing UI presentation models, viewmodel collections, or field notification bindings, refer to `.antigravity/rules/06-umg-mvvm-standards.md` (UMVVMViewModelBase, FieldNotify, UE_MVVM_SET_PROPERTY_VALUE).
+- **Sky Atmosphere & Level Lighting**: When generating levels with visible sky, outdoor lighting, or studio presentation scenes, refer to `.antigravity/rules/08-sky-atmosphere-and-level-lighting.md` (Sun pitch angle, Exponential Height Fog, Lower Hemisphere, Template_Default inheritance).
 
 ---
 

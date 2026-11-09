@@ -9,7 +9,8 @@
 #include "UI/View/FCHandWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
-#include "UI/Data/FCStatusToggleTypes.h" 
+#include "UI/Data/FCStatusToggleTypes.h"
+#include "UI/Presenter/FCStatusPresenterComponent.h" 
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
@@ -27,6 +28,7 @@ AFCPlayerController::AFCPlayerController()
 	bShowMouseCursor = false;
 	DefaultMouseCursor = EMouseCursor::Default;
 	bAutoEnableCardCombatInputMode = true;
+	StatusPresenterComponent = CreateDefaultSubobject<UFCStatusPresenterComponent>(TEXT("StatusPresenterComponent"));
 }
 
 void AFCPlayerController::BeginPlay()
@@ -199,6 +201,11 @@ void AFCPlayerController::BindDeckComponentEvents()
 
 void AFCPlayerController::UnbindAttributeListeners()
 {
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->UnbindFromAbilitySystem();
+	}
+
 	if (UAbilitySystemComponent* CurrentASC = BoundASC.Get())
 	{
 		for (const auto& Entry : BoundAttributeHandles)
@@ -237,6 +244,11 @@ void AFCPlayerController::BindAttributeListeners()
 	}
 
 	BoundASC = ASC;
+
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->BindToAbilitySystem(ASC, HUDViewModel->GetOrCreateStatusContainerViewModel());
+	}
 
 	const UFCAttributeSet* AttrSet = ASC->GetSet<UFCAttributeSet>();
 	if (AttrSet)
@@ -609,12 +621,12 @@ void AFCPlayerController::OnRightMouseButtonPressed()
 
 bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
 {
-	return PickupActor != nullptr && !PickupActor->IsPendingKillPending();
+	return true;
 }
 
 void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
 {
-	if (!HasAuthority() || !PickupActor)
+	if (!HasAuthority() || !IsValid(PickupActor))
 	{
 		return;
 	}
@@ -637,7 +649,11 @@ void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupAct
 
 void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 {
-	if (HUDViewModel)
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->PushStatusData(InData);
+	}
+	else if (HUDViewModel)
 	{
 		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
 		{
@@ -648,7 +664,11 @@ void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 
 void AFCPlayerController::RemoveStatusToggle(FName InStatusId)
 {
-	if (HUDViewModel)
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->RemoveStatusById(InStatusId);
+	}
+	else if (HUDViewModel)
 	{
 		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
 		{

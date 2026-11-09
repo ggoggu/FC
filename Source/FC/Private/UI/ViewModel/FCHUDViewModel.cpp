@@ -1,6 +1,7 @@
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
+#include "UI/Data/FCStatusToggleTypes.h"
 
 UFCHandViewModel* UFCHUDViewModel::GetOrCreateHandViewModel()
 {

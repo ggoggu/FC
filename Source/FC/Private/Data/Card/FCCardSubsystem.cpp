@@ -427,7 +427,7 @@ void UFCCardSubsystem::LoadCardCatalog()
 			}
 		}
 
-		if (CardDataTable)
+		if (CardDataTable && CardDataTable->GetRowStruct() && CardDataTable->GetRowStruct()->IsChildOf(FFCCardTableRow::StaticStruct()))
 		{
 			for (const auto& RowPair : CardDataTable->GetRowMap())
 			{

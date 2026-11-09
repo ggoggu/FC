@@ -65,6 +65,7 @@ void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* In
 	}
 
 	ProjectileDataAsset = InDataAsset;
+	bInitializedFromDataAsset = true;
 
 	// Combat configuration
 	Damage = InDataAsset->Damage;
@@ -105,7 +106,7 @@ void AFCProjectileBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (ProjectileDataAsset)
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
 	{
 		InitializeFromDataAsset(ProjectileDataAsset);
 	}
@@ -307,6 +308,7 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 
 			if (FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, Context); SpecHandle.IsValid())
 			{
+				SpecHandle.Data->SetSetByCallerMagnitude(FName("Data.Damage"), -Damage);
 				TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 			}
 		}

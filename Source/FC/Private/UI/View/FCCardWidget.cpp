@@ -160,6 +160,13 @@ void UFCCardWidget::SetCardTargetTransform(
 
 void UFCCardWidget::UpdateCardTransform(float DeltaTime, float InterpSpeed)
 {
+	if (CurrentTranslation.Equals(TargetTranslation, 0.05f) &&
+		FMath::IsNearlyEqual(CurrentAngle, TargetAngle, 0.05f) &&
+		CurrentScale.Equals(TargetScale, 0.001f))
+	{
+		return;
+	}
+
 	if (InterpSpeed <= 0.0f || DeltaTime <= 0.0f)
 	{
 		CurrentTranslation = TargetTranslation;

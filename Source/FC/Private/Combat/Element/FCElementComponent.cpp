@@ -99,6 +99,7 @@ bool UFCElementComponent::InternalAddSingleElement(EFCElement InElement)
 
 		// FIFO: Discard the oldest stack to maintain strictly capped total
 		StackContainer.Items.RemoveAt(0);
+		StackContainer.MarkArrayDirty();
 	}
 
 	FFCElementStackItem& NewItem = StackContainer.Items.AddDefaulted_GetRef();

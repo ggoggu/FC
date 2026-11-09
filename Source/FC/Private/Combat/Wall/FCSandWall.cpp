@@ -99,6 +99,11 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 		return false;
 	}
 
+	if (!Attacker->IsA<AFCProjectileBase>())
+	{
+		return false;
+	}
+
 	// Cannot absorb attacks from the caster or friendly projectiles
 	if (GetInstigator() && (Attacker == GetInstigator() || Attacker->GetInstigator() == GetInstigator()))
 	{
@@ -165,6 +170,11 @@ void AFCSandWall::OnWallBeginOverlap(
 
 void AFCSandWall::Multicast_PlayAbsorbCosmetics_Implementation(const FVector_NetQuantize& ImpactLocation)
 {
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
 	if (AbsorbSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, AbsorbSound, ImpactLocation);
