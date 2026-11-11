@@ -2,6 +2,7 @@
 """
 Unreal Engine 5.8 Multiplayer & Replication Static Verification Script
 Scans C++ headers and source files in Source/ to identify multiplayer/replication anti-patterns and violations.
+Supports both full-repository scans and incremental single-file ACI checks (--file).
 Emits structured JSON diagnostics for autonomous agent consumption.
 """
 
@@ -23,9 +24,32 @@ FORBIDDEN_UI_HEADERS = [
     r"SlateOptMacros\.h",
 ]
 
+def resolve_target_files(source_dir: Path, target_file: str | None) -> tuple[list[Path], list[Path]]:
+    """Resolves header and cpp files to scan, pairing .h and .cpp when --file is specified."""
+    if not target_file:
+        return list(source_dir.rglob("*.h")), list(source_dir.rglob("*.cpp"))
+
+    p = Path(target_file)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    p = p.resolve()
+
+    stem = p.stem
+    header_files = [h for h in source_dir.rglob(f"{stem}.h")]
+    cpp_files = [c for c in source_dir.rglob(f"{stem}.cpp")]
+
+    if p.exists():
+        if p.suffix == ".h" and p not in header_files:
+            header_files.append(p)
+        elif p.suffix == ".cpp" and p not in cpp_files:
+            cpp_files.append(p)
+
+    return header_files, cpp_files
+
 class ReplicationVerifier:
-    def __init__(self, source_dir: Path):
+    def __init__(self, source_dir: Path, target_file: str | None = None):
         self.source_dir = source_dir
+        self.target_file = target_file
         self.violations = []
 
     def add_violation(self, rule_id: str, file_path: Path, line_number: int, severity: str, message: str):
@@ -49,8 +73,7 @@ class ReplicationVerifier:
         return text
 
     def scan_all(self):
-        header_files = list(self.source_dir.rglob("*.h"))
-        cpp_files = list(self.source_dir.rglob("*.cpp"))
+        header_files, cpp_files = resolve_target_files(self.source_dir, self.target_file)
 
         # Map classes to their headers and cpp implementations
         for h_file in header_files:
@@ -62,7 +85,7 @@ class ReplicationVerifier:
     def verify_header_file(self, h_file: Path):
         try:
             content = h_file.read_text(encoding="utf-8", errors="replace")
-        except Exception as ex:
+        except Exception:
             return
 
         lines = content.splitlines()
@@ -120,8 +143,8 @@ class ReplicationVerifier:
                         message=f"Server RPC '{rpc_name}' declared on '{c_name}' (parent '{c_parent}'). Clients can ONLY invoke Server RPCs on actors owned by their connection (PlayerController, PlayerState, Pawn, or their components)."
                     )
 
-        # Check 3: RepNotify naming conventions & Replicated without GetLifetimeReplicatedProps
-        # Match class definitions
+        # Check 3: RepNotify naming conventions, Replicated without GetLifetimeReplicatedProps,
+        #          Promoted Rule 01 (Raw UObject* in UPROPERTY), and Promoted Rule 07 (BlueprintSetter on Replicated BlueprintReadWrite)
         class_pattern = re.compile(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)[^{]*\{(?P<body>.*?)\};', re.DOTALL)
         for class_match in class_pattern.finditer(clean_content):
             class_name = class_match.group("classname")
@@ -131,13 +154,24 @@ class ReplicationVerifier:
 
             has_replicated_props = False
             
-            # Search for UPROPERTY with Replicated or ReplicatedUsing
-            uprop_pattern = re.compile(r'UPROPERTY\s*\(([^)]*)\)\s*(?:[A-Za-z0-9_<>\s*&]+?)\s+(?P<varname>\w+)\s*;', re.DOTALL)
+            # Search for UPROPERTY declarations (including C++20 default member initializers)
+            uprop_pattern = re.compile(r'UPROPERTY\s*\(([^)]*)\)\s*(?P<proptype>[A-Za-z0-9_<>\s*&:]+?)\s+(?P<varname>\w+)\s*(?:=\s*[^;]+)?;', re.DOTALL)
             for prop_match in uprop_pattern.finditer(class_body):
                 prop_specs = prop_match.group(1)
+                prop_type = prop_match.group("proptype").strip()
                 var_name = prop_match.group("varname")
                 prop_pos = class_start_pos + prop_match.start()
                 prop_line_no = content[:prop_pos].count('\n') + 1
+
+                # Promoted Memory Check (Rule 01): Raw UObject/AActor pointer in UPROPERTY instead of TObjectPtr<T>
+                if prop_type.endswith("*") and re.match(r'^(?:const\s+)?[UA][A-Z]\w*\s*\*$', prop_type):
+                    self.add_violation(
+                        rule_id="UE58_RAW_POINTER_UPROPERTY",
+                        file_path=h_file,
+                        line_number=prop_line_no,
+                        severity="ERROR",
+                        message=f"Raw UObject pointer '{prop_type} {var_name}' in UPROPERTY. Use 'TObjectPtr<{prop_type[:-1].strip()}>' per UE 5.8 C++20 coding standards."
+                    )
 
                 is_replicated = bool(re.search(r'\bReplicated\b', prop_specs, re.IGNORECASE))
                 rep_using_match = re.search(r'ReplicatedUsing\s*=\s*(?P<funcname>\w+)', prop_specs, re.IGNORECASE)
@@ -145,16 +179,31 @@ class ReplicationVerifier:
                 if is_replicated or rep_using_match:
                     has_replicated_props = True
 
+                    # Promoted Memory Check (Rule 07 / Adversarial Audit): Replicated + BlueprintReadWrite bypassing non-inline authority setter Set<VarName>
+                    if re.search(r'\bBlueprintReadWrite\b', prop_specs) and not re.search(r'\bBlueprintSetter\s*=', prop_specs):
+                        clean_var = var_name[1:] if (var_name.startswith("b") and len(var_name) > 1 and var_name[1].isupper()) else var_name
+                        setter_name = f"Set{clean_var}"
+                        if re.search(rf'\bvoid\s+{setter_name}\s*\([^)]*\)\s*;', class_body):
+                            self.add_violation(
+                                rule_id="REPL_BYPASSED_AUTHORITY_SETTER",
+                                file_path=h_file,
+                                line_number=prop_line_no,
+                                severity="ERROR",
+                                message=f"Replicated property '{var_name}' is marked 'BlueprintReadWrite' without 'BlueprintSetter = {setter_name}', allowing Blueprint graphs to bypass '{setter_name}()' authority checks."
+                            )
+
                 if rep_using_match:
                     func_name = rep_using_match.group("funcname")
-                    expected_name = f"OnRep_{var_name}"
-                    if func_name != expected_name:
+                    clean_var = var_name[1:] if (var_name.startswith("b") and len(var_name) > 1 and var_name[1].isupper()) else var_name
+                    valid_names = {f"OnRep_{var_name}", f"OnRep_{clean_var}"}
+                    is_declared_in_class = bool(re.search(rf'\bvoid\s+{func_name}\s*\(', class_body))
+                    if func_name not in valid_names and not (func_name.startswith("OnRep_") and is_declared_in_class):
                         self.add_violation(
                             rule_id="REPL_INVALID_REPNOTIFY_NAME",
                             file_path=h_file,
                             line_number=prop_line_no,
                             severity="WARNING",
-                            message=f"Replication callback '{func_name}' for variable '{var_name}' does not match standard convention '{expected_name}'."
+                            message=f"Replication callback '{func_name}' for variable '{var_name}' does not match standard convention 'OnRep_{clean_var}' or is missing declaration."
                         )
 
             # If class has replicated properties, check if GetLifetimeReplicatedProps is declared in header
@@ -276,8 +325,8 @@ class ReplicationVerifier:
                     message="Hardcoded asset path in constructor using ConstructorHelpers. Configure assets via DataAsset, TSoftObjectPtr, or Blueprint Class Defaults."
                 )
 
-def run_verification(source_path: Path) -> dict:
-    verifier = ReplicationVerifier(source_path)
+def run_verification(source_path: Path, target_file: str | None = None) -> dict:
+    verifier = ReplicationVerifier(source_path, target_file=target_file)
     verifier.scan_all()
     
     error_count = sum(1 for v in verifier.violations if v["severity"] == "ERROR")
@@ -287,6 +336,7 @@ def run_verification(source_path: Path) -> dict:
     
     return {
         "status": status,
+        "scoped_file": target_file,
         "total_violations": len(verifier.violations),
         "error_count": error_count,
         "warning_count": warning_count,
@@ -297,6 +347,7 @@ def run_verification(source_path: Path) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Unreal Engine 5.8 Static Replication Verifier")
     parser.add_argument("--source", type=str, default="Source", help="Path to Source directory (default: Source)")
+    parser.add_argument("--file", "-f", type=str, default=None, help="Optional single file path for incremental ACI check")
     parser.add_argument("--json", action="store_true", default=True, help="Emit output as JSON (default: True)")
     parser.add_argument("--pretty", action="store_true", help="Pretty print JSON")
 
@@ -324,7 +375,7 @@ def main():
         print(json.dumps(result, indent=2 if args.pretty else None))
         sys.exit(1)
 
-    result = run_verification(source_dir)
+    result = run_verification(source_dir, target_file=args.file)
     print(json.dumps(result, indent=2 if args.pretty else None))
     sys.exit(0 if result["status"] == "PASSED" else 1)
 
