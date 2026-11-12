@@ -24,6 +24,16 @@ UFCHandWidget::UFCHandWidget(const FObjectInitializer& ObjectInitializer)
 	SetIsFocusable(true);
 }
 
+void UFCHandWidget::NativeDestruct()
+{
+	if (HandViewModel)
+	{
+		HandViewModel->OnCardsUpdated.RemoveAll(this);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UFCHandWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);

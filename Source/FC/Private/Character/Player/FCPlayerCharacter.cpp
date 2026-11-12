@@ -1,4 +1,6 @@
 #include "Character/Player/FCPlayerCharacter.h"
+#include "Camera/FCCameraComponent.h"
+#include "Camera/FCCameraModeDataAsset.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -41,6 +43,9 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComponent"));
 	CameraComponent->SetupAttachment(SpringArmComponent, USpringArmComponent::SocketName);
 	CameraComponent->bUsePawnControlRotation = false; 
+
+	// Create camera mode manager
+	CameraModeComponent = CreateDefaultSubobject<UFCCameraComponent>(TEXT("CameraModeComponent")); 
 
 	// GAS is typically mixed mode for player
 	if (AbilitySystemComponent)
@@ -93,7 +98,7 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 
 	// Default jump input action
 	static ConstructorHelpers::FObjectFinder<UInputAction> JumpActionFinder(
-		TEXT("/Game/Input/Actions/IA_Jump.IA_Jump"));
+		TEXT("/Game/Character/Player/Input/Action/IA_Jump.IA_Jump"));
 	if (JumpActionFinder.Succeeded())
 	{
 		JumpAction = JumpActionFinder.Object;
@@ -122,6 +127,11 @@ void AFCPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (CameraModeComponent && SpringArmComponent && CameraComponent)
+	{
+		CameraModeComponent->InitializeCamera(SpringArmComponent, CameraComponent);
+	}
+
 	if (HasAuthority() && Controller != nullptr)
 	{
 		StartHealthDrain();
@@ -149,6 +159,33 @@ void AFCPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFCPlayerCharacter::Jump);
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFCPlayerCharacter::StopJumping);
 		}
+
+		if (ToggleCameraAction)
+		{
+			EnhancedInputComponent->BindAction(ToggleCameraAction, ETriggerEvent::Started, this, &AFCPlayerCharacter::ToggleCameraView);
+		}
+	}
+
+	// Always bind default keyboard V key for immediate seamless testing without requiring IMC rebuild
+	if (PlayerInputComponent)
+	{
+		PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &AFCPlayerCharacter::ToggleCameraView);
+	}
+}
+
+void AFCPlayerCharacter::ToggleCameraView()
+{
+	if (CameraModeComponent)
+	{
+		CameraModeComponent->ToggleCameraMode();
+	}
+}
+
+void AFCPlayerCharacter::SetCameraMode(UFCCameraModeDataAsset* NewMode)
+{
+	if (CameraModeComponent)
+	{
+		CameraModeComponent->SetCameraMode(NewMode);
 	}
 }
 

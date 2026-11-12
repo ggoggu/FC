@@ -10,7 +10,7 @@
 
 AFCCharacterBase::AFCCharacterBase()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 
 	AbilitySystemComponent = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
@@ -92,6 +92,8 @@ void AFCCharacterBase::OnRep_IsDead()
 {
 	if (bIsDead)
 	{
+		OnDeath.Broadcast(this, nullptr);
+
 		if (UCapsuleComponent* CapsuleComp = GetCapsuleComponent())
 		{
 			CapsuleComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);

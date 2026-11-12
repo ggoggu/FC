@@ -147,5 +147,6 @@ protected:
 private:
 	int32 CurrentPierceCount = 0;
 	bool bHasPlayedCosmetics = false;
+	bool bInitializedFromDataAsset = false;
 	TSet<TWeakObjectPtr<AActor>> HitActors;
 };

@@ -150,7 +150,7 @@ float UFCGA_Ignite::ApplyIgniteToTarget(
 
 		if (FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(InDamageEffectClass, 1.0f, Context); SpecHandle.IsValid())
 		{
-			SpecHandle.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage"), false), -DamageToDeal);
+			SpecHandle.Data->SetSetByCallerMagnitude(FName("Data.Damage"), -DamageToDeal);
 			TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 		}
 	}
@@ -255,6 +255,14 @@ bool UFCGA_Ignite::IsEnemyActor(AActor* SourceActor, AActor* CandidateActor)
 	if (!CandidateActor || CandidateActor == SourceActor)
 	{
 		return false;
+	}
+
+	if (const AFCCharacterBase* CandidateChar = Cast<AFCCharacterBase>(CandidateActor))
+	{
+		if (CandidateChar->IsDead())
+		{
+			return false;
+		}
 	}
 
 	// 1. If candidate is explicitly marked as Player, ignore (no friendly fire)

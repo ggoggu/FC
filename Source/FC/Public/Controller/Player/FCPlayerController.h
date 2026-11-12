@@ -11,6 +11,7 @@ class UFCHUDWidget;
 class UFCHUDViewModel;
 class UFCCardDataAsset;
 class AFCCardPickupActor;
+class UFCStatusPresenterComponent;
 struct FFCCardTargetInfo;
 
 /**
@@ -75,6 +76,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UI")
 	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
 
+	/** Returns the status toggle presentation adapter component */
+	UFUNCTION(BlueprintPure, Category = "UI|Status")
+	UFCStatusPresenterComponent* GetStatusPresenterComponent() const { return StatusPresenterComponent; }
+
 	/** Adds or updates a circular status toggle in the HUD */
 	UFUNCTION(BlueprintCallable, Category = "UI|Status")
 	void SetStatusToggle(const struct FFCStatusToggleData& InData);
@@ -107,6 +112,10 @@ protected:
 	/** Active top-level HUD presentation ViewModel instance */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UFCHUDViewModel> HUDViewModel;
+
+	/** Presentation component translating ASC attributes and tags to status toggles */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Status", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCStatusPresenterComponent> StatusPresenterComponent;
 
 	/** Default Input Mapping Context (e.g. Exploration / Base Movement) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))

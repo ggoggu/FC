@@ -9,9 +9,9 @@ UFCGE_Damage::UFCGE_Damage()
 	ModInfo.Attribute = UFCAttributeSet::GetHealthAttribute();
 	ModInfo.ModifierOp = EGameplayModOp::Additive;
 
-	FScalableFloat ScalableMagnitude;
-	ScalableMagnitude.SetValue(-1.0f);
-	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(ScalableMagnitude);
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataName = FName("Data.Damage");
+	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 
 	Modifiers.Add(ModInfo);
 }

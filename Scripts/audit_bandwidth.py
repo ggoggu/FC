@@ -5,6 +5,7 @@ Scans C++ headers and source files in Source/ to identify networking performance
 - Flags UPROPERTY(Replicated) on raw TArray<...> without FastArraySerializer wrappers.
 - Flags replicated primitive types lacking COND_* replication conditions (or raw DOREPLIFETIME usage).
 - Flags heavy structs, strings, or sets/maps marked Replicated without delta serialization.
+Supports both full-repository scans and incremental single-file ACI checks (--file).
 Emits structured JSON audit reports for autonomous agent consumption.
 """
 
@@ -22,9 +23,32 @@ HEAVY_UNREPLICATED_TYPES = [
     r"TSet\s*<",
 ]
 
+def resolve_target_files(source_dir: Path, target_file: str | None) -> tuple[list[Path], list[Path]]:
+    """Resolves header and cpp files to scan, pairing .h and .cpp when --file is specified."""
+    if not target_file:
+        return list(source_dir.rglob("*.h")), list(source_dir.rglob("*.cpp"))
+
+    p = Path(target_file)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    p = p.resolve()
+
+    stem = p.stem
+    header_files = [h for h in source_dir.rglob(f"{stem}.h")]
+    cpp_files = [c for c in source_dir.rglob(f"{stem}.cpp")]
+
+    if p.exists():
+        if p.suffix == ".h" and p not in header_files:
+            header_files.append(p)
+        elif p.suffix == ".cpp" and p not in cpp_files:
+            cpp_files.append(p)
+
+    return header_files, cpp_files
+
 class BandwidthAuditor:
-    def __init__(self, source_dir: Path):
+    def __init__(self, source_dir: Path, target_file: str | None = None):
         self.source_dir = source_dir
+        self.target_file = target_file
         self.issues = []
 
     def add_issue(self, file_path: Path, line_number: int, severity: str, description: str, recommendation: str):
@@ -49,8 +73,7 @@ class BandwidthAuditor:
         return text
 
     def scan_all(self):
-        header_files = list(self.source_dir.rglob("*.h"))
-        cpp_files = list(self.source_dir.rglob("*.cpp"))
+        header_files, cpp_files = resolve_target_files(self.source_dir, self.target_file)
 
         for h_file in header_files:
             self.audit_header(h_file)
@@ -74,7 +97,7 @@ class BandwidthAuditor:
 
             # Find all UPROPERTY declarations
             prop_pattern = re.compile(
-                r'UPROPERTY\s*\((?P<specs>[^)]*)\)\s*(?P<type>[A-Za-z0-9_<>\s*&:,]+?)\s+(?P<varname>\w+)\s*;',
+                r'UPROPERTY\s*\((?P<specs>[^)]*)\)\s*(?P<type>[A-Za-z0-9_<>\s*&:,]+?)\s+(?P<varname>\w+)\s*(?:=\s*[^;]+)?;',
                 re.DOTALL
             )
 
@@ -117,7 +140,6 @@ class BandwidthAuditor:
             return
 
         clean_content = self.strip_comments(content)
-        lines = content.splitlines()
 
         # Check 3: Raw DOREPLIFETIME instead of DOREPLIFETIME_CONDITION
         # Find raw DOREPLIFETIME(Class, Property) calls (not DOREPLIFETIME_CONDITION or DOREPLIFETIME_CONDITION_NOTIFY)
@@ -136,8 +158,8 @@ class BandwidthAuditor:
                 recommendation=f"Use DOREPLIFETIME_CONDITION({class_name}, {prop_name}, COND_OwnerOnly/COND_SkipOwner/COND_SimulatedOnly) to restrict replication scope."
             )
 
-def run_bandwidth_audit(source_path: Path) -> dict:
-    auditor = BandwidthAuditor(source_path)
+def run_bandwidth_audit(source_path: Path, target_file: str | None = None) -> dict:
+    auditor = BandwidthAuditor(source_path, target_file=target_file)
     auditor.scan_all()
 
     error_count = sum(1 for i in auditor.issues if i["severity"] == "ERROR")
@@ -152,6 +174,7 @@ def run_bandwidth_audit(source_path: Path) -> dict:
 
     return {
         "status": status,
+        "scoped_file": target_file,
         "total_issues": len(auditor.issues),
         "error_count": error_count,
         "warning_count": warn_count,
@@ -162,6 +185,7 @@ def run_bandwidth_audit(source_path: Path) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Unreal Engine 5.8 Bandwidth & Network Performance Static Audit")
     parser.add_argument("--source", type=str, default="Source", help="Path to Source directory (default: Source)")
+    parser.add_argument("--file", "-f", type=str, default=None, help="Optional single file path for incremental ACI check")
     parser.add_argument("--json", action="store_true", default=True, help="Emit output as JSON (default: True)")
     parser.add_argument("--pretty", action="store_true", help="Format JSON with indentation")
 
@@ -189,7 +213,7 @@ def main():
         print(json.dumps(result, indent=2 if args.pretty else None))
         sys.exit(1)
 
-    result = run_bandwidth_audit(source_dir)
+    result = run_bandwidth_audit(source_dir, target_file=args.file)
     print(json.dumps(result, indent=2 if args.pretty else None))
     sys.exit(0 if result["status"] in ["PASS", "WARN"] else 1)
 

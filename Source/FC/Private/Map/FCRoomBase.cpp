@@ -102,14 +102,26 @@ void AFCRoomBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ChildSpawners.Empty();
 		ActiveSpawnersRemaining.Empty();
 
-		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
+		if (!bManageDoorsExternally)
 		{
-			if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+			for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
 			{
-				Door->Destroy();
+				if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+				{
+					Door->Destroy();
+				}
 			}
 		}
 		ConnectedDoors.Empty();
+
+		for (TObjectPtr<AFCDestructibleWall>& SecretWall : SecretWalls)
+		{
+			if (IsValid(SecretWall) && !SecretWall->IsActorBeingDestroyed())
+			{
+				SecretWall->Destroy();
+			}
+		}
+		SecretWalls.Empty();
 
 		for (TObjectPtr<AFCWallBase>& Wall : SpawnedWalls)
 		{
@@ -131,6 +143,7 @@ void AFCRoomBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 	DOREPLIFETIME_CONDITION(AFCRoomBase, bIsDiscovered, COND_None);
 	DOREPLIFETIME_CONDITION(AFCRoomBase, bIsVisited, COND_None);
 	DOREPLIFETIME_CONDITION(AFCRoomBase, DoorOffset, COND_None);
+	DOREPLIFETIME_CONDITION(AFCRoomBase, bManageDoorsExternally, COND_None);
 }
 
 void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
@@ -700,6 +713,14 @@ void AFCRoomBase::RegisterConnectedDoor(AFCDoorBase* Door)
 	if (Door && !ConnectedDoors.Contains(Door))
 	{
 		ConnectedDoors.Add(Door);
+	}
+}
+
+void AFCRoomBase::RegisterSecretWall(AFCDestructibleWall* Wall)
+{
+	if (Wall && !SecretWalls.Contains(Wall))
+	{
+		SecretWalls.Add(Wall);
 	}
 }
 

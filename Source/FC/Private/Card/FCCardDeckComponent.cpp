@@ -398,23 +398,7 @@ void UFCCardDeckComponent::RestoreFromDeckSaveData(const FFCCardDeckSaveData& Sa
 
 bool UFCCardDeckComponent::Server_PlayCard_Validate(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	if (!CardGuid.IsValid())
-	{
-		return false;
-	}
-
-	const FFCCardItem* Item = HandContainer.FindCard(CardGuid);
-	if (!Item)
-	{
-		return false;
-	}
-
-	if (Item->bIsLocked)
-	{
-		return false;
-	}
-
-	return true;
+	return CardGuid.IsValid();
 }
 
 void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
@@ -433,6 +417,11 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 	FName CardId = Item->CardId;
 	UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
 	UFCCardDataAsset* DataAsset = Subsystem ? Subsystem->GetCardDataAsset(CardId) : nullptr;
+
+	if (DataAsset && DataAsset->GameplayData.Keywords.Contains(EFCCardKeyword::Unplayable))
+	{
+		return;
+	}
 
 	int32 ManaCost = DataAsset ? DataAsset->GameplayData.BaseManaCost : 1;
 
@@ -517,8 +506,12 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		{
 			FGameplayAbilitySpec Spec(AbilityToActivate, Item->UpgradeLevel + 1);
 			Spec.SourceObject = DataAsset;
-			FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
-			ASC->TryActivateAbility(Handle);
+			Spec.RemoveAfterActivation = true;
+			const FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
+			if (!ASC->TryActivateAbility(Handle))
+			{
+				ASC->ClearAbility(Handle);
+			}
 		}
 
 		// Apply direct Gameplay Effects if assigned and condition met

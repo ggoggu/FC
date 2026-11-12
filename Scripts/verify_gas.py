@@ -6,6 +6,7 @@ Statically inspects C++ headers and source files in Source/ for GAS compliance:
 - Verifies matching OnRep_PropertyName callbacks and definitions using GAMEPLAYATTRIBUTE_REPNOTIFY.
 - Verifies registration in GetLifetimeReplicatedProps with DOREPLIFETIME_CONDITION_NOTIFY(..., REPNOTIFY_Always).
 - Flags direct UI/HUD/Widget references in UGameplayAbility subclasses.
+Supports both full-repository scans and incremental single-file ACI checks (--file).
 Emits structured JSON diagnostics for autonomous agent consumption.
 """
 
@@ -25,9 +26,32 @@ FORBIDDEN_GAS_UI_HEADERS = [
     r"SlateCore\.h",
 ]
 
+def resolve_target_files(source_dir: Path, target_file: str | None) -> tuple[list[Path], list[Path]]:
+    """Resolves header and cpp files to scan, pairing .h and .cpp when --file is specified."""
+    if not target_file:
+        return list(source_dir.rglob("*.h")), list(source_dir.rglob("*.cpp"))
+
+    p = Path(target_file)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    p = p.resolve()
+
+    stem = p.stem
+    header_files = [h for h in source_dir.rglob(f"{stem}.h")]
+    cpp_files = [c for c in source_dir.rglob(f"{stem}.cpp")]
+
+    if p.exists():
+        if p.suffix == ".h" and p not in header_files:
+            header_files.append(p)
+        elif p.suffix == ".cpp" and p not in cpp_files:
+            cpp_files.append(p)
+
+    return header_files, cpp_files
+
 class GASVerifier:
-    def __init__(self, source_dir: Path):
+    def __init__(self, source_dir: Path, target_file: str | None = None):
         self.source_dir = source_dir
+        self.target_file = target_file
         self.violations = []
 
     def add_violation(self, rule_id: str, file_path: Path, line_number: int, severity: str, detail: str):
@@ -52,8 +76,7 @@ class GASVerifier:
         return text
 
     def scan_all(self):
-        header_files = list(self.source_dir.rglob("*.h"))
-        cpp_files = list(self.source_dir.rglob("*.cpp"))
+        header_files, cpp_files = resolve_target_files(self.source_dir, self.target_file)
 
         attribute_set_headers = {}
         for h_file in header_files:
@@ -193,41 +216,43 @@ class GASVerifier:
 
                 for attr in attrs:
                     attr_name = attr["name"]
-                # Verify GAMEPLAYATTRIBUTE_REPNOTIFY inside OnRep
-                onrep_func_pat = rf'{class_name}::OnRep_{attr_name}\s*\([^)]*\)\s*\{{(?P<funcbody>.*?)\}}'
-                onrep_match = re.search(onrep_func_pat, clean_content, re.DOTALL)
-                if onrep_match:
-                    func_body = onrep_match.group("funcbody")
-                    if "GAMEPLAYATTRIBUTE_REPNOTIFY" not in func_body:
-                        start_pos = onrep_match.start()
-                        line_no = content[:start_pos].count('\n') + 1
-                        self.add_violation(
-                            rule_id="GAS_MISSING_GAMEPLAYATTRIBUTE_REPNOTIFY",
-                            file_path=cpp_file,
-                            line_number=line_no,
-                            severity="ERROR",
-                            detail=f"Function '{class_name}::OnRep_{attr_name}' does not invoke 'GAMEPLAYATTRIBUTE_REPNOTIFY({class_name}, {attr_name}, Old{attr_name})'."
-                        )
+                    # Verify GAMEPLAYATTRIBUTE_REPNOTIFY inside OnRep
+                    onrep_func_pat = rf'{class_name}::OnRep_{attr_name}\s*\([^)]*\)\s*\{{(?P<funcbody>.*?)\}}'
+                    onrep_match = re.search(onrep_func_pat, clean_content, re.DOTALL)
+                    if onrep_match:
+                        func_body = onrep_match.group("funcbody")
+                        if "GAMEPLAYATTRIBUTE_REPNOTIFY" not in func_body:
+                            start_pos = onrep_match.start()
+                            line_no = content[:start_pos].count('\n') + 1
+                            self.add_violation(
+                                rule_id="GAS_MISSING_GAMEPLAYATTRIBUTE_REPNOTIFY",
+                                file_path=cpp_file,
+                                line_number=line_no,
+                                severity="ERROR",
+                                detail=f"Function '{class_name}::OnRep_{attr_name}' does not invoke 'GAMEPLAYATTRIBUTE_REPNOTIFY({class_name}, {attr_name}, Old{attr_name})'."
+                            )
 
                 # Verify DOREPLIFETIME_CONDITION_NOTIFY in GetLifetimeReplicatedProps
                 getlifetime_pat = rf'{class_name}::GetLifetimeReplicatedProps\s*\([^)]*\)\s*(?:const)?\s*\{{(?P<funcbody>.*?)\}}'
                 getlifetime_match = re.search(getlifetime_pat, clean_content, re.DOTALL)
                 if getlifetime_match:
                     gl_body = getlifetime_match.group("funcbody")
-                    dorep_pat = rf'DOREPLIFETIME_CONDITION_NOTIFY\s*\(\s*{class_name}\s*,\s*{attr_name}\s*,\s*COND_\w+\s*,\s*REPNOTIFY_Always\s*\)'
-                    if not re.search(dorep_pat, gl_body):
-                        start_pos = getlifetime_match.start()
-                        line_no = content[:start_pos].count('\n') + 1
-                        self.add_violation(
-                            rule_id="GAS_MISSING_DOREPLIFETIME_NOTIFY",
-                            file_path=cpp_file,
-                            line_number=line_no,
-                            severity="ERROR",
-                            detail=f"Attribute '{class_name}::{attr_name}' must be registered via DOREPLIFETIME_CONDITION_NOTIFY({class_name}, {attr_name}, COND_None, REPNOTIFY_Always) in GetLifetimeReplicatedProps."
-                        )
+                    for attr in attrs:
+                        attr_name = attr["name"]
+                        dorep_pat = rf'DOREPLIFETIME_CONDITION_NOTIFY\s*\(\s*{class_name}\s*,\s*{attr_name}\s*,\s*COND_\w+\s*,\s*REPNOTIFY_Always\s*\)'
+                        if not re.search(dorep_pat, gl_body):
+                            start_pos = getlifetime_match.start()
+                            line_no = content[:start_pos].count('\n') + 1
+                            self.add_violation(
+                                rule_id="GAS_MISSING_DOREPLIFETIME_NOTIFY",
+                                file_path=cpp_file,
+                                line_number=line_no,
+                                severity="ERROR",
+                                detail=f"Attribute '{class_name}::{attr_name}' must be registered via DOREPLIFETIME_CONDITION_NOTIFY({class_name}, {attr_name}, COND_None, REPNOTIFY_Always) in GetLifetimeReplicatedProps."
+                            )
 
-def run_gas_verification(source_path: Path) -> dict:
-    verifier = GASVerifier(source_path)
+def run_gas_verification(source_path: Path, target_file: str | None = None) -> dict:
+    verifier = GASVerifier(source_path, target_file=target_file)
     verifier.scan_all()
 
     error_count = sum(1 for v in verifier.violations if v["severity"] == "ERROR")
@@ -236,6 +261,7 @@ def run_gas_verification(source_path: Path) -> dict:
 
     return {
         "status": status,
+        "scoped_file": target_file,
         "total_violations": len(verifier.violations),
         "error_count": error_count,
         "warning_count": warning_count,
@@ -246,6 +272,7 @@ def run_gas_verification(source_path: Path) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Unreal Engine 5.8 GAS Static Verification")
     parser.add_argument("--source", type=str, default="Source", help="Path to Source directory (default: Source)")
+    parser.add_argument("--file", "-f", type=str, default=None, help="Optional single file path for incremental ACI check")
     parser.add_argument("--json", action="store_true", default=True, help="Emit output as JSON (default: True)")
     parser.add_argument("--pretty", action="store_true", help="Format JSON with indentation")
 
@@ -273,7 +300,7 @@ def main():
         print(json.dumps(result, indent=2 if args.pretty else None))
         sys.exit(1)
 
-    result = run_gas_verification(source_dir)
+    result = run_gas_verification(source_dir, target_file=args.file)
     print(json.dumps(result, indent=2 if args.pretty else None))
     sys.exit(0 if result["status"] == "PASS" else 1)
 

@@ -80,6 +80,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
 	void RegisterConnectedDoor(AFCDoorBase* Door);
 
+	/** Register an externally spawned secret wall actor to this room for lifecycle tracking */
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void RegisterSecretWall(AFCDestructibleWall* Wall);
+
 	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
 	bool IsManagingDoorsExternally() const { return bManageDoorsExternally; }
 
@@ -235,7 +239,7 @@ protected:
 	bool bSyncDoorOffsetToTrigger = true;
 
 	/** If true, doorway actors are managed and spawned externally (e.g. by AFCDungeonManager for canonical shared edges) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
+	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
 	bool bManageDoorsExternally = false;
 
 	/** Server-authoritative assigned door classes [0: North, 1: South, 2: East, 3: West]. Transient, not replicated. */
