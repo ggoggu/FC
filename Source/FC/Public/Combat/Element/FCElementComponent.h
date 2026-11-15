@@ -103,10 +103,24 @@ public:
 	void ClearAllElementStacks();
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Element|Configuration")
-	void SetMaxTotalStacks(int32 InMaxStacks) { MaxTotalStacks = FMath::Max(1, InMaxStacks); }
+	void SetMaxTotalStacks(int32 InMaxStacks)
+	{
+		if (!GetOwner() || !GetOwner()->HasAuthority())
+		{
+			return;
+		}
+		MaxTotalStacks = FMath::Max(1, InMaxStacks);
+	}
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Element|Configuration")
-	void SetOverflowPolicy(EFCElementOverflowPolicy InPolicy) { OverflowPolicy = InPolicy; }
+	void SetOverflowPolicy(EFCElementOverflowPolicy InPolicy)
+	{
+		if (!GetOwner() || !GetOwner()->HasAuthority())
+		{
+			return;
+		}
+		OverflowPolicy = InPolicy;
+	}
 
 	// Client callbacks from FastArraySerializer
 	void NotifyStacksChanged();

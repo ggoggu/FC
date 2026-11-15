@@ -9,6 +9,8 @@
 #include "Combat/FCCombatUtils.h"
 #include "Combat/Element/FCElementComponent.h"
 #include "Character/FCCharacterBase.h"
+#include "Character/Player/FCPlayerCharacter.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -398,12 +400,46 @@ void UFCCardDeckComponent::RestoreFromDeckSaveData(const FFCCardDeckSaveData& Sa
 
 bool UFCCardDeckComponent::Server_PlayCard_Validate(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	return CardGuid.IsValid();
+	return CardGuid.IsValid() && !TargetInfo.TargetLocation.ContainsNaN();
 }
 
 void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	if (!GetOwner()->HasAuthority())
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (TargetInfo.TargetLocation.ContainsNaN())
+	{
+		return;
+	}
+
+	if (const UWorld* World = GetWorld())
+	{
+		const double Now = World->GetTimeSeconds();
+		if (Now - LastPlayCardServerTime < 0.05)
+		{
+			return;
+		}
+		LastPlayCardServerTime = Now;
+	}
+
+	// Resolve and validate caster Pawn before mutating mana/hand state
+	AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
+	if (!Char)
+	{
+		if (const APlayerState* PS = Cast<APlayerState>(GetOwner()))
+		{
+			Char = Cast<AFCCharacterBase>(PS->GetPawn());
+		}
+		else if (const AController* Ctrl = Cast<AController>(GetOwner()))
+		{
+			Char = Cast<AFCCharacterBase>(Ctrl->GetPawn());
+		}
+	}
+
+	if (!Char || Char->IsDead())
 	{
 		return;
 	}
@@ -441,15 +477,56 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 			const_cast<UFCAttributeSet*>(AttributeSet)->SetMana(AttributeSet->GetMana() - ManaCost);
 		}
 
+		// Sanitize and verify target actor & location against TargetType, faction, and cast range
+		constexpr float MaxCardCastRange = 3000.0f;
+		const FVector CasterLocation = Char->GetActorLocation();
+		const EFCCardTargetType TargetType = DataAsset ? DataAsset->GameplayData.TargetType : EFCCardTargetType::SingleTarget;
+
+		FVector VerifiedAimLocation = TargetInfo.TargetLocation;
+		if (!VerifiedAimLocation.IsZero())
+		{
+			const FVector Delta = VerifiedAimLocation - CasterLocation;
+			if (Delta.SizeSquared() > FMath::Square(MaxCardCastRange))
+			{
+				VerifiedAimLocation = CasterLocation + Delta.GetSafeNormal() * MaxCardCastRange;
+			}
+		}
+
+		AActor* VerifiedTargetActor = nullptr;
+		if (TargetType == EFCCardTargetType::Self)
+		{
+			VerifiedTargetActor = Char;
+		}
+		else if ((TargetType == EFCCardTargetType::SingleTarget || TargetType == EFCCardTargetType::DirectionalAoE) && TargetInfo.TargetActor.IsValid())
+		{
+			AActor* Candidate = TargetInfo.TargetActor.Get();
+			const bool bWithinRange = FVector::DistSquared(CasterLocation, Candidate->GetActorLocation()) <= FMath::Square(MaxCardCastRange);
+			if (bWithinRange)
+			{
+				const bool bIsAttackCard = !DataAsset || DataAsset->GameplayData.CardType == EFCCardType::Attack;
+				if (bIsAttackCard)
+				{
+					if (UFCCombatUtils::IsAttackableTarget(Char, Candidate))
+					{
+						VerifiedTargetActor = Candidate;
+					}
+				}
+				else if (Candidate == Char || Candidate->IsA<AFCPlayerCharacter>() || UFCCombatUtils::IsAttackableTarget(Char, Candidate))
+				{
+					VerifiedTargetActor = Candidate;
+				}
+			}
+		}
+
 		// Handle target element consumption for conditional cards:
-		// If the card requires consuming elements, check & consume from TargetActor.
+		// If the card requires consuming elements, check & consume from VerifiedTargetActor.
 		// If condition is not met, card is still played and mana deducted, but effect is skipped.
 		bool bCanApplyConditionalEffects = true;
 		if (DataAsset && DataAsset->GameplayData.RequiresElementConsumption())
 		{
-			if (TargetInfo.TargetActor.IsValid())
+			if (VerifiedTargetActor)
 			{
-				bCanApplyConditionalEffects = UFCCombatUtils::TryConsumeTargetElements(TargetInfo.TargetActor.Get(), DataAsset->GameplayData.ConsumedElements);
+				bCanApplyConditionalEffects = UFCCombatUtils::TryConsumeTargetElements(VerifiedTargetActor, DataAsset->GameplayData.ConsumedElements);
 			}
 			else
 			{
@@ -458,40 +535,18 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		}
 
 		// If this is a projectile card or targeted card, set target and rotate character towards target on server
-		if (DataAsset && (DataAsset->GameplayData.SpawnsProjectile() || 
-			DataAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE || 
+		if (DataAsset && (DataAsset->GameplayData.SpawnsProjectile() ||
+			DataAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE ||
 			DataAsset->GameplayData.TargetType == EFCCardTargetType::SingleTarget))
 		{
-			AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
-			if (!Char)
+			Char->SetCombatTarget(VerifiedTargetActor);
+			Char->SetTargetAimLocation(VerifiedAimLocation);
+
+			// Rotate character towards verified target actor or clamped target location
+			const FVector AimPos = VerifiedTargetActor ? VerifiedTargetActor->GetActorLocation() : VerifiedAimLocation;
+			if (!AimPos.IsZero())
 			{
-				if (const APlayerState* PS = Cast<APlayerState>(GetOwner()))
-				{
-					Char = Cast<AFCCharacterBase>(PS->GetPawn());
-				}
-				else if (const AController* Ctrl = Cast<AController>(GetOwner()))
-				{
-					Char = Cast<AFCCharacterBase>(Ctrl->GetPawn());
-				}
-			}
-
-			if (Char)
-			{
-				AActor* ValidTarget = TargetInfo.TargetActor.Get();
-				if (ValidTarget && !UFCCombatUtils::IsAttackableTarget(Char, ValidTarget))
-				{
-					ValidTarget = nullptr;
-				}
-
-				Char->SetCombatTarget(ValidTarget);
-				Char->SetTargetAimLocation(TargetInfo.TargetLocation);
-
-				// Rotate character towards target actor or target location
-				const FVector AimPos = ValidTarget ? ValidTarget->GetActorLocation() : (FVector)TargetInfo.TargetLocation;
-				if (!AimPos.IsZero())
-				{
-					Char->RotateTowardsTarget(AimPos);
-				}
+				Char->RotateTowardsTarget(AimPos);
 			}
 		}
 
@@ -522,15 +577,15 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 				if (EffectClass)
 				{
 					FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
-					Context.AddInstigator(GetOwner(), GetOwner());
+					Context.AddInstigator(Char, Char);
 					FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, Item->UpgradeLevel + 1, Context);
 					if (SpecHandle.IsValid())
 					{
-						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self || !TargetInfo.TargetActor.IsValid())
+						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self || !VerifiedTargetActor)
 						{
 							ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 						}
-						else if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetInfo.TargetActor.Get()))
+						else if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(VerifiedTargetActor))
 						{
 							if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
 							{
@@ -542,10 +597,10 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 			}
 		}
 
-		// If this is a direct single-target attack card with elements, apply element stacks to target
-		if (DataAsset && DataAsset->GameplayData.CardType == EFCCardType::Attack && DataAsset->GameplayData.Elements.Num() > 0 && TargetInfo.TargetActor.IsValid())
+		// If this is a direct single-target attack card with elements, apply element stacks to verified target
+		if (DataAsset && DataAsset->GameplayData.CardType == EFCCardType::Attack && DataAsset->GameplayData.Elements.Num() > 0 && VerifiedTargetActor)
 		{
-			UFCCombatUtils::ApplyAttackCardHitTraits(GetOwner(), TargetInfo.TargetActor.Get(), DataAsset->GameplayData.RequiredClass, DataAsset->GameplayData.CardType, DataAsset->GameplayData.Elements);
+			UFCCombatUtils::ApplyAttackCardHitTraits(Char, VerifiedTargetActor, DataAsset->GameplayData.RequiredClass, DataAsset->GameplayData.CardType, DataAsset->GameplayData.Elements);
 		}
 	}
 
@@ -567,16 +622,6 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 	OnCardPlayed.Broadcast(CardGuid, CardId);
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
-}
-
-bool UFCCardDeckComponent::Server_DrawCards_Validate(int32 Count)
-{
-	return Count > 0 && Count <= 10;
-}
-
-void UFCCardDeckComponent::Server_DrawCards_Implementation(int32 Count)
-{
-	DrawCards(Count);
 }
 
 void UFCCardDeckComponent::NotifyHandChanged()
@@ -692,13 +737,19 @@ void UFCCardDeckComponent::StartCycleTimer()
 
 	if (UWorld* World = GetWorld())
 	{
-		CycleEndTime = World->GetTimeSeconds() + CycleInterval;
+		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+		CycleEndTime = ServerTime + CycleInterval;
 		World->GetTimerManager().SetTimer(CycleTimerHandle, this, &UFCCardDeckComponent::ExecuteHandCycle, CycleInterval, true);
 	}
 }
 
 void UFCCardDeckComponent::StopCycleTimer()
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(CycleTimerHandle);
@@ -708,6 +759,11 @@ void UFCCardDeckComponent::StopCycleTimer()
 
 void UFCCardDeckComponent::ResetCycleTimer()
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	StopCycleTimer();
 	StartCycleTimer();
 }
@@ -786,10 +842,11 @@ void UFCCardDeckComponent::ExecuteHandCycle()
 	// 3. Draw configured cards from deck
 	DrawCards(CycleDrawCount);
 
-	// 4. Update cycle timestamp for next interval
+	// 4. Update cycle timestamp for next interval using synchronized server time
 	if (UWorld* World = GetWorld())
 	{
-		CycleEndTime = World->GetTimeSeconds() + CycleInterval;
+		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+		CycleEndTime = ServerTime + CycleInterval;
 	}
 
 	OnCardHandUpdated.Broadcast();
@@ -823,7 +880,8 @@ float UFCCardDeckComponent::GetCycleRemainingTime() const
 
 	if (const UWorld* World = GetWorld())
 	{
-		return FMath::Max(0.0f, CycleEndTime - World->GetTimeSeconds());
+		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+		return FMath::Max(0.0f, CycleEndTime - ServerTime);
 	}
 	return 0.0f;
 }

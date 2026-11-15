@@ -153,7 +153,12 @@ bool FFCStatusToggleSystemTest::RunTest(const FString& Parameters)
 
 			if (ASC && AttrSet && Presenter && StatusVM)
 			{
+				DummyActor->AddInstanceComponent(ASC);
+				ASC->RegisterComponent();
+				ASC->InitAbilityActorInfo(DummyActor, DummyActor);
 				ASC->AddAttributeSetSubobject(AttrSet);
+				DummyActor->AddInstanceComponent(Presenter);
+				Presenter->RegisterComponent();
 				AttrSet->InitShield(0.0f);
 				AttrSet->InitMaxShield(100.0f);
 				AttrSet->InitAttackPower(0.0f);

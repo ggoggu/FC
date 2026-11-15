@@ -51,6 +51,9 @@ class ReplicationVerifier:
         self.source_dir = source_dir
         self.target_file = target_file
         self.violations = []
+        self.math_payload_structs = set()
+        self.server_rpcs_by_class = {}
+        self.authority_only_methods_by_class = {}
 
     def add_violation(self, rule_id: str, file_path: Path, line_number: int, severity: str, message: str):
         rel_path = file_path.relative_to(self.source_dir.parent).as_posix() if self.source_dir.parent in file_path.parents else file_path.as_posix()
@@ -72,7 +75,66 @@ class ReplicationVerifier:
         text = re.sub(r'//.*$', '', text, flags=re.MULTILINE)
         return text
 
+    def extract_brace_block(self, text: str, open_brace_pos: int) -> tuple[str, int]:
+        """Extracts balanced {...} body starting at open_brace_pos, ignoring string/char literals."""
+        if open_brace_pos < 0 or open_brace_pos >= len(text) or text[open_brace_pos] != '{':
+            return "", open_brace_pos
+        depth = 0
+        i = open_brace_pos
+        n = len(text)
+        in_string = False
+        in_char = False
+        while i < n:
+            ch = text[i]
+            if in_string:
+                if ch == '\\':
+                    i += 2
+                    continue
+                if ch == '"':
+                    in_string = False
+            elif in_char:
+                if ch == '\\':
+                    i += 2
+                    continue
+                if ch == "'":
+                    in_char = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "'":
+                    in_char = True
+                elif ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return text[open_brace_pos + 1:i], i + 1
+            i += 1
+        return text[open_brace_pos + 1:], n
+
+    def collect_math_payload_structs(self):
+        """Scans all headers in Source/ for USTRUCTs containing floating-point/vector fields."""
+        self.math_payload_structs = set()
+        math_field_pat = re.compile(
+            r'\b(FVector(?:_NetQuantize\d*)?|FVector2D|FRotator|FTransform|float|double)\b'
+        )
+        struct_header_pat = re.compile(r'USTRUCT\s*\([^)]*\)\s*struct\s+(?:\w+_API\s+)?(?P<sname>[A-Z]\w+)[^{;]*\{')
+        for h_file in self.source_dir.rglob("*.h"):
+            try:
+                clean = self.strip_comments(h_file.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                continue
+            for m in struct_header_pat.finditer(clean):
+                brace_pos = m.end() - 1
+                body, _ = self.extract_brace_block(clean, brace_pos)
+                if math_field_pat.search(body):
+                    self.math_payload_structs.add(m.group("sname"))
+
     def scan_all(self):
+        self.collect_math_payload_structs()
+        self.server_rpcs_by_class = {}
+        self.authority_only_methods_by_class = {}
+
         header_files, cpp_files = resolve_target_files(self.source_dir, self.target_file)
 
         # Map classes to their headers and cpp implementations
@@ -107,12 +169,18 @@ class ReplicationVerifier:
                             message=f"Forbidden UI/Widget header included in gameplay actor header: '{line.strip()}'. UI headers should only be in UI components or included in .cpp."
                         )
 
-        # Check 2: Server RPC missing WithValidation
-        # Regex to find UFUNCTION(...) declarations
-        ufunc_pattern = re.compile(r'UFUNCTION\s*\(([^)]*)\)', re.DOTALL)
+        # Check 2: Server RPC missing WithValidation & Reliable NetMulticast check
+        # Regex to find UFUNCTION(...) declarations and the following method signature
+        ufunc_pattern = re.compile(
+            r'UFUNCTION\s*\((?P<specs>[^)]*)\)\s*(?:virtual\s+)?(?:[\w:<>*&\s]+?)\s+(?P<funcname>\w+)\s*\((?P<params>[^)]*)\)\s*(?P<qualifiers>[^;{]*)(?P<term>;|\{)',
+            re.DOTALL
+        )
         for match in ufunc_pattern.finditer(clean_content):
-            specifiers = match.group(1)
-            # Find line number
+            specifiers = match.group("specs")
+            func_name = match.group("funcname")
+            params = match.group("params").strip()
+            qualifiers = match.group("qualifiers")
+            term = match.group("term")
             start_pos = match.start()
             line_no = content[:start_pos].count('\n') + 1
 
@@ -125,6 +193,51 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message="Server RPC declared without 'WithValidation'. All Server RPCs must declare WithValidation and implement _Validate()."
                     )
+                # Find enclosing class name (closest preceding class declaration)
+                preceding = clean_content[:start_pos]
+                cls_matches = list(re.finditer(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)', preceding))
+                if cls_matches:
+                    owner_class = cls_matches[-1].group("classname")
+                    self.server_rpcs_by_class.setdefault(owner_class, []).append({
+                        "name": func_name,
+                        "params": params,
+                        "line": line_no,
+                        "header": h_file
+                    })
+
+            if re.search(r'\bNetMulticast\b', specifiers, re.IGNORECASE) and re.search(r'\bReliable\b', specifiers, re.IGNORECASE):
+                self.add_violation(
+                    rule_id="NET_SEC_RELIABLE_MULTICAST",
+                    file_path=h_file,
+                    line_number=line_no,
+                    severity="WARNING",
+                    message=f"NetMulticast RPC '{func_name}' is marked 'Reliable'. Transient cosmetics should be 'Unreliable' to prevent replication queue stalls; use ReplicatedUsing for persistent state."
+                )
+
+            if re.search(r'\bBlueprintAuthorityOnly\b', specifiers, re.IGNORECASE):
+                is_const = bool(re.search(r'\bconst\b', qualifiers))
+                is_pure_getter = bool(re.match(r'^(Get|Is|Has|Can)[A-Z]', func_name))
+                if not is_const and not is_pure_getter and not re.search(r'\bServer\b', specifiers, re.IGNORECASE):
+                    preceding = clean_content[:start_pos]
+                    cls_matches = list(re.finditer(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)', preceding))
+                    if cls_matches:
+                        owner_class = cls_matches[-1].group("classname")
+                        if term == '{':
+                            inline_body, _ = self.extract_brace_block(clean_content, match.end() - 1)
+                            if not re.search(r'\bHasAuthority\s*\(|\bROLE_Authority\b|\bGetAuthGameMode\s*\(|\bNM_Client\b|\bIsRunningDedicatedServer\s*\(', inline_body):
+                                self.add_violation(
+                                    rule_id="NET_SEC_AUTHORITY_ONLY_MISSING_CPP_GUARD",
+                                    file_path=h_file,
+                                    line_number=line_no,
+                                    severity="WARNING",
+                                    message=f"Inline BlueprintAuthorityOnly method '{owner_class}::{func_name}' lacks an internal HasAuthority() guard; C++ callers can execute it on non-authoritative clients."
+                                )
+                        else:
+                            self.authority_only_methods_by_class.setdefault(owner_class, []).append({
+                                "name": func_name,
+                                "line": line_no,
+                                "header": h_file
+                            })
 
         # Check: Server RPC declared on Actor not owned by connection
         for class_match in re.finditer(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)\s*:\s*public\s+(?P<parent>\w+)[^{]*\{(?P<body>.*?)\};', clean_content, re.DOTALL):
@@ -324,6 +437,92 @@ class ReplicationVerifier:
                     severity="WARNING",
                     message="Hardcoded asset path in constructor using ConstructorHelpers. Configure assets via DataAsset, TSoftObjectPtr, or Blueprint Class Defaults."
                 )
+
+        # Check 10: Trivial Server RPC _Validate (accepts parameters but unconditionally returns true)
+        validate_pat = re.compile(r'(?P<cls>[A-Z]\w+)::(?P<func>\w+)_Validate\s*\((?P<params>[^)]*)\)\s*\{')
+        for val_match in validate_pat.finditer(clean_content):
+            params_str = val_match.group("params").strip()
+            if params_str and params_str != "void":
+                body, _ = self.extract_brace_block(clean_content, val_match.end() - 1)
+                compact_body = re.sub(r'\s+', ' ', body).strip()
+                if re.fullmatch(r'return\s+true\s*;', compact_body):
+                    line_no = content[:val_match.start()].count('\n') + 1
+                    self.add_violation(
+                        rule_id="NET_SEC_TRIVIAL_RPC_VALIDATE",
+                        file_path=cpp_file,
+                        line_number=line_no,
+                        severity="WARNING",
+                        message=f"Server RPC '{val_match.group('cls')}::{val_match.group('func')}_Validate' accepts client parameters but unconditionally returns 'true'. Validate bounds, NaN, enum ranges, or ownership."
+                    )
+
+        # Check 11 & 12: Server RPC float/vector NaN sanitization & container bounds checks
+        math_type_pat = re.compile(r'\b(FVector(?:_NetQuantize\d*)?|FVector2D|FRotator|FTransform|float|double)\b')
+        container_type_pat = re.compile(r'\b(TArray|TSet|TMap)\s*<|\bFString\b')
+        for cls_name, rpc_list in self.server_rpcs_by_class.items():
+            if f"{cls_name}::" not in clean_content:
+                continue
+            for rpc in rpc_list:
+                rpc_name = rpc["name"]
+                rpc_params = rpc["params"]
+
+                val_m = re.search(rf'\b{cls_name}::{rpc_name}_Validate\s*\([^)]*\)\s*\{{', clean_content)
+                impl_m = re.search(rf'\b{cls_name}::{rpc_name}_Implementation\s*\([^)]*\)\s*\{{', clean_content)
+                val_body = self.extract_brace_block(clean_content, val_m.end() - 1)[0] if val_m else ""
+                impl_body = self.extract_brace_block(clean_content, impl_m.end() - 1)[0] if impl_m else ""
+                if not val_m and not impl_m:
+                    continue
+
+                report_pos = val_m.start() if val_m else impl_m.start()
+                report_line = content[:report_pos].count('\n') + 1
+
+                # Check math/float parameters or math-containing USTRUCTs
+                has_math_param = bool(math_type_pat.search(rpc_params))
+                if not has_math_param and self.math_payload_structs:
+                    has_math_param = any(re.search(rf'\b{sname}\b', rpc_params) for sname in self.math_payload_structs)
+
+                if has_math_param:
+                    combined = val_body + "\n" + impl_body
+                    if not re.search(r'\b(ContainsNaN|IsNaN|IsFinite)\s*\(', combined):
+                        self.add_violation(
+                            rule_id="NET_SEC_UNSANITIZED_FLOAT_OR_VECTOR_RPC",
+                            file_path=cpp_file,
+                            line_number=report_line,
+                            severity="ERROR",
+                            message=f"Server RPC '{cls_name}::{rpc_name}' accepts floating-point/vector payload without NaN/Inf sanitization (ContainsNaN/IsNaN/IsFinite)."
+                        )
+
+                # Check dynamic container / string parameters
+                if container_type_pat.search(rpc_params):
+                    combined_bounds = val_body + "\n" + impl_body
+                    if not re.search(r'\.(Num|Len|IsEmpty)\s*\(', combined_bounds):
+                        self.add_violation(
+                            rule_id="NET_SEC_UNBOUNDED_RPC_CONTAINER",
+                            file_path=cpp_file,
+                            line_number=report_line,
+                            severity="WARNING",
+                            message=f"Server RPC '{cls_name}::{rpc_name}' accepts dynamic container/FString without size/length bounds check (.Num()/.Len())."
+                        )
+
+        # Check 13: BlueprintAuthorityOnly non-const methods missing C++ HasAuthority() guard
+        auth_guard_pat = re.compile(r'\bHasAuthority\s*\(|\bROLE_Authority\b|\bGetAuthGameMode\s*\(|\bNM_Client\b|\bIsRunningDedicatedServer\s*\(')
+        for cls_name, method_list in self.authority_only_methods_by_class.items():
+            if f"{cls_name}::" not in clean_content:
+                continue
+            for meth in method_list:
+                m_name = meth["name"]
+                def_m = re.search(rf'\b{cls_name}::{m_name}\s*\([^)]*\)\s*\{{', clean_content)
+                if not def_m:
+                    continue
+                body, _ = self.extract_brace_block(clean_content, def_m.end() - 1)
+                if not auth_guard_pat.search(body):
+                    line_no = content[:def_m.start()].count('\n') + 1
+                    self.add_violation(
+                        rule_id="NET_SEC_AUTHORITY_ONLY_MISSING_CPP_GUARD",
+                        file_path=cpp_file,
+                        line_number=line_no,
+                        severity="WARNING",
+                        message=f"BlueprintAuthorityOnly method '{cls_name}::{m_name}' lacks a C++ HasAuthority() guard in its implementation."
+                    )
 
 def run_verification(source_path: Path, target_file: str | None = None) -> dict:
     verifier = ReplicationVerifier(source_path, target_file=target_file)

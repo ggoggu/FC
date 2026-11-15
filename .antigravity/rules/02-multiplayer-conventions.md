@@ -116,3 +116,20 @@ if (HasAuthority()) // or GetLocalRole() == ROLE_Authority
 ## 5. Multiplayer Level Transitions
 
 - **ServerTravel Mandatory**: Always use `GetWorld()->ServerTravel(MapURL, false)` for server-initiated map changes. Never call `UGameplayStatics::OpenLevel()` on the server, as it disconnects remote clients.
+
+---
+
+## 6. Network Security & Anti-Cheat Hardening
+
+1. **Non-Trivial `_Validate` & Payload Sanitization**:
+   - Never leave a parameterized `Server_*_Validate` as `return true;`.
+   - Validate `FVector` / `FVector_NetQuantize` / `FRotator` / `float` parameters with `!ContainsNaN()` / `FMath::IsFinite()`.
+   - Validate `enum` / `uint8` bounds (`StaticEnum` or explicit valid range) and enforce max bounds on `TArray` / `FString` sizes.
+2. **Server-Side Authority Verification**:
+   - Every `BlueprintAuthorityOnly` mutating C++ method must also guard with `HasAuthority()` (or `GetOwner()->HasAuthority()` / `GetWorld()->GetAuthGameMode() != nullptr` for subsystems) so C++ callers cannot mutate client state.
+   - Never trust client-selected destinations, targets, or costs; verify Pawn possession, `!IsDead()`, reach/distance, line of sight, and faction rules (`UFCCombatUtils::IsAttackableTarget`) inside `_Implementation`.
+3. **RPC Rate-Limiting & Multicast Discipline**:
+   - Throttle high-impact `Reliable` `Server_*` RPCs with per-connection server timestamps to prevent reliable-channel flooding.
+   - Keep `NetMulticast` RPCs `Unreliable` and strictly cosmetic.
+4. **Information Disclosure Prevention**:
+   - Never replicate private player resources or undiscovered map/secret room topology with `COND_None`. Use `COND_OwnerOnly` or gate/mask replication until server-verified discovery.

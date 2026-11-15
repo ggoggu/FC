@@ -60,6 +60,11 @@ AFCSandWall::AFCSandWall()
 
 void AFCSandWall::SetWallDuration(float InDuration)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	WallDuration = FMath::Max(0.1f, InDuration);
 	SetLifeSpan(WallDuration);
 }
@@ -120,7 +125,7 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 
 void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& ImpactLocation)
 {
-	if (!CanAbsorbAttackFrom(AttackingActor))
+	if (!HasAuthority() || !CanAbsorbAttackFrom(AttackingActor))
 	{
 		return;
 	}
@@ -133,15 +138,12 @@ void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& Im
 
 	AbsorbedAttackCount++;
 
-	if (HasAuthority())
-	{
-		Multicast_PlayAbsorbCosmetics(ImpactLocation);
+	Multicast_PlayAbsorbCosmetics(ImpactLocation);
 
-		// Safely destroy hostile projectile to absorb the attack
-		if (IsValid(AttackingActor))
-		{
-			AttackingActor->Destroy();
-		}
+	// Safely destroy hostile projectile to absorb the attack
+	if (IsValid(AttackingActor))
+	{
+		AttackingActor->Destroy();
 	}
 }
 

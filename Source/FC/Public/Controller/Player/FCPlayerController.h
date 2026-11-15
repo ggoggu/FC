@@ -172,6 +172,9 @@ private:
 
 	TArray<TTuple<struct FGameplayAttribute, FDelegateHandle>> BoundAttributeHandles;
 
+	/** Server-side timestamp for pickup RPC rate-limiting */
+	double LastClaimPickupServerTime = -1000.0;
+
 	void OnNumberKey1Pressed() { HandleNumberKeyInput(0); }
 	void OnNumberKey2Pressed() { HandleNumberKeyInput(1); }
 	void OnNumberKey3Pressed() { HandleNumberKeyInput(2); }

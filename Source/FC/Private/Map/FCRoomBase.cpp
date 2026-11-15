@@ -153,10 +153,14 @@ void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
 		return;
 	}
 
-	RoomData = InRoomData;
+	ServerRoomData = InRoomData;
+	if (bIsDiscovered)
+	{
+		RoomData = ServerRoomData;
+	}
 
 	// Start Room is discovered and cleared by default
-	if (RoomData.RoomType == EFCRoomType::Start)
+	if (ServerRoomData.RoomType == EFCRoomType::Start)
 	{
 		SetDiscovered(true);
 		SetVisited(true);
@@ -170,7 +174,7 @@ void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
 
 	UpdateDoorSockets();
 
-	OnSetupDoorsAndWalls(RoomData.DoorMask);
+	OnSetupDoorsAndWalls(ServerRoomData.DoorMask);
 }
 
 void AFCRoomBase::SetRoomState(EFCRoomState NewState)
@@ -209,6 +213,7 @@ void AFCRoomBase::SetDiscovered(bool bNewDiscovered)
 	}
 
 	bIsDiscovered = bNewDiscovered;
+	RoomData = bIsDiscovered ? ServerRoomData : FFCRoomData();
 	OnRoomDiscoveryChanged.Broadcast(this, bIsDiscovered);
 }
 
@@ -445,7 +450,7 @@ void AFCRoomBase::OnSetupDoorsAndWalls_Implementation(uint8 DoorMask)
 				}
 			}
 		}
-		else if (RoomData.SecretDoorMask & DirectionBit)
+		else if (GetRoomData().SecretDoorMask & DirectionBit)
 		{
 			// Secret passage - boundary is handled by AFCDestructibleWall
 		}
@@ -490,11 +495,13 @@ void AFCRoomBase::OnRoomBoundsBeginOverlap(UPrimitiveComponent* OverlappedCompon
 
 void AFCRoomBase::HandleCombatTriggered_Implementation()
 {
+	const FFCRoomData& CurrentRoomData = GetRoomData();
+
 	// Non-combat rooms clear immediately
-	if (RoomData.RoomType == EFCRoomType::Start ||
-		RoomData.RoomType == EFCRoomType::Shop ||
-		RoomData.RoomType == EFCRoomType::Treasure ||
-		RoomData.RoomType == EFCRoomType::Secret)
+	if (CurrentRoomData.RoomType == EFCRoomType::Start ||
+		CurrentRoomData.RoomType == EFCRoomType::Shop ||
+		CurrentRoomData.RoomType == EFCRoomType::Treasure ||
+		CurrentRoomData.RoomType == EFCRoomType::Secret)
 	{
 		SetRoomState(EFCRoomState::Cleared);
 		return;
@@ -631,6 +638,11 @@ void AFCRoomBase::OnRep_IsVisited()
 
 void AFCRoomBase::SetDoorOffset(float NewDoorOffset)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	DoorOffset = FMath::Max(100.0f, NewDoorOffset);
 	UpdateDoorSockets();
 }
@@ -657,6 +669,11 @@ void AFCRoomBase::UpdateDoorSockets()
 
 void AFCRoomBase::SetDirectionDoorClass(uint8 DirectionBit, TSubclassOf<AFCDoorBase> InDoorClass)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	const int32 Idx = EFCDungeonDoor::DirectionBitToIndex(DirectionBit);
 	if (Idx != INDEX_NONE)
 	{
@@ -690,7 +707,7 @@ float AFCRoomBase::GetDoorOffsetForDirection(uint8 DirectionBit) const
 	}
 
 	// For standalone rooms spawning their own doors internally:
-	if (RoomData.DoorMask & DirectionBit)
+	if (GetRoomData().DoorMask & DirectionBit)
 	{
 		float CustomDoorWidth = 300.0f;
 		if (TSubclassOf<AFCDoorBase> DoorClass = GetDirectionDoorClass(DirectionBit))
@@ -710,6 +727,11 @@ float AFCRoomBase::GetDoorOffsetForDirection(uint8 DirectionBit) const
 
 void AFCRoomBase::RegisterConnectedDoor(AFCDoorBase* Door)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (Door && !ConnectedDoors.Contains(Door))
 	{
 		ConnectedDoors.Add(Door);
@@ -718,6 +740,11 @@ void AFCRoomBase::RegisterConnectedDoor(AFCDoorBase* Door)
 
 void AFCRoomBase::RegisterSecretWall(AFCDestructibleWall* Wall)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	if (Wall && !SecretWalls.Contains(Wall))
 	{
 		SecretWalls.Add(Wall);

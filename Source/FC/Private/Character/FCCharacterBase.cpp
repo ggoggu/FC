@@ -57,7 +57,7 @@ void AFCCharacterBase::BeginPlay()
 
 void AFCCharacterBase::Die(AActor* Killer)
 {
-	if (bIsDead)
+	if (!HasAuthority() || bIsDead)
 	{
 		return;
 	}
@@ -222,8 +222,13 @@ EFCDeathDirection AFCCharacterBase::CalculateHitDirection(AActor* InstigatorActo
 
 float AFCCharacterBase::TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser)
 {
+	if (!HasAuthority() || bIsDead)
+	{
+		return 0.0f;
+	}
+
 	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-	if (ActualDamage <= 0.0f || bIsDead)
+	if (ActualDamage <= 0.0f)
 	{
 		return 0.0f;
 	}

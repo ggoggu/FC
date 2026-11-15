@@ -65,6 +65,12 @@ void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, fl
 {
 	Super::PreAttributeChange(Attribute, NewValue);
 
+	if (!FMath::IsFinite(NewValue))
+	{
+		NewValue = 0.f;
+		return;
+	}
+
 	if (Attribute == GetHealthAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.f, GetMaxHealth());

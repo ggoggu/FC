@@ -80,7 +80,14 @@ public:
 	const TArray<FName>& GetServerDiscardPile() const { return ServerDiscardPile; }
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Rules")
-	void SetMaxHandSize(int32 InMaxHandSize) { MaxHandSize = InMaxHandSize; }
+	void SetMaxHandSize(int32 InMaxHandSize)
+	{
+		if (!GetOwner() || !GetOwner()->HasAuthority())
+		{
+			return;
+		}
+		MaxHandSize = InMaxHandSize;
+	}
 
 	// --- Client RPCs ---
 	UFUNCTION(Client, Reliable, Category = "Card|Network")
@@ -89,9 +96,6 @@ public:
 	// --- Server RPCs ---
 	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Network")
 	void Server_PlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo);
-
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Network")
-	void Server_DrawCards(int32 Count);
 
 	// --- Server Authority APIs ---
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
@@ -233,6 +237,9 @@ private:
 
 	/** Active streaming handle for preloaded card assets (keeps deck abilities & textures pinned in memory during match) */
 	TSharedPtr<struct FStreamableHandle> ActiveDeckPreloadHandle;
+
+	/** Server-side timestamp for RPC rate-limiting */
+	double LastPlayCardServerTime = -1000.0;
 
 	UAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
 };

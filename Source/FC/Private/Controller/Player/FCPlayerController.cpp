@@ -621,7 +621,7 @@ void AFCPlayerController::OnRightMouseButtonPressed()
 
 bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
 {
-	return true;
+	return StaticEnum<EFCCardAddDestination>()->IsValidEnumValue(static_cast<int64>(Destination));
 }
 
 void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
@@ -631,19 +631,31 @@ void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupAct
 		return;
 	}
 
-	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn)
+	if (const UWorld* World = GetWorld())
+	{
+		const double Now = World->GetTimeSeconds();
+		if (Now - LastClaimPickupServerTime < 0.1)
+		{
+			return;
+		}
+		LastClaimPickupServerTime = Now;
+	}
+
+	AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetPawn());
+	if (!Char || Char->IsDead())
 	{
 		return;
 	}
 
-	const float DistSq = FVector::DistSquared(ControlledPawn->GetActorLocation(), PickupActor->GetActorLocation());
-	if (DistSq > FMath::Square(800.0f))
+	const float DistSq = FVector::DistSquared(Char->GetActorLocation(), PickupActor->GetActorLocation());
+	if (DistSq > FMath::Square(300.0f))
 	{
 		return;
 	}
 
-	PickupActor->ClaimPickup(ControlledPawn, Destination);
+	// Enforce server-authoritative pickup destination regardless of client request
+	const EFCCardAddDestination AuthoritativeDestination = PickupActor->GetDefaultDestination();
+	PickupActor->ClaimPickup(Char, AuthoritativeDestination);
 }
 
 

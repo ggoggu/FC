@@ -57,6 +57,21 @@ AFCProjectileBase::AFCProjectileBase()
 	InitialLifeSpan = 5.0f;
 }
 
+void AFCProjectileBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(AFCProjectileBase, ProjectileDataAsset, COND_InitialOnly);
+}
+
+void AFCProjectileBase::OnRep_ProjectileDataAsset()
+{
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
+	{
+		InitializeFromDataAsset(ProjectileDataAsset);
+	}
+}
+
 void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset)
 {
 	if (!InDataAsset)
@@ -287,6 +302,12 @@ void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitR
 void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult& HitResult)
 {
 	if (!HasAuthority() || !TargetActor || Damage <= 0.0f)
+	{
+		return;
+	}
+
+	const bool bIsBombDamageable = TargetActor->Implements<UFCBombDamageable>();
+	if (!bIsBombDamageable && !UFCCombatUtils::IsAttackableTarget(GetInstigator(), TargetActor))
 	{
 		return;
 	}

@@ -88,10 +88,17 @@ public:
 	bool IsManagingDoorsExternally() const { return bManageDoorsExternally; }
 
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
-	void SetManageDoorsExternally(bool bEnable) { bManageDoorsExternally = bEnable; }
+	void SetManageDoorsExternally(bool bEnable)
+	{
+		if (!HasAuthority())
+		{
+			return;
+		}
+		bManageDoorsExternally = bEnable;
+	}
 
 	UFUNCTION(BlueprintPure, Category = "FC|Room")
-	const FFCRoomData& GetRoomData() const { return RoomData; }
+	const FFCRoomData& GetRoomData() const { return HasAuthority() ? ServerRoomData : RoomData; }
 
 	UFUNCTION(BlueprintPure, Category = "FC|Room")
 	EFCRoomState GetRoomState() const { return RoomState; }
@@ -217,9 +224,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Combat")
 	TArray<TObjectPtr<AFCMobSpawnerBase>> ChildSpawners;
 
-	// Replicated State
+	// Replicated State (RoomData stays masked until bIsDiscovered == true to prevent client memory leaks)
 	UPROPERTY(ReplicatedUsing = OnRep_RoomData, BlueprintReadOnly, Category = "FC|Room")
 	FFCRoomData RoomData;
+
+	/** Authoritative server room topology/type/secret mask (never replicated prior to discovery) */
+	UPROPERTY(Transient)
+	FFCRoomData ServerRoomData;
 
 	UPROPERTY(ReplicatedUsing = OnRep_RoomState, BlueprintReadOnly, Category = "FC|Room")
 	EFCRoomState RoomState = EFCRoomState::Unvisited;

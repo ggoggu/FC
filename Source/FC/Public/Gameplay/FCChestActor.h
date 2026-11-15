@@ -46,7 +46,14 @@ public:
 	float GetDestroyDelay() const { return DestroyDelay; }
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
-	void SetDestroyDelay(float InDelay) { DestroyDelay = FMath::Max(0.0f, InDelay); }
+	void SetDestroyDelay(float InDelay)
+	{
+		if (!HasAuthority())
+		{
+			return;
+		}
+		DestroyDelay = FMath::Max(0.0f, InDelay);
+	}
 
 	/** Manually triggers chest destruction and card drop spawning (Server-Only) */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")

@@ -26,8 +26,8 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
    - Strict utilization of existing subsystems, utilities, components, and data tables.
 3. **Scoped Extensibility (범위 내 적정 확장성)**
    - Clean, modular design sized for the specified feature requirements without speculative YAGNI violations.
-4. **Network & Replication Optimization (네트워크 최적화)**
-   - Strict Server Authority, RPC Ownership, `DOREPLIFETIME_CONDITION`, RepNotify over tick RPCs, and FastArraySerializer.
+4. **Network & Replication Optimization & Security (네트워크 최적화 및 보안)**
+   - Strict Server Authority (`HasAuthority()` in C++ as well as `BlueprintAuthorityOnly`), RPC Ownership, `DOREPLIFETIME_CONDITION` (`COND_OwnerOnly` / discovery-gating for secret data), RepNotify over tick RPCs, FastArraySerializer, and the 6 Universal Network Security Invariants in `07-adversarial-audit-standards.md` (Zero Client Trust, Lifecycle/Cost Gating, Information Disclosure Control, `NaN`/Enum/Container/Rate-Limit Sanitization, Persistence Identity Integrity, GAS Security).
 5. **General Performance Optimization (일반 최적화)**
    - Zero hot-path heap allocations, `bCanEverTick = false` by default, proper `TObjectPtr` & GC lifecycle management.
 
@@ -52,6 +52,8 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
   - 복제/아키텍처 (>150 diff lines, Replication, RPC, GAS, 핵심 시스템): `Model: pro` 자동 할당
   - **사용자의 자동 티어링 요청이 없는 기본 검사에서는 임의로 모델을 분기하지 않고 항상 `Model: inherit` 유지.**
 
+If `adversarial-auditor` is not yet registered in the current conversation, define it first using `define_subagent` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and a read-only system prompt referencing `.antigravity/rules/07-adversarial-audit-standards.md`.
+
 Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
 - **TypeName**: `adversarial-auditor`
 - **Role**: `Adversarial Code Auditor`
@@ -66,14 +68,14 @@ Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
   ## Code Changes (Git Diff / Targeted Files)
   <Git diff or file contents>
   
-  Audit the code strictly against the 5 dimensions:
+  Audit the code strictly against the 5 dimensions in `.antigravity/rules/07-adversarial-audit-standards.md`:
   1. Code Conciseness
   2. Architecture & Existing Code Reuse
   3. Scoped Extensibility
-  4. Network & Replication Optimization
+  4. Network & Replication Optimization & the 6 Security Invariants (Zero Client Trust, Lifecycle/Cost Gating, Information Disclosure Control, Input Sanitization & Anti-DoS, Identity & Persistence Integrity, GAS Security)
   5. General Performance Optimization
   
-  Provide the structured Markdown report with your Verdict.
+  Provide the structured Markdown report with your Verdict (`APPROVED (LGTM)` or `CHANGES REQUESTED (BLOCKING)`).
   ```
 
 ### Step 3: Triage Findings & Closed-Loop Remediation

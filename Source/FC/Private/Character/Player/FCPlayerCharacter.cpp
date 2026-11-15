@@ -483,8 +483,13 @@ void AFCPlayerCharacter::StopHealthDrain()
 
 void AFCPlayerCharacter::ResetHealthDrain()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	CurrentDrainInterval = InitialDrainInterval;
-	if (HasAuthority() && !bIsDead && bEnableHealthDrain)
+	if (!bIsDead && bEnableHealthDrain)
 	{
 		StartHealthDrain();
 	}
