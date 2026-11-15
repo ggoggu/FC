@@ -501,7 +501,25 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		{
 			AActor* Candidate = TargetInfo.TargetActor.Get();
 			const bool bWithinRange = FVector::DistSquared(CasterLocation, Candidate->GetActorLocation()) <= FMath::Square(MaxCardCastRange);
-			if (bWithinRange)
+			bool bHasLineOfSight = true;
+			if (bWithinRange && TargetType == EFCCardTargetType::SingleTarget && Candidate != Char)
+			{
+				if (const UWorld* World = GetWorld())
+				{
+					FHitResult OcclusionHit;
+					FCollisionQueryParams LoSParams(SCENE_QUERY_STAT(ServerPlayCardLoS), false, Char);
+					LoSParams.AddIgnoredActor(Candidate);
+					bHasLineOfSight = !World->LineTraceSingleByChannel(
+						OcclusionHit,
+						CasterLocation + FVector(0.0f, 0.0f, 50.0f),
+						Candidate->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f),
+						ECC_WorldStatic,
+						LoSParams
+					);
+				}
+			}
+
+			if (bWithinRange && bHasLineOfSight)
 			{
 				const bool bIsAttackCard = !DataAsset || DataAsset->GameplayData.CardType == EFCCardType::Attack;
 				if (bIsAttackCard)
@@ -581,15 +599,18 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 					FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, Item->UpgradeLevel + 1, Context);
 					if (SpecHandle.IsValid())
 					{
-						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self || !VerifiedTargetActor)
+						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self)
 						{
 							ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 						}
-						else if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(VerifiedTargetActor))
+						else if (VerifiedTargetActor)
 						{
-							if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
+							if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(VerifiedTargetActor))
 							{
-								TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+								if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
+								{
+									TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+								}
 							}
 						}
 					}

@@ -75,12 +75,12 @@ class ReplicationVerifier:
         text = re.sub(r'//.*$', '', text, flags=re.MULTILINE)
         return text
 
-    def extract_brace_block(self, text: str, open_brace_pos: int) -> tuple[str, int]:
-        """Extracts balanced {...} body starting at open_brace_pos, ignoring string/char literals."""
-        if open_brace_pos < 0 or open_brace_pos >= len(text) or text[open_brace_pos] != '{':
-            return "", open_brace_pos
+    def extract_delimited_block(self, text: str, open_pos: int, open_ch: str, close_ch: str) -> tuple[str, int]:
+        """Extracts balanced delimited body starting at open_pos, ignoring string/char literals."""
+        if open_pos < 0 or open_pos >= len(text) or text[open_pos] != open_ch:
+            return "", open_pos
         depth = 0
-        i = open_brace_pos
+        i = open_pos
         n = len(text)
         in_string = False
         in_char = False
@@ -103,35 +103,59 @@ class ReplicationVerifier:
                     in_string = True
                 elif ch == "'":
                     in_char = True
-                elif ch == '{':
+                elif ch == open_ch:
                     depth += 1
-                elif ch == '}':
+                elif ch == close_ch:
                     depth -= 1
                     if depth == 0:
-                        return text[open_brace_pos + 1:i], i + 1
+                        return text[open_pos + 1:i], i + 1
             i += 1
-        return text[open_brace_pos + 1:], n
+        return text[open_pos + 1:], n
 
-    def collect_math_payload_structs(self):
-        """Scans all headers in Source/ for USTRUCTs containing floating-point/vector fields."""
+    def extract_brace_block(self, text: str, open_brace_pos: int) -> tuple[str, int]:
+        return self.extract_delimited_block(text, open_brace_pos, '{', '}')
+
+    def extract_paren_block(self, text: str, open_paren_pos: int) -> tuple[str, int]:
+        return self.extract_delimited_block(text, open_paren_pos, '(', ')')
+
+    def collect_payload_structs(self):
+        """Scans all headers in Source/ for USTRUCTs containing floating-point/vector or dynamic container fields (transitive)."""
         self.math_payload_structs = set()
+        self.container_payload_structs = set()
         math_field_pat = re.compile(
             r'\b(FVector(?:_NetQuantize\d*)?|FVector2D|FRotator|FTransform|float|double)\b'
         )
+        container_field_pat = re.compile(r'\b(TArray|TSet|TMap)\s*<|\bFString\b')
         struct_header_pat = re.compile(r'USTRUCT\s*\([^)]*\)\s*struct\s+(?:\w+_API\s+)?(?P<sname>[A-Z]\w+)[^{;]*\{')
+        struct_bodies = {}
         for h_file in self.source_dir.rglob("*.h"):
             try:
                 clean = self.strip_comments(h_file.read_text(encoding="utf-8", errors="replace"))
             except Exception:
                 continue
             for m in struct_header_pat.finditer(clean):
-                brace_pos = m.end() - 1
-                body, _ = self.extract_brace_block(clean, brace_pos)
+                sname = m.group("sname")
+                body, _ = self.extract_brace_block(clean, m.end() - 1)
+                struct_bodies[sname] = body
                 if math_field_pat.search(body):
-                    self.math_payload_structs.add(m.group("sname"))
+                    self.math_payload_structs.add(sname)
+                if container_field_pat.search(body):
+                    self.container_payload_structs.add(sname)
+
+        # Transitive closure for nested USTRUCT payloads
+        changed = True
+        while changed:
+            changed = False
+            for sname, body in struct_bodies.items():
+                if sname not in self.math_payload_structs and any(re.search(rf'\b{m}\b', body) for m in self.math_payload_structs):
+                    self.math_payload_structs.add(sname)
+                    changed = True
+                if sname not in self.container_payload_structs and any(re.search(rf'\b{c}\b', body) for c in self.container_payload_structs):
+                    self.container_payload_structs.add(sname)
+                    changed = True
 
     def scan_all(self):
-        self.collect_math_payload_structs()
+        self.collect_payload_structs()
         self.server_rpcs_by_class = {}
         self.authority_only_methods_by_class = {}
 
@@ -267,13 +291,15 @@ class ReplicationVerifier:
 
             has_replicated_props = False
             
-            # Search for UPROPERTY declarations (including C++20 default member initializers)
-            uprop_pattern = re.compile(r'UPROPERTY\s*\(([^)]*)\)\s*(?P<proptype>[A-Za-z0-9_<>\s*&:]+?)\s+(?P<varname>\w+)\s*(?:=\s*[^;]+)?;', re.DOTALL)
-            for prop_match in uprop_pattern.finditer(class_body):
-                prop_specs = prop_match.group(1)
-                prop_type = prop_match.group("proptype").strip()
-                var_name = prop_match.group("varname")
-                prop_pos = class_start_pos + prop_match.start()
+            # Search for UPROPERTY declarations using balanced-paren extraction (supports nested meta=(...))
+            for uprop_kw in re.finditer(r'\bUPROPERTY\s*\(', class_body):
+                prop_specs, after_paren = self.extract_paren_block(class_body, uprop_kw.end() - 1)
+                decl_match = re.match(r'\s*(?P<proptype>[A-Za-z0-9_<>\s*&:,]+?)\s+(?P<varname>\w+)\s*(?:=\s*[^;]+)?;', class_body[after_paren:], re.DOTALL)
+                if not decl_match:
+                    continue
+                prop_type = decl_match.group("proptype").strip()
+                var_name = decl_match.group("varname")
+                prop_pos = class_start_pos + uprop_kw.start()
                 prop_line_no = content[:prop_pos].count('\n') + 1
 
                 # Promoted Memory Check (Rule 01): Raw UObject/AActor pointer in UPROPERTY instead of TObjectPtr<T>
@@ -438,14 +464,14 @@ class ReplicationVerifier:
                     message="Hardcoded asset path in constructor using ConstructorHelpers. Configure assets via DataAsset, TSoftObjectPtr, or Blueprint Class Defaults."
                 )
 
-        # Check 10: Trivial Server RPC _Validate (accepts parameters but unconditionally returns true)
+        # Check 10: Trivial Server RPC _Validate (accepts parameters with no conditional rejection)
         validate_pat = re.compile(r'(?P<cls>[A-Z]\w+)::(?P<func>\w+)_Validate\s*\((?P<params>[^)]*)\)\s*\{')
         for val_match in validate_pat.finditer(clean_content):
             params_str = val_match.group("params").strip()
             if params_str and params_str != "void":
                 body, _ = self.extract_brace_block(clean_content, val_match.end() - 1)
-                compact_body = re.sub(r'\s+', ' ', body).strip()
-                if re.fullmatch(r'return\s+true\s*;', compact_body):
+                has_conditional_or_expr = bool(re.search(r'\bif\b|\bswitch\b|\?|\breturn\s+(?!true\s*;)', body))
+                if not has_conditional_or_expr:
                     line_no = content[:val_match.start()].count('\n') + 1
                     self.add_violation(
                         rule_id="NET_SEC_TRIVIAL_RPC_VALIDATE",
@@ -491,10 +517,13 @@ class ReplicationVerifier:
                             message=f"Server RPC '{cls_name}::{rpc_name}' accepts floating-point/vector payload without NaN/Inf sanitization (ContainsNaN/IsNaN/IsFinite)."
                         )
 
-                # Check dynamic container / string parameters
-                if container_type_pat.search(rpc_params):
+                # Check dynamic container / string parameters (direct or inside USTRUCT)
+                has_container_param = bool(container_type_pat.search(rpc_params))
+                if not has_container_param and getattr(self, "container_payload_structs", None):
+                    has_container_param = any(re.search(rf'\b{sname}\b', rpc_params) for sname in self.container_payload_structs)
+                if has_container_param:
                     combined_bounds = val_body + "\n" + impl_body
-                    if not re.search(r'\.(Num|Len|IsEmpty)\s*\(', combined_bounds):
+                    if not re.search(r'\.(Num|Len)\s*\(', combined_bounds):
                         self.add_violation(
                             rule_id="NET_SEC_UNBOUNDED_RPC_CONTAINER",
                             file_path=cpp_file,
