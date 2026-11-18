@@ -24,6 +24,7 @@ FORBIDDEN_GAS_UI_HEADERS = [
     r"Components/Widget\.h",
     r"SlateBasics\.h",
     r"SlateCore\.h",
+    r"MVVMViewModelBase\.h",
 ]
 
 def resolve_target_files(source_dir: Path, target_file: str | None) -> tuple[list[Path], list[Path]]:
@@ -207,12 +208,43 @@ class GASVerifier:
             return
 
         clean_content = self.strip_comments(content)
+        lines = content.splitlines()
+
+        # Check GAS UI/MVVM header leak in .cpp
+        if any(tag in cpp_file.stem for tag in ["AttributeSet", "GameplayAbility", "GA_"]):
+            for idx, line in enumerate(lines, start=1):
+                clean_line = line.split('//')[0]
+                for ui_hdr in FORBIDDEN_GAS_UI_HEADERS:
+                    if re.search(rf'#include\s*["<]{ui_hdr}[">]', clean_line):
+                        self.add_violation(
+                            rule_id="GAS_UI_HEADER_IN_ABILITY",
+                            file_path=cpp_file,
+                            line_number=idx,
+                            severity="ERROR",
+                            detail=f"Forbidden UI/ViewModel header '{line.strip()}' included in GAS source file. GAS classes must be decoupled from Slate/UMG/MVVM."
+                        )
 
         # Match OnRep implementations and GetLifetimeReplicatedProps
         for file_stem, (h_path, classes_dict) in attribute_sets.items():
             for class_name, attrs in classes_dict.items():
                 if class_name not in clean_content:
                     continue
+
+                # Verify PreAttributeChange sanitizes NaN/Inf
+                pre_attr_pat = rf'{class_name}::PreAttributeChange\s*\([^)]*\)\s*\{{(?P<funcbody>.*?)\}}'
+                pre_attr_match = re.search(pre_attr_pat, clean_content, re.DOTALL)
+                if pre_attr_match:
+                    pre_body = pre_attr_match.group("funcbody")
+                    if not re.search(r'\b(IsFinite|IsNaN)\s*\(', pre_body):
+                        start_pos = pre_attr_match.start()
+                        line_no = content[:start_pos].count('\n') + 1
+                        self.add_violation(
+                            rule_id="GAS_PREATTRIBUTE_MISSING_NAN_CHECK",
+                            file_path=cpp_file,
+                            line_number=line_no,
+                            severity="ERROR",
+                            detail=f"'{class_name}::PreAttributeChange' does not check 'FMath::IsFinite(NewValue)' or 'FMath::IsNaN(NewValue)' to guard against NaN corruption."
+                        )
 
                 for attr in attrs:
                     attr_name = attr["name"]

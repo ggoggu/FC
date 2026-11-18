@@ -21,18 +21,24 @@ This document specifies the operational protocols for autonomous agents executin
 
 ---
 
-## 2. Execution Sequence & Tiered Modes (ACI)
+## 2. Deterministic Verification Sequence (ACI)
 
-- **Default (Fast Mode)**: Regular coding and Q&A run with zero script overhead.
-- **Incremental File-Scoped ACI (`--file`)**: For ultra-fast (~0.03s) pinpoint verification of a single modified C++ header/source pair without scanning the entire repository.
-- **On-Demand Pipelines**: When verification is requested, invoke the master runner `Scripts/pipeline.py`:
+Every code modification follows a single deterministic verification workflow without mode branching:
+
+1. **Mandatory File-Scoped Static Check (`--file`)**:
+   - Immediately after creating or editing any C++ `.h` or `.cpp` file, execute `python Scripts/pipeline.py static --file <path>` (`~0.03s`) to verify GAS, Bandwidth, Replication, MVVM, and Footgun API constraints before ending the turn.
+2. **Pipeline Verification Commands (`Scripts/pipeline.py`)**:
 
 ```
-[ Step 1: Write Code / Refactor ]
+[ Step 1: Write / Modify C++ Code ]
           |
           v
-[ On-Demand: python Scripts/pipeline.py <mode> ]
-  - 'static'  : GAS, Bandwidth, Replication Static Verification (~0.4s full / ~0.03s with --file)
+[ Step 2: Mandatory Incremental Check (~0.03s) ]
+  python Scripts/pipeline.py static --file <modified_file>
+          |
+          v
+[ Step 3: Repository-Wide & Build Verification ]
+  - 'static'  : Full repository GAS, Bandwidth, Replication & MVVM static check (~0.4s)
   - 'build'   : UBT compile harness + JSON self-healing loop (Max 5 cycles, Circuit Breaker on 2x repeat)
   - 'balance' : Mathematical TTK and effective DPS curve simulation (~0.2s)
   - 'test'    : Headless automation specs
@@ -86,18 +92,20 @@ The project provides a unified master runner for all verification tasks:
 
 To guarantee 100% reasoning accuracy and eliminate hallucinations when working with binary `.uasset` files:
 
-1. **Mandatory Ground Truth Inspection**:
-   - Before reasoning about or modifying code that interfaces with existing Blueprints (`BP_*`), Widget Blueprints (`WBP_*`), or Animation assets (`MM_*`, `ABP_*`), autonomous agents **MUST** inspect the asset metadata using:
-     ```powershell
-     python Scripts/pipeline.py inspect --asset <path>
-     ```
-     *(or append `--deep` for live reflection, `--no-cache` to bypass `mtime` schema cache)*
+1. **Mandatory Ground Truth Inspection (Tiered Priority)**:
+   - Before reasoning about or modifying code that interfaces with existing Blueprints (`BP_*`), Widget Blueprints (`WBP_*`), DataTables (`DT_*`), or Animation assets (`MM_*`, `ABP_*`), autonomous agents **MUST** inspect the asset metadata:
+     - **Priority 1 — Live Editor MCP (`unreal-mcp`, Editor running)**: Prefer `fc_toolset.FCTools.inspect_asset_summary`, `UMGToolSet.UMGToolSet` (`GetWidgetDescription` / `GetWidgets` + `ObjectTools.list_properties`), `MVVMToolset.UMVVMToolset`, and `editor_toolset.toolsets.blueprint.BlueprintTools` (`list_variables`, `get_connected_subgraph`, `read_graph_dsl`).
+     - **Priority 2 — Offline Fast Scan (Editor closed / quick read-only name check)**:
+       ```powershell
+       python Scripts/pipeline.py inspect --asset <path>
+       ```
+       *(or append `--deep` for headless engine reflection when `unreal-mcp` is unavailable, `--no-cache` to bypass `mtime` schema cache)*
 2. **Extracted Schema Utilization**:
-   - **Widget Blueprints (WBP)**: Cross-reference `detected_widgets`, `detected_viewmodels`, and `detected_bindings` with C++ `UMVVMViewModelBase` / `FieldNotify` properties.
-   - **AnimMontages & AnimBlueprints**: Use `detected_notifies`, `detected_slots`, and `detected_tracks` to verify exact notify names, gameplay tags, and target skeletal slots without guessing.
-   - **Actor Blueprints (BP)**: Verify `detected_components`, `detected_variables`, and parent C++ classes before adding or binding components.
+   - **Widget Blueprints (WBP)**: Verify exact widget tree, `Slot` properties (`ObjectTools.list_properties` first), and MVVM `ViewModel` / `FieldNotify` bindings.
+   - **AnimMontages & AnimBlueprints**: Verify exact notify names, trigger times, gameplay tags, and target skeletal slots without guessing.
+   - **Actor Blueprints (BP)**: Verify `parent_class`, `variables`, `replication`, and `graphs` before adding or binding components.
 3. **Deep Engine Reflection Fallback**:
-   - When exact property values or runtime CDO numbers are required, append `--deep` to execute headless reflection extraction via Unreal Engine.
+   - When `unreal-mcp` is unavailable and exact property values or runtime CDO numbers are required, append `--deep` to execute headless reflection extraction via Unreal Engine.
 
 ---
 

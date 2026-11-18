@@ -22,6 +22,7 @@ FORBIDDEN_UI_HEADERS = [
     r"SlateBasics\.h",
     r"SlateCore\.h",
     r"SlateOptMacros\.h",
+    r"MVVMViewModelBase\.h",
 ]
 
 def resolve_target_files(source_dir: Path, target_file: str | None) -> tuple[list[Path], list[Path]]:
@@ -177,8 +178,32 @@ class ReplicationVerifier:
         lines = content.splitlines()
         clean_content = self.strip_comments(content)
 
+        # Check 0: Escape-Hatch Comments (// TODO, // FIXME, // HACK, // XXX)
+        for idx, line in enumerate(lines, start=1):
+            if re.search(r'//\s*(TODO|FIXME|HACK|XXX)\b', line, re.IGNORECASE):
+                self.add_violation(
+                    rule_id="CODE_ESCAPE_HATCH_COMMENT",
+                    file_path=h_file,
+                    line_number=idx,
+                    severity="WARNING",
+                    message=f"Escape-hatch comment detected ('{line.strip()}'). Resolve incomplete logic or promote constraints instead of leaving TODO/FIXME/HACK comments."
+                )
+
         # Check 1: Forbidden UI Headers in Actor/Gameplay Headers
         is_actor_or_gameplay_header = bool(re.search(r'class\s+\w+_API\s+([A-Z]\w+)\s*:\s*public\s+(AActor|ACharacter|APawn|AGameMode|AGameModeBase|AGameState|AGameStateBase|APlayerState|AAIController|UActorComponent)', clean_content))
+        is_ui_or_vm_header = bool(re.search(r'class\s+\w+_API\s+([A-Z]\w+)\s*:\s*public\s+(UUserWidget|UMVVMViewModelBase)', clean_content))
+
+        if is_ui_or_vm_header:
+            for idx, line in enumerate(lines, start=1):
+                clean_line = line.split('//')[0]
+                if re.search(r'#include\s*["<][^">]*GameMode[^">]*[">]', clean_line):
+                    self.add_violation(
+                        rule_id="UI_GAMEMODE_DEPENDENCY",
+                        file_path=h_file,
+                        line_number=idx,
+                        severity="ERROR",
+                        message=f"Client-only UI/ViewModel header includes server GameMode header: '{line.strip()}'."
+                    )
         
         if is_actor_or_gameplay_header:
             for idx, line in enumerate(lines, start=1):
@@ -281,13 +306,16 @@ class ReplicationVerifier:
                     )
 
         # Check 3: RepNotify naming conventions, Replicated without GetLifetimeReplicatedProps,
-        #          Promoted Rule 01 (Raw UObject* in UPROPERTY), and Promoted Rule 07 (BlueprintSetter on Replicated BlueprintReadWrite)
-        class_pattern = re.compile(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)[^{]*\{(?P<body>.*?)\};', re.DOTALL)
+        #          Promoted Rule 01 (Raw UObject* in UPROPERTY), Promoted Rule 06 (MVVM purity),
+        #          and Promoted Rule 07 (BlueprintSetter on Replicated BlueprintReadWrite)
+        class_pattern = re.compile(r'class\s+\w+_API\s+(?P<classname>[A-Z]\w+)\s*(?::\s*public\s+(?P<parent>\w+))?[^{]*\{(?P<body>.*?)\};', re.DOTALL)
         for class_match in class_pattern.finditer(clean_content):
             class_name = class_match.group("classname")
+            parent_name = class_match.group("parent") or ""
             class_body = class_match.group("body")
             class_start_pos = class_match.start()
             class_line_no = content[:class_start_pos].count('\n') + 1
+            is_viewmodel_class = (parent_name == "UMVVMViewModelBase" or class_name.endswith("ViewModel"))
 
             has_replicated_props = False
             
@@ -314,6 +342,25 @@ class ReplicationVerifier:
 
                 is_replicated = bool(re.search(r'\bReplicated\b', prop_specs, re.IGNORECASE))
                 rep_using_match = re.search(r'ReplicatedUsing\s*=\s*(?P<funcname>\w+)', prop_specs, re.IGNORECASE)
+
+                # Promoted MVVM Checks (Rule 06): No replication on ViewModels, and soft texture references only
+                if is_viewmodel_class:
+                    if is_replicated or rep_using_match:
+                        self.add_violation(
+                            rule_id="MVVM_REPLICATED_FORBIDDEN",
+                            file_path=h_file,
+                            line_number=prop_line_no,
+                            severity="ERROR",
+                            message=f"ViewModel '{class_name}' property '{var_name}' is marked Replicated. UMVVMViewModelBase is client-only presentation state and must never replicate."
+                        )
+                    if re.search(r'\bTObjectPtr\s*<\s*UTexture2D\s*>|\bUTexture2D\s*\*', prop_type):
+                        self.add_violation(
+                            rule_id="MVVM_HARD_TEXTURE_REF",
+                            file_path=h_file,
+                            line_number=prop_line_no,
+                            severity="ERROR",
+                            message=f"ViewModel '{class_name}' property '{var_name}' uses hard texture reference '{prop_type}'. Use 'TSoftObjectPtr<UTexture2D>' per Rule 06."
+                        )
 
                 if is_replicated or rep_using_match:
                     has_replicated_props = True
@@ -462,6 +509,54 @@ class ReplicationVerifier:
                     line_number=idx,
                     severity="WARNING",
                     message="Hardcoded asset path in constructor using ConstructorHelpers. Configure assets via DataAsset, TSoftObjectPtr, or Blueprint Class Defaults."
+                )
+            if re.search(r'//\s*(TODO|FIXME|HACK|XXX)\b', line, re.IGNORECASE):
+                self.add_violation(
+                    rule_id="CODE_ESCAPE_HATCH_COMMENT",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="WARNING",
+                    message=f"Escape-hatch comment detected ('{line.strip()}'). Resolve incomplete logic or promote constraints instead of leaving TODO/FIXME/HACK comments."
+                )
+
+        # Check 9b: Banned Footgun APIs (Index-0 Player getters & Raw 'this' AddLambda) and Server .cpp UI includes
+        is_server_only_cpp = any(tag in cpp_file.stem for tag in ["GameMode", "AIController"])
+        is_ui_or_vm_cpp = any(tag in cpp_file.stem for tag in ["Widget", "ViewModel"])
+        for idx, line in enumerate(lines, start=1):
+            clean_line = line.split('//')[0]
+            if re.search(r'UGameplayStatics::(GetPlayerController|GetPlayerPawn|GetPlayerCharacter)\s*\([^,]+,\s*0\s*\)', clean_line):
+                self.add_violation(
+                    rule_id="CODE_BANNED_INDEX0_PLAYER_API",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="ERROR",
+                    message="Banned single-player index-0 API (GetPlayerController/Pawn/Character(..., 0)). Use explicit ownership (GetController(), GetOwningPlayer(), or RPC context)."
+                )
+            if re.search(r'\.AddLambda\s*\(\s*\[[^\]]*\bthis\b', clean_line):
+                self.add_violation(
+                    rule_id="CODE_UNSAFE_RAW_THIS_LAMBDA",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="ERROR",
+                    message="Unsafe '.AddLambda([this])' delegate binding detected. Use 'AddWeakLambda(this, ...)' to prevent dangling UObject crashes."
+                )
+            if is_server_only_cpp:
+                for ui_hdr_pat in FORBIDDEN_UI_HEADERS:
+                    if re.search(rf'#include\s*["<]{ui_hdr_pat}[">]', clean_line):
+                        self.add_violation(
+                            rule_id="REPL_UI_HEADER_IN_SERVER_CPP",
+                            file_path=cpp_file,
+                            line_number=idx,
+                            severity="ERROR",
+                            message=f"Forbidden UI/ViewModel header included in server-only source file: '{line.strip()}'."
+                        )
+            if is_ui_or_vm_cpp and re.search(r'#include\s*["<][^">]*GameMode[^">]*[">]', clean_line):
+                self.add_violation(
+                    rule_id="UI_GAMEMODE_DEPENDENCY",
+                    file_path=cpp_file,
+                    line_number=idx,
+                    severity="ERROR",
+                    message=f"Client-only UI/ViewModel source file includes server GameMode header: '{line.strip()}'."
                 )
 
         # Check 10: Trivial Server RPC _Validate (accepts parameters with no conditional rejection)

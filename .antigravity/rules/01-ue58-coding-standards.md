@@ -133,7 +133,7 @@ private:
 
 ---
 
-## 7. Minimal Footprint & Structural Preservation
+## 7. Minimal Footprint & Anti-Slop Comment Hygiene
 
 - **Minimal Modification Scope (최소한의 수정)**:
   - Keep diffs tight and focused strictly on the user request.
@@ -141,17 +141,19 @@ private:
 - **Maximize Existing Code Utilization (기존 구조 및 코드 최대한 활용)**:
   - Always survey existing modules, helper methods, classes, and project structures before authoring new implementations.
   - Extend and leverage existing code rather than creating redundant parallel systems or reinventing logic.
-- **Documentation & Intent Preservation**:
-  - Retain existing comments, docstrings, and author intent across unmodified sections.
+- **Zero Escape-Hatch Comments (변명/유예 주석 금지)**:
+  - Retain valid API docstrings (`/** ... */`) for UHT/Blueprint metadata, but **never** use inline comments (`// TODO`, `// FIXME`, `// HACK`, `// Workaround`, `// For now`) as escape hatches to justify incomplete validation, temporary stubs, or architectural shortcuts.
 
 ---
 
-## 8. Hardcoding & Delegate Hygiene
+## 8. Banned Footgun APIs & Delegate Hygiene
 
-1. **No Hardcoded Asset Paths in C++ Constructors**:
+1. **Banned Single-Player Index-0 APIs**:
+   - Never call `UGameplayStatics::GetPlayerController(World, 0)`, `GetPlayerPawn(World, 0)`, or `GetPlayerCharacter(World, 0)`. Resolve controllers/pawns via explicit ownership (`GetController()`, `GetOwningPlayer()`, or server RPC context).
+2. **No Hardcoded Asset Paths in C++ Constructors**:
    - Do NOT use `ConstructorHelpers::FObjectFinder` or hardcoded `TEXT("/Game/...")` strings in C++ constructors.
    - Asset references (Meshes, Materials, Animations, InputActions) must be configured via `TSoftObjectPtr`, `UPrimaryDataAsset`, or subclassed Blueprint defaults (`BP_*`).
-2. **Single Source of Truth (SSOT)**:
+3. **Single Source of Truth (SSOT)**:
    - Never duplicate lists of identifiers (e.g. Starter Decks, Ability IDs) across multiple classes (`GameMode`, `Subsystem`, etc.). Read them from a single DataAsset or DataTable.
-3. **Delegate Lifecycle Safety**:
-   - In functions called repeatedly (`SetupHUD`, `PossessedBy`), never register raw lambdas (`.AddLambda([this])`) without removing previous handles. Use `AddWeakLambda(this, ...)` or ensure explicit `RemoveAll(this)`.
+4. **Delegate Lifecycle Safety**:
+   - Never register raw `this`-capturing lambdas (`.AddLambda([this])`). Always use `AddWeakLambda(this, ...)` or explicit `RemoveAll(this)` before binding.
