@@ -69,3 +69,6 @@
   - [build_harness.py](file:///c:/Users/oogg/Documents/Unreal%20Projects/FC/Scripts/build_harness.py), [run_tests.py](file:///c:/Users/oogg/Documents/Unreal%20Projects/FC/Scripts/run_tests.py) (0-Test PASS 금지), [simulate_net_pie.py](file:///c:/Users/oogg/Documents/Unreal%20Projects/FC/Scripts/simulate_net_pie.py) (맵 실존 체크, Timeout=FAIL)
 - **하네스 자가 회귀 테스트**:
   - [test_linters.py](file:///c:/Users/oogg/Documents/Unreal%20Projects/FC/Scripts/tests/test_linters.py): `python Scripts/tests/test_linters.py` (17개 테스트, ~0.12s)
+- **비핵심 스크립트 분리 (`Scripts/` 노이즈 제거)**:
+  - `Scripts/reports/`: PDF·Mermaid 다이어그램 생성 및 벤치마크 스크립트 (17개)
+  - `Scripts/setup/`: 일회성 UE 에디터 에셋·레벨·블루프린트 셋업 스크립트 (14개)

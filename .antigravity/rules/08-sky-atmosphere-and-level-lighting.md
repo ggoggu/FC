@@ -22,4 +22,4 @@ Rules for generating or configuring outdoor maps, sky-visible dungeon stages, an
 - **ViewTarget Binding**: In UI/Presentation levels where `DefaultPawnClass = nullptr`, explicitly call `SetViewTarget(StudioCameraActor)` in local `APlayerController::BeginPlay()` so the viewport does not spawn at `(0,0,0)` inside the floor mesh.
 
 ## 4. Reference Automation Scripts
-Inspect existing level-lighting setup scripts (`Scripts/setup_template_based_map.py`, `Scripts/fix_class_select_lighting.py`) via `read_file` before writing new map setup scripts.
+Inspect existing level-lighting setup scripts (`Scripts/setup/setup_template_based_map.py`, `Scripts/setup/fix_class_select_lighting.py`) via `read_file` before writing new map setup scripts.

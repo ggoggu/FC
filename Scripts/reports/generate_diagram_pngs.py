@@ -4,9 +4,9 @@ import time
 from pathlib import Path
 from PIL import Image, ImageChops
 
-WORKSPACE_DIR = Path(r"c:\Users\oogg\Documents\Unreal Projects\FC")
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent.parent
 REPORT_DIR = WORKSPACE_DIR / "Report" / "04_Diagrams"
-SCRIPTS_DIR = WORKSPACE_DIR / "Scripts"
+SCRIPTS_DIR = Path(__file__).resolve().parent
 MERMAID_JS_PATH = SCRIPTS_DIR / "mermaid.min.js"
 CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
