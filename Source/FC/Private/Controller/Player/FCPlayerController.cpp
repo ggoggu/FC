@@ -100,6 +100,23 @@ void AFCPlayerController::OnUnPossess()
 
 void AFCPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(CycleHUDUpdateTimerHandle);
+	}
+
+	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
+		{
+			DeckComp->OnCardHandUpdated.RemoveAll(this);
+			DeckComp->OnPileCountsChanged.RemoveAll(this);
+			DeckComp->OnCardCycleTriggered.RemoveAll(this);
+			DeckComp->OnCycleSettingsChanged.RemoveAll(this);
+			DeckComp->OnCycleTimerUpdated.RemoveAll(this);
+		}
+	}
+
 	UnbindAttributeListeners();
 	Super::EndPlay(EndPlayReason);
 }
@@ -183,20 +200,30 @@ void AFCPlayerController::BindDeckComponentEvents()
 	DeckComp->OnPileCountsChanged.RemoveAll(this);
 	DeckComp->OnCardCycleTriggered.RemoveAll(this);
 	DeckComp->OnCycleSettingsChanged.RemoveAll(this);
+	DeckComp->OnCycleTimerUpdated.RemoveAll(this);
 
 	DeckComp->OnCardHandUpdated.AddDynamic(this, &AFCPlayerController::SyncHandToViewModel);
 	DeckComp->OnPileCountsChanged.AddDynamic(this, &AFCPlayerController::OnDeckPileCountsChanged);
 	DeckComp->OnCardCycleTriggered.AddDynamic(this, &AFCPlayerController::OnDeckCycleTriggered);
 	DeckComp->OnCycleSettingsChanged.AddDynamic(this, &AFCPlayerController::OnDeckCycleSettingsChanged);
+	DeckComp->OnCycleTimerUpdated.AddDynamic(this, &AFCPlayerController::UpdateCycleHUD);
 
 	// Perform initial sync
 	SyncHandToViewModel();
 	HUDViewModel->SetDrawPileCount(DeckComp->GetDrawPileCount());
 	HUDViewModel->SetDiscardPileCount(DeckComp->GetDiscardPileCount());
 	HUDViewModel->SetExhaustPileCount(DeckComp->GetExhaustPileCount());
-	HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
-	HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
-	HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
+	UpdateCycleHUD();
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			CycleHUDUpdateTimerHandle,
+			this,
+			&AFCPlayerController::UpdateCycleHUD,
+			0.05f,
+			true);
+	}
 }
 
 void AFCPlayerController::UnbindAttributeListeners()
@@ -339,25 +366,29 @@ void AFCPlayerController::OnDeckPileCountsChanged(int32 DrawCount, int32 Discard
 
 void AFCPlayerController::OnDeckCycleTriggered()
 {
-	if (HUDViewModel)
-	{
-		if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
-		{
-			if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
-			{
-				HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
-				HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
-				HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
-			}
-		}
-	}
+	UpdateCycleHUD();
 }
 
 void AFCPlayerController::OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount)
 {
-	if (HUDViewModel)
+	UpdateCycleHUD();
+}
+
+void AFCPlayerController::UpdateCycleHUD()
+{
+	if (!IsLocalPlayerController() || !HUDViewModel)
 	{
-		HUDViewModel->SetCycleInterval(NewInterval);
+		return;
+	}
+
+	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
+		{
+			HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
+			HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
+			HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
+		}
 	}
 }
 

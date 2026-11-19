@@ -16,6 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCardPlayedSignature, const FGuid
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPileCountsChangedSignature, int32, DrawCount, int32, DiscardCount, int32, ExhaustCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCardCycleTriggeredSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCycleSettingsChangedSignature, float, NewInterval, int32, NewDrawCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCycleTimerUpdatedSignature);
 
 /**
  * UFCCardDeckComponent
@@ -51,6 +52,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Card|Events")
 	FOnCycleSettingsChangedSignature OnCycleSettingsChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Card|Events")
+	FOnCycleTimerUpdatedSignature OnCycleTimerUpdated;
 
 	// --- Getters ---
 	const FFCCardHandContainer& GetHandContainer() const { return HandContainer; }
@@ -91,7 +95,7 @@ public:
 
 	// --- Client RPCs ---
 	UFUNCTION(Client, Reliable, Category = "Card|Network")
-	void Client_OnCycleTriggered();
+	void Client_OnCycleTriggered(double InNextCycleEndTime);
 
 	// --- Server RPCs ---
 	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Network")
@@ -214,7 +218,7 @@ protected:
 
 	/** World timestamp when current cycle finishes (COND_OwnerOnly, used for zero-tick client countdowns) */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_CycleEndTime, Category = "Card|Cycle")
-	float CycleEndTime = 0.0f;
+	double CycleEndTime = 0.0;
 
 	UFUNCTION()
 	virtual void OnRep_HandContainer();

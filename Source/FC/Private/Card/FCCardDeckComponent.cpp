@@ -25,7 +25,7 @@ UFCCardDeckComponent::UFCCardDeckComponent()
 	CycleInterval = 30.0f;
 	CycleDrawCount = 5;
 	bAutoCycleEnabled = true;
-	CycleEndTime = 0.0f;
+	CycleEndTime = 0.0;
 }
 
 void UFCCardDeckComponent::BeginPlay()
@@ -758,9 +758,10 @@ void UFCCardDeckComponent::StartCycleTimer()
 
 	if (UWorld* World = GetWorld())
 	{
-		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
-		CycleEndTime = ServerTime + CycleInterval;
+		const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+		CycleEndTime = ServerTime + static_cast<double>(CycleInterval);
 		World->GetTimerManager().SetTimer(CycleTimerHandle, this, &UFCCardDeckComponent::ExecuteHandCycle, CycleInterval, true);
+		OnCycleTimerUpdated.Broadcast();
 	}
 }
 
@@ -775,7 +776,8 @@ void UFCCardDeckComponent::StopCycleTimer()
 	{
 		World->GetTimerManager().ClearTimer(CycleTimerHandle);
 	}
-	CycleEndTime = 0.0f;
+	CycleEndTime = 0.0;
+	OnCycleTimerUpdated.Broadcast();
 }
 
 void UFCCardDeckComponent::ResetCycleTimer()
@@ -864,55 +866,90 @@ void UFCCardDeckComponent::ExecuteHandCycle()
 	DrawCards(CycleDrawCount);
 
 	// 4. Update cycle timestamp for next interval using synchronized server time
-	if (UWorld* World = GetWorld())
+	if (bAutoCycleEnabled && CycleInterval > 0.0f)
 	{
-		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
-		CycleEndTime = ServerTime + CycleInterval;
+		if (UWorld* World = GetWorld())
+		{
+			const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+			CycleEndTime = ServerTime + static_cast<double>(CycleInterval);
+		}
+	}
+	else
+	{
+		CycleEndTime = 0.0;
 	}
 
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 	OnCardCycleTriggered.Broadcast();
-	Client_OnCycleTriggered();
+	OnCycleTimerUpdated.Broadcast();
+	Client_OnCycleTriggered(CycleEndTime);
 }
 
-void UFCCardDeckComponent::Client_OnCycleTriggered_Implementation()
+void UFCCardDeckComponent::Client_OnCycleTriggered_Implementation(double InNextCycleEndTime)
 {
-	OnCardCycleTriggered.Broadcast();
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		CycleEndTime = InNextCycleEndTime;
+		OnCardCycleTriggered.Broadcast();
+		OnCycleTimerUpdated.Broadcast();
+	}
 }
 
 float UFCCardDeckComponent::GetCycleRemainingTime() const
 {
-	if (!bAutoCycleEnabled)
+	if (!bAutoCycleEnabled || CycleInterval <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
 		return 0.0f;
 	}
 
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		if (const UWorld* World = GetWorld())
+		if (World->GetTimerManager().IsTimerActive(CycleTimerHandle))
 		{
-			if (World->GetTimerManager().IsTimerActive(CycleTimerHandle))
+			const float TimerRemaining = World->GetTimerManager().GetTimerRemaining(CycleTimerHandle);
+			if (TimerRemaining > KINDA_SMALL_NUMBER)
 			{
-				return World->GetTimerManager().GetTimerRemaining(CycleTimerHandle);
+				return FMath::Clamp(TimerRemaining, 0.0f, CycleInterval);
 			}
 		}
 	}
-
-	if (const UWorld* World = GetWorld())
+	else if (!World->GetGameState())
 	{
-		const float ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
-		return FMath::Max(0.0f, CycleEndTime - ServerTime);
+		return 0.0f;
 	}
-	return 0.0f;
+
+	if (CycleEndTime <= 0.0)
+	{
+		return 0.0f;
+	}
+
+	const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	return FMath::Clamp(static_cast<float>(CycleEndTime - ServerTime), 0.0f, CycleInterval);
 }
 
 float UFCCardDeckComponent::GetCycleProgress() const
 {
-	if (CycleInterval <= 0.0f || !bAutoCycleEnabled)
+	if (CycleInterval <= 0.0f || !bAutoCycleEnabled || CycleEndTime <= 0.0)
 	{
 		return 0.0f;
 	}
+
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		const UWorld* World = GetWorld();
+		if (!World || !World->GetGameState())
+		{
+			return 0.0f;
+		}
+	}
+
 	const float Remaining = GetCycleRemainingTime();
 	return FMath::Clamp(1.0f - (Remaining / CycleInterval), 0.0f, 1.0f);
 }
@@ -920,9 +957,11 @@ float UFCCardDeckComponent::GetCycleProgress() const
 void UFCCardDeckComponent::OnRep_CycleSettings()
 {
 	OnCycleSettingsChanged.Broadcast(CycleInterval, CycleDrawCount);
+	OnCycleTimerUpdated.Broadcast();
 }
 
 void UFCCardDeckComponent::OnRep_CycleEndTime()
 {
+	OnCycleTimerUpdated.Broadcast();
 }
 

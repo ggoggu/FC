@@ -161,11 +161,16 @@ protected:
 	UFUNCTION()
 	void OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount);
 
+	UFUNCTION()
+	void UpdateCycleHUD();
+
 private:
 	void InitializeDefaultMappingContext();
 	void BindDeckComponentEvents();
 	void BindAttributeListeners();
 	void UnbindAttributeListeners();
+
+	FTimerHandle CycleHUDUpdateTimerHandle;
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<class UAbilitySystemComponent> BoundASC;
