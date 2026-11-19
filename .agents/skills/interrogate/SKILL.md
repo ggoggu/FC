@@ -35,14 +35,15 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
 
 ## Execution Workflow
 
-### Step 1: Collect Context & State Intent (Filtering & Staging)
+### Step 1: Collect Context, Proofs & State Intent (Proof-Carrying Audit)
 1. Run `git add -N .` to ensure newly created untracked C++ files are recognized by git diff.
-2. Extract the text-only C++ diff (excluding binary `.uasset` / `.umap` assets):
+2. Run `python Scripts/pipeline.py audit --json` to capture full static verification status (GAS, Bandwidth, Replication) and changed C++ file list.
+3. Extract the text-only C++ diff (excluding binary `.uasset` / `.umap` assets):
    ```powershell
    git diff HEAD -- "*.h" "*.cpp" "*.cs"
    ```
-   *(Or run `python Scripts/pipeline.py audit --json` to get an aggregated diff & static replication status).*
-3. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
+4. Collect available **Verification Proofs** (latest `pipeline.py static`, `build`, and `test` pass/fail summaries; explicitly state if `build`/`test` has not been run yet).
+5. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
 
 ### Step 2: Invoke the Adversarial Auditor Subagent
 If `adversarial-auditor` is not yet registered in the current conversation, define it first using `define_subagent` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and a read-only system prompt referencing `.antigravity/rules/07-adversarial-audit-standards.md`.
@@ -57,6 +58,9 @@ Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
   
   ## Stated Intent
   <Brief summary of intent>
+  
+  ## Verification Proofs (Static / Build / Test)
+  <Latest pipeline.py audit / build / test status; flag missing build/test proof as WARNING or BLOCKING for risky changes>
   
   ## Code Changes (Git Diff / Targeted Files)
   <Git diff or file contents>

@@ -55,17 +55,19 @@ def update_oscillation_circuit_breaker(mode_key: str, passed: bool, error_items:
                 pass
         return {"oscillation_detected": False, "consecutive_identical_failures": 0}
 
-    canonical_str = "||".join(sorted(error_items))
+    canonical_str = "||".join(sorted(set(error_items)))
     fingerprint = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()[:16]
     prev_entry = state.get(mode_key, {})
     prev_fp = prev_entry.get("fingerprint")
     count = (prev_entry.get("count", 0) + 1) if prev_fp == fingerprint else 1
+    total_consecutive_failures = prev_entry.get("total_consecutive_failures", 0) + 1
 
     state[mode_key] = {
         "fingerprint": fingerprint,
         "count": count,
-        "sample_errors": error_items[:3],
-        "timestamp": round(time.time(), 2)
+        "total_consecutive_failures": total_consecutive_failures,
+        "sample_errors": error_items[:5],
+        "timestamp": round(time.time(), 2),
     }
     try:
         LOOP_MEMORY_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -73,9 +75,10 @@ def update_oscillation_circuit_breaker(mode_key: str, passed: bool, error_items:
         pass
 
     return {
-        "oscillation_detected": count >= 2,
+        "oscillation_detected": count >= 2 or total_consecutive_failures >= 3,
         "consecutive_identical_failures": count,
-        "error_fingerprint": fingerprint
+        "total_consecutive_failures": total_consecutive_failures,
+        "error_fingerprint": fingerprint,
     }
 
 def run_script_json(script_name: str, extra_args: list[str] = None) -> tuple[int, dict, str]:
@@ -185,18 +188,21 @@ def run_static_checks(
             violations = data.get("violations", []) or data.get("issues", [])
             for v in violations:
                 if v.get("severity") == "ERROR":
-                    error_signatures.append(f"{v.get('file')}:{v.get('line')}:{v.get('rule', v.get('description', ''))}")
+                    # Line-number-invariant fingerprint (file + rule/description) so blank-line shifts cannot bypass circuit breaker
+                    error_signatures.append(f"{v.get('file')}:{v.get('rule', v.get('description', ''))}")
 
         results[label] = {
             "passed": is_ok,
             "status": status,
             "errors": errs,
             "warnings": warns,
+            "baseline_suppressed": data.get("baseline_suppressed", 0),
             "duration": duration,
             "details": data
         }
 
-    cb_info = update_oscillation_circuit_breaker("static", all_passed, error_signatures)
+    cb_key = f"static::{target_file.replace(chr(92), '/')}" if target_file else "static::all"
+    cb_info = update_oscillation_circuit_breaker(cb_key, all_passed, error_signatures)
 
     summary = {
         "mode": "gas" if gas_only else ("replication" if repl_only else "static"),
@@ -222,7 +228,8 @@ def run_build_check(clean: bool = False) -> tuple[bool, dict]:
     error_signatures = []
     if not is_ok:
         for e in data.get("errors", []):
-            error_signatures.append(f"{e.get('file')}:{e.get('line')}:{e.get('code')}:{e.get('message')}")
+            # Line-number-invariant fingerprint (file + code + message)
+            error_signatures.append(f"{e.get('file')}:{e.get('code')}:{e.get('message')}")
 
     cb_info = update_oscillation_circuit_breaker("build", is_ok, error_signatures)
 
@@ -327,17 +334,17 @@ def run_audit_check() -> tuple[bool, dict]:
     diff_text = proc_diff.stdout
     diff_lines = len(diff_text.splitlines())
 
-    passed_repl, repl_data = run_static_checks(json_output=True, repl_only=True)
+    passed_static, static_data = run_static_checks(json_output=True)
     summary = {
         "mode": "audit",
-        "passed": passed_repl,
+        "passed": passed_static,
         "changed_files_count": len(changed_files),
         "changed_files": changed_files,
         "diff_line_count": diff_lines,
-        "static_replication_passed": passed_repl,
-        "static_details": repl_data
+        "static_replication_passed": passed_static,
+        "static_details": static_data
     }
-    return passed_repl, summary
+    return passed_static, summary
 
 def execute_auto_commit(commit_msg: str | None = None) -> bool:
     """Stages modified and new files, then creates a Git commit."""
@@ -347,7 +354,11 @@ def execute_auto_commit(commit_msg: str | None = None) -> bool:
             print("[GIT] Nothing to commit, working tree clean.")
             return True
 
-        subprocess.run(["git", "add", "Source/", "Config/", "Scripts/", "AGENTS.md"], cwd=str(PROJECT_ROOT), check=True)
+        stage_targets = [
+            p for p in ["Source/", "Config/", "Scripts/", "AGENTS.md", ".agents/", ".antigravity/", "Content/Python/"]
+            if (PROJECT_ROOT / p).exists()
+        ]
+        subprocess.run(["git", "add", *stage_targets], cwd=str(PROJECT_ROOT), check=True)
         
         msg = commit_msg or "refactor(core): verify and pass pipeline checks"
         commit_proc = subprocess.run(["git", "commit", "-m", msg], cwd=str(PROJECT_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -374,17 +385,33 @@ def print_compact_summary(summary: dict):
         print(f"[{badge}] {mode_title}{scoped}:")
         for name, item in summary.get("checks", {}).items():
             item_badge = "PASS" if item["passed"] else "FAIL"
-            print(f"  - [{item_badge}] {name}: {item['errors']} err, {item['warnings']} warn ({item['duration']}s)")
-            if not item["passed"]:
-                violations = item["details"].get("violations", []) or item["details"].get("issues", [])
-                for v in violations[:3]:
+            suppressed = item.get("baseline_suppressed", 0)
+            suppressed_str = f", {suppressed} baselined" if suppressed else ""
+            print(f"  - [{item_badge}] {name}: {item['errors']} err, {item['warnings']} warn{suppressed_str} ({item['duration']}s)")
+            violations = item["details"].get("violations", []) or item["details"].get("issues", [])
+            if violations:
+                for v in violations[:10]:
+                    sev = v.get("severity", "ERROR")
+                    rule = v.get("rule", "")
+                    rule_tag = f"[{sev}:{rule}] " if rule else f"[{sev}] "
                     f = v.get("file", "")
                     l = v.get("line", 0)
                     msg = v.get("detail") or v.get("message") or v.get("description") or ""
-                    print(f"      -> {f}:{l} - {msg}")
+                    fix = v.get("fix") or v.get("recommendation") or ""
+                    ref = v.get("ref") or ""
+                    print(f"      -> {rule_tag}{f}:{l} - {msg}")
+                    if fix:
+                        ref_suffix = f" (Ref: {ref})" if ref else ""
+                        print(f"         Fix: {fix}{ref_suffix}")
+                if len(violations) > 10:
+                    print(f"      ... and {len(violations) - 10} more violation(s). Run with --json for full list.")
         print(f"Total: {summary['total_errors']} error(s), {summary['total_warnings']} warning(s).")
         if cb.get("oscillation_detected"):
-            print(f"[CIRCUIT BREAKER] Identical error fingerprint ({cb.get('error_fingerprint')}) repeated {cb.get('consecutive_identical_failures')}x! Halt blind retries and perform Reflexion.")
+            print(
+                f"[CIRCUIT BREAKER] Repeated failure detected (identical={cb.get('consecutive_identical_failures')}x, "
+                f"consecutive={cb.get('total_consecutive_failures')}x, fp={cb.get('error_fingerprint')})! "
+                "Halt blind retries and perform Reflexion."
+            )
 
     elif mode == "build":
         duration = summary.get("duration", 0)

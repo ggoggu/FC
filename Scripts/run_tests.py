@@ -151,6 +151,19 @@ def parse_automation_output(raw_output: str) -> tuple[list[dict], int, int, int]
 
     return tests, passed_count, failed_count, other_count
 
+def evaluate_test_run_status(exit_code: int, passed_count: int, failed_count: int, other_count: int, filter_name: str) -> tuple[str, str]:
+    """Determines strict PASS/FAIL status; refuses to pass on 0 executed tests or incomplete runs."""
+    if exit_code != 0:
+        return "FAILED", f"UnrealEditor-Cmd exited with non-zero code {exit_code}."
+    if failed_count > 0:
+        return "FAILED", f"{failed_count} automation test(s) failed."
+    if other_count > 0:
+        return "FAILED", f"{other_count} automation test(s) started but did not complete cleanly."
+    if passed_count == 0:
+        return "FAILED", f"Zero automation tests matched filter '{filter_name}' (0-test pass is forbidden)."
+    return "PASSED", ""
+
+
 def run_tests(
     uproject_path: Path,
     filter_name: str,
@@ -222,21 +235,32 @@ def run_tests(
 
     tests, passed_count, failed_count, other_count = parse_automation_output(raw_output)
 
-    # Determine overall status
-    overall_status = "PASSED" if failed_count == 0 and exit_code == 0 else "FAILED"
-    summary = f"Automation Tests Completed: {passed_count} Passed, {failed_count} Failed (Duration: {duration}s)."
+    overall_status, failure_reason = evaluate_test_run_status(
+        exit_code=exit_code,
+        passed_count=passed_count,
+        failed_count=failed_count,
+        other_count=other_count,
+        filter_name=filter_name,
+    )
+    summary = f"Automation Tests Completed: {passed_count} Passed, {failed_count} Failed, {other_count} Incomplete (Duration: {duration}s)."
+    if failure_reason:
+        summary += f" Reason: {failure_reason}"
 
-    return {
+    result = {
         "status": overall_status,
         "exit_code": exit_code,
         "filter": filter_name,
         "passed_count": passed_count,
         "failed_count": failed_count,
+        "incomplete_count": other_count,
         "total_tests": len(tests),
         "duration_seconds": duration,
         "tests": tests,
         "summary": summary
     }
+    if failure_reason:
+        result["error"] = failure_reason
+    return result
 
 def main():
     parser = argparse.ArgumentParser(description="Unreal Engine 5.8 Automation Test Runner")

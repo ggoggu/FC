@@ -1,135 +1,30 @@
-# Multiplayer & Network Replication Conventions
+# 02. Multiplayer & Network Replication Conventions
 
-All gameplay systems must be designed for authoritative server-client synchronization, adhering to strict replication hygiene and bandwidth optimization rules.
-
----
+All gameplay systems operate under authoritative server-client replication. *(See `07-adversarial-audit-standards.md` §4-B for the 6 Universal Network Security Invariants.)*
 
 ## 1. Replication Core Hygiene
+- **Header Include**: Any `.cpp` using `DOREPLIFETIME*` or `GetLifetimeReplicatedProps` must include `#include "Net/UnrealNetwork.h"` (`REPL_MISSING_NET_INCLUDE`).
+- **Lifetime Registration**: Every class with `Replicated` / `ReplicatedUsing` properties must override `GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const` and call `Super::GetLifetimeReplicatedProps(OutLifetimeProps)` first.
+- **Conditional Replication Mandatory** (`BW_RAW_DOREPLIFETIME` error): Never use raw `DOREPLIFETIME(Class, Prop)`. Always use `DOREPLIFETIME_CONDITION` with explicit scope:
+  - `COND_OwnerOnly` (private hand, deck, mana, cooldowns, personal inventory)
+  - `COND_SkipOwner` (data already locally predicted by autonomous proxy)
+  - `COND_SimulatedOnly` (cosmetic proxy interpolation)
+  - `COND_InitialOnly` (spawn-time immutable attributes)
+  - `COND_None` (public world/combat state visible to all relevant clients)
+- **RepNotify Convention**: Use `ReplicatedUsing = OnRep_<PropName>` with `UFUNCTION() void OnRep_<PropName>(OldValue)` when delta transitions matter.
+- **Blueprint Authority Protection** (`REPL_BYPASSED_AUTHORITY_SETTER`): Never combine `Replicated` + `BlueprintReadWrite` without `BlueprintSetter = Set<PropName>` when an authority setter exists; prefer `BlueprintReadOnly`.
 
-### 1. Header & Source Inclusions
-- In any `.cpp` file implementing replication lifecycle functions or registering properties, include:
-  ```cpp
-  #include "Net/UnrealNetwork.h"
-  ```
+## 2. RPC Architecture & Ownership
+- **Server RPCs (`Server_*`)**:
+  - `WithValidation` is **mandatory** (`REPL_SERVER_RPC_MISSING_VALIDATION`).
+  - **Never** leave parameterized `Server_*_Validate` as unconditional `return true;` (`NET_SEC_TRIVIAL_RPC_VALIDATE`). Sanitize floats/vectors with `!ContainsNaN()` / `FMath::IsFinite()` (`NET_SEC_UNSANITIZED_FLOAT_OR_VECTOR_RPC`), validate enum bounds, and cap `TArray`/`FString` sizes with `.Num()`/`.Len()` (`NET_SEC_UNBOUNDED_RPC_CONTAINER`).
+  - **Connection Ownership Prerequisite** (`REPL_SERVER_RPC_UNOWNED_ACTOR`): Clients may ONLY invoke Server RPCs on `APlayerController`, `APlayerState`, possessed `APawn`/`ACharacter`, or their components—**never** on `AAIController` or unowned field actors (route pickup/chest/door interaction through the client's controller or deck component).
+  - Rate-limit high-impact `Reliable` Server RPCs with server timestamps.
+- **Client RPCs (`Client_*`)**: Use for targeted notifications to the owning client; never replicate continuous bulk state via Client RPCs.
+- **Multicast RPCs (`Multicast_*`)**: Must be `Unreliable` (`NET_SEC_RELIABLE_MULTICAST`) and **strictly cosmetic**—never mutate gameplay state inside a Multicast. Use `OnRep_*` when late-joiners need current state.
 
-### 2. Lifetime Replicated Properties Registration
-- For every class declaring replicated properties (`Replicated` or `ReplicatedUsing`), you **must**:
-  1. Declare the virtual override in the header:
-     ```cpp
-     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-     ```
-  2. Implement it in the `.cpp`, always calling `Super::GetLifetimeReplicatedProps(OutLifetimeProps)`:
-     ```cpp
-     void AFCCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-     {
-         Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-         DOREPLIFETIME_CONDITION(AFCCharacter, Health, COND_None);
-         DOREPLIFETIME_CONDITION(AFCCharacter, InventoryData, COND_OwnerOnly);
-     }
-     ```
-
-### 3. Conditional Replication (`DOREPLIFETIME_CONDITION`)
-- **Mandatory**: Do not use raw `DOREPLIFETIME` without evaluating conditional filtering. Prefer explicit conditions to conserve network bandwidth:
-  - `COND_OwnerOnly`: Private data like inventory, personal quest state, stamina, ammo.
-  - `COND_SkipOwner`: Visual data already locally predicted by the autonomous proxy.
-  - `COND_SimulatedOnly`: Data needed solely by simulated proxies (e.g. cosmetic interpolation tags).
-  - `COND_InitialOnly`: Static attributes established on spawn that do not mutate during actor lifetime.
-
-### 4. RepNotify Naming & Signatures
-- Replicated variables using callbacks must specify `ReplicatedUsing = OnRep_PropertyName`.
-- The callback function must be named `OnRep_PropertyName`.
-- Include the old value parameter when state delta transitions need processing:
-  ```cpp
-  UPROPERTY(ReplicatedUsing = OnRep_Health, Category = "FC|Stats")
-  float Health = 100.0f;
-
-  UFUNCTION()
-  void OnRep_Health(float OldHealth);
-  ```
-
----
-
-## 2. RPC Architecture & Validation
-
-### 1. Server RPCs (`Server_*`)
-- **Mandatory `WithValidation`**: Every Server RPC **must** specify `WithValidation`.
-  ```cpp
-  UFUNCTION(Server, Reliable, WithValidation, Category = "FC|Combat")
-  void Server_ExecuteAttack(const FFCAttackParameters& Params);
-  ```
-- **Implementation & Validation Pair**:
-  - `Server_ExecuteAttack_Validate(const FFCAttackParameters& Params)`: Validate parameters against cheating, impossible distances, invalid indices, or cooldown states. Return `false` to kick/flag malicious requests.
-  - `Server_ExecuteAttack_Implementation(const FFCAttackParameters& Params)`: Authoritative gameplay execution.
-- **Owning Connection Prerequisite**: Calling a Server RPC on a field actor without an owning connection (`NetOwner == nullptr`, e.g. dropped cards, chests) will silently fail. World interaction/pickup requests must be routed through the client's own actor (e.g. `PlayerController->Server_ClaimPickup(TargetActor)` or `DeckComponent->Server_Interact(TargetActor)`).
-
-### 2. Client RPCs (`Client_*`)
-- Use Client RPCs for targeted notifications directed to the owning controller/client:
-  ```cpp
-  UFUNCTION(Client, Reliable, Category = "FC|UI")
-  void Client_OnQuestCompleted(int32 QuestId, const FFCQuestReward& Reward);
-  ```
-- Do not replicate bulk continuous state via Client RPCs; use replicated properties for state synchronization.
-
-### 3. Multicast RPCs (`Multicast_*`)
-- **Cosmetic Only**: Multicasts are strictly reserved for non-critical, transient cosmetic effects (e.g., sound cues, particle bursts, screen shake).
-- **Never mutate gameplay state** (health, inventory, position) inside a Multicast RPC.
-- Prefer RepNotifies over Multicast RPCs when late-joining clients need the correct state.
-
----
-
-## 3. Actor Replication Initialization
-
-### Actor Constructors
-In the constructor of any Actor that replicates or sends RPCs:
-```cpp
-bReplicates = true;
-ACharacter::SetReplicates(true); // or SetReplicates(true);
-```
-
-### Component Constructors
-In the constructor of any `UActorComponent` that replicates:
-```cpp
-SetIsReplicatedByDefault(true);
-```
-
----
-
-## 4. Authority Isolation & UI Decoupling
-
-### Authority Guarding
-All mutation of authoritative state (spawning actors, inflicting damage, granting XP, modifying inventory) must be guarded:
-```cpp
-if (HasAuthority()) // or GetLocalRole() == ROLE_Authority
-{
-    ApplyAuthoritativeDamage(TargetActor, DamageAmount);
-}
-```
-
-### Zero Server-UI Coupling
-- **Never** instantiate, reference, or modify UMG Widgets or HUDs on the server.
-- Server-side code must not include `#include "Blueprint/UserWidget.h"` or Slate headers.
-- UI elements must react passively to replicated property updates (`OnRep_*`) or Client RPC triggers on the autonomous client.
-
----
-
-## 5. Multiplayer Level Transitions
-
-- **ServerTravel Mandatory**: Always use `GetWorld()->ServerTravel(MapURL, false)` for server-initiated map changes. Never call `UGameplayStatics::OpenLevel()` on the server, as it disconnects remote clients.
-
----
-
-## 6. Network Security & Anti-Cheat Hardening
-
-1. **Non-Trivial `_Validate` & Payload Sanitization**:
-   - Never leave a parameterized `Server_*_Validate` as `return true;`.
-   - Validate `FVector` / `FVector_NetQuantize` / `FRotator` / `float` parameters with `!ContainsNaN()` / `FMath::IsFinite()`.
-   - Validate `enum` / `uint8` bounds (`StaticEnum` or explicit valid range) and enforce max bounds on `TArray` / `FString` sizes.
-2. **Server-Side Authority Verification**:
-   - Every `BlueprintAuthorityOnly` mutating C++ method must also guard with `HasAuthority()` (or `GetOwner()->HasAuthority()` / `GetWorld()->GetAuthGameMode() != nullptr` for subsystems) so C++ callers cannot mutate client state.
-   - Never trust client-selected destinations, targets, or costs; verify Pawn possession, `!IsDead()`, reach/distance, line of sight, and faction rules (`UFCCombatUtils::IsAttackableTarget`) inside `_Implementation`.
-3. **RPC Rate-Limiting & Multicast Discipline**:
-   - Throttle high-impact `Reliable` `Server_*` RPCs with per-connection server timestamps to prevent reliable-channel flooding.
-   - Keep `NetMulticast` RPCs `Unreliable` and strictly cosmetic.
-4. **Information Disclosure Prevention**:
-   - Never replicate private player resources or undiscovered map/secret room topology with `COND_None`. Use `COND_OwnerOnly` or gate/mask replication until server-verified discovery.
+## 3. Replication Initialization & Authority Isolation
+- **Constructors**: Replicated Actors must set `bReplicates = true;` (`REPL_ACTOR_CTOR_MISSING_BREPLICATES`); replicated `UActorComponent`s must call `SetIsReplicatedByDefault(true);` (`REPL_COMPONENT_CTOR_MISSING_REPLICATION`).
+- **C++ Authority Guards**: Guard all state mutations and every non-const `BlueprintAuthorityOnly` method in C++ with `HasAuthority()` (or `GetOwner()->HasAuthority()` / `GetWorld()->GetAuthGameMode() != nullptr` for subsystems) (`NET_SEC_AUTHORITY_ONLY_MISSING_CPP_GUARD`).
+- **Zero Server-UI Coupling**: Never include UMG, Slate, or ViewModel headers in gameplay Actor/GAS headers or server `.cpp` files (`REPL_UI_HEADER_IN_SERVER_ACTOR`, `REPL_UI_HEADER_IN_SERVER_CPP`).
+- **Level Transitions**: Always use `GetWorld()->ServerTravel(MapURL, false)` on the server; never call `UGameplayStatics::OpenLevel()` in `GameMode` (`REPL_OPENLEVEL_IN_GAMEMODE`).

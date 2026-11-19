@@ -59,13 +59,11 @@ void UFCStatusPresenterComponent::BindToAbilitySystem(UAbilitySystemComponent* I
 	// 2. Register Attribute Change Listeners
 	auto RegisterAttrListener = [this, InASC](const FGameplayAttribute& Attribute, auto&& Callback)
 	{
-		FDelegateHandle Handle = InASC->GetGameplayAttributeValueChangeDelegate(Attribute).AddLambda(
-			[this, Callback](const FOnAttributeChangeData& Data)
+		FDelegateHandle Handle = InASC->GetGameplayAttributeValueChangeDelegate(Attribute).AddWeakLambda(
+			this,
+			[Callback](const FOnAttributeChangeData& Data)
 			{
-				if (IsValid(this))
-				{
-					Callback(Data.NewValue, Data.OldValue);
-				}
+				Callback(Data.NewValue, Data.OldValue);
 			});
 		BoundAttributeHandles.Add(MakeTuple(Attribute, Handle));
 	};

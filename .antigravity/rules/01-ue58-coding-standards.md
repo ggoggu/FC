@@ -1,159 +1,29 @@
-# Unreal Engine 5.8 C++ Coding Standards & Best Practices
+# 01. Unreal Engine 5.8 C++20 Coding Standards
 
-All C++ codebase changes within this project must strictly comply with Unreal Engine 5.8 standards and modern C++20 conventions.
+All C++ changes in `Source/FC/` must comply with UE 5.8 C++20 (`/std:c++20`) and the project's deterministic anti-slop linters.
 
----
+## 1. Types & Pointer Ownership
+- **Engine Containers**: Prefer `TArray`, `TMap`, `TSet`, `TQueue` over STL (`std::vector`, `std::map`).
+- **`auto` Discipline**: Use `auto` only when the type is obvious on the same line (casts, range-for iterators).
+- **UObject Member Properties**: Always use `TObjectPtr<T>` instead of raw `T*` in `UPROPERTY()` declarations (`UE58_RAW_POINTER_UPROPERTY` error).
+- **Non-Owning Cached References**: Use `TWeakObjectPtr<T>` for cached Actors/Components to prevent dangling pointers and GC cycles. Raw `T*` / `const T*` is allowed only for transient locals and function parameters.
+- **Non-UObject Smart Pointers**: Use `TSharedPtr`, `TSharedRef`, `TUniquePtr`, `TWeakPtr`.
 
-## 1. Modern C++20 Standards & Language Features
+## 2. UPROPERTY / UFUNCTION & Naming Hygiene
+- **Specifier Order**: Access (`EditDefaultsOnly`, `VisibleAnywhere`, `BlueprintReadOnly`) -> `Category = "FC|Subsystem"` -> Replication (`ReplicatedUsing = OnRep_X`) -> `meta = (ClampMin = "0.0", AllowPrivateAccess = "true")`.
+- **Private Exposure**: Private Blueprint-exposed `UPROPERTY` members must specify `meta = (AllowPrivateAccess = "true")`.
+- **Prefixes**: `A` (Actor), `U` (UObject/Component), `F` (Struct/plain type), `E` (scoped `enum class`), `I` (Interface), `T` (Template), `b` (boolean).
 
-- **Standard**: C++20 (`/std:c++20`).
-- **Standard Library & Engine Types**:
-  - Prefer Engine containers (`TArray`, `TMap`, `TSet`, `TQueue`) over `std::vector`, `std::map`, etc.
-  - Utilize `constexpr` and `consteval` for compile-time evaluations where appropriate.
-  - Use `auto` only when the type is explicitly obvious on the same line (e.g., casting or iterator loops), otherwise declare explicit types.
-  - Use structured bindings and designated initializers where readability is improved.
+## 3. Include What You Use (IWYU)
+- **Headers (`.h`)**: Forward-declare classes/structs (`class USpringArmComponent;`) whenever not inheriting or embedding by value. Keep `.generated.h` as the **last** `#include`.
+- **Sources (`.cpp`)**: Include only concrete headers used. Never include `Engine.h` or monolithic module headers. Never include UMG/Slate/ViewModel headers in server/gameplay/GAS headers or server `.cpp` files.
 
----
+## 4. Minimal Footprint & Zero Escape-Hatch Comments
+- **Minimal Diff**: Edit only what the task requires; do not reformat or refactor unrelated working code.
+- **SSOT & Reuse**: Survey existing subsystems and DataAssets (`AGENTS.md` §4) before introducing new classes. Never duplicate ID lists (Starter Decks, Ability IDs, Status Definitions) across C++ classes—read from a single `UDataTable` or `UPrimaryDataAsset`.
+- **Zero Escape-Hatch Comments** (`CODE_ESCAPE_HATCH_COMMENT` error): Keep valid `/** ... */` UHT/API docstrings, but never leave `// TODO`, `// FIXME`, `// HACK`, `// XXX`, `// Workaround`, or `// For now` comments.
 
-## 2. Pointer Management & Ownership
-
-### UObject Pointers
-- **Member Properties**: Always use `TObjectPtr<T>` instead of raw `T*` for all `UPROPERTY()` member variables.
-  ```cpp
-  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-  TObjectPtr<USkeletalMeshComponent> CharacterMesh;
-  ```
-- **Weak References**: Always use `TWeakObjectPtr<T>` for cached references to other actors or components to prevent memory leaks and dangling pointers.
-  ```cpp
-  TWeakObjectPtr<APlayerController> CachedPlayerController;
-  ```
-- **Local Variables & Function Parameters**: Standard raw pointers `T*` or `const T*` are permitted for transient local function variables or function signatures.
-
-### Non-UObject Pointers
-- Use Unreal smart pointers:
-  - `TSharedPtr<T>`: Shared ownership.
-  - `TSharedRef<T>`: Non-null shared reference.
-  - `TUniquePtr<T>`: Unique ownership.
-  - `TWeakPtr<T>`: Non-owning weak reference to `TSharedPtr`.
-
----
-
-## 3. UPROPERTY and UFUNCTION Macro Hygiene
-
-### Specifier Ordering
-Keep macro specifiers ordered logically:
-1. **Access/Exposure**: `EditAnywhere`, `EditDefaultsOnly`, `VisibleAnywhere`, `BlueprintReadOnly`, `BlueprintReadWrite`.
-2. **Category**: `Category = "ModuleName|Subsystem"`.
-3. **Replication**: `Replicated`, `ReplicatedUsing = OnRep_PropertyName`.
-4. **Metadata**: `meta = (ClampMin = "0.0", AllowPrivateAccess = "true")`.
-
-```cpp
-UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "FC|Combat", meta = (ClampMin = "0.0"))
-float BaseDamage = 100.0f;
-
-UFUNCTION(BlueprintCallable, Category = "FC|Combat")
-void ApplyDamage(float Amount, AActor* DamageCauser);
-```
-
-### Private Access with UPROPERTY
-When exposing private member variables to Blueprint, always declare `meta = (AllowPrivateAccess = "true")`.
-
----
-
-## 4. Include What You Use (IWYU) & Forward Declarations
-
-- **Forward Declarations in Headers**:
-  - Never include full class headers in `.h` files unless inheriting from the class or using it as a value type member struct.
-  - Always forward declare classes and structs in headers:
-    ```cpp
-    class USpringArmComponent;
-    class UCameraComponent;
-    class UInputMappingContext;
-    class UInputAction;
-    struct FInputActionValue;
-    ```
-- **Clean Includes in `.cpp`**:
-  - Include `.generated.h` as the **last** include in any header file.
-  - Include only the specific headers needed in `.cpp`.
-  - **Never** include `Engine.h` or monolithic module headers.
-  - **Never** include UMG or Slate UI headers in core gameplay actor headers.
-
----
-
-## 5. Naming Conventions
-
-Strictly adhere to the Unreal Engine prefix rules:
-
-| Prefix | Type | Examples |
-| :--- | :--- | :--- |
-| **`A`** | Actor classes | `AFCActor`, `AFCCharacter`, `AFCGameMode` |
-| **`U`** | UObject classes / Components | `UFCAbilityComponent`, `UFCInventorySystem` |
-| **`F`** | Structs and non-UObject classes | `FFCDamageEvent`, `FFCInventoryItem` |
-| **`E`** | Enumerations (Scoped `enum class`) | `EFCTeamId`, `EFCCombatState` |
-| **`I`** | Interface classes | `IFCInteractableInterface`, `IFCDamageable` |
-| **`T`** | Template classes | `TArray`, `TObjectPtr`, `TSubclassOf` |
-| **`b`** | Boolean variables | `bIsDead`, `bReplicates`, `bCanSprint` |
-
----
-
-## 6. Code Structure & Organization
-
-Organize header class sections cleanly using standard access modifiers:
-
-```cpp
-UCLASS()
-class FC_API AFCCharacter : public ACharacter
-{
-    GENERATED_BODY()
-
-public:
-    AFCCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
-
-    // Public gameplay API
-    virtual void Tick(float DeltaTime) override;
-    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
-    virtual void BeginPlay() override;
-    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-
-    // Components
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Components")
-    TObjectPtr<USpringArmComponent> CameraBoom;
-
-private:
-    // Internal state
-    UPROPERTY(ReplicatedUsing = OnRep_Health, Category = "FC|Health")
-    float Health = 100.0f;
-
-    UFUNCTION()
-    void OnRep_Health(float OldHealth);
-};
-```
-
----
-
-## 7. Minimal Footprint & Anti-Slop Comment Hygiene
-
-- **Minimal Modification Scope (최소한의 수정)**:
-  - Keep diffs tight and focused strictly on the user request.
-  - Do not rewrite, reformat, or refactor working code outside the task scope.
-- **Maximize Existing Code Utilization (기존 구조 및 코드 최대한 활용)**:
-  - Always survey existing modules, helper methods, classes, and project structures before authoring new implementations.
-  - Extend and leverage existing code rather than creating redundant parallel systems or reinventing logic.
-- **Zero Escape-Hatch Comments (변명/유예 주석 금지)**:
-  - Retain valid API docstrings (`/** ... */`) for UHT/Blueprint metadata, but **never** use inline comments (`// TODO`, `// FIXME`, `// HACK`, `// Workaround`, `// For now`) as escape hatches to justify incomplete validation, temporary stubs, or architectural shortcuts.
-
----
-
-## 8. Banned Footgun APIs & Delegate Hygiene
-
-1. **Banned Single-Player Index-0 APIs**:
-   - Never call `UGameplayStatics::GetPlayerController(World, 0)`, `GetPlayerPawn(World, 0)`, or `GetPlayerCharacter(World, 0)`. Resolve controllers/pawns via explicit ownership (`GetController()`, `GetOwningPlayer()`, or server RPC context).
-2. **No Hardcoded Asset Paths in C++ Constructors**:
-   - Do NOT use `ConstructorHelpers::FObjectFinder` or hardcoded `TEXT("/Game/...")` strings in C++ constructors.
-   - Asset references (Meshes, Materials, Animations, InputActions) must be configured via `TSoftObjectPtr`, `UPrimaryDataAsset`, or subclassed Blueprint defaults (`BP_*`).
-3. **Single Source of Truth (SSOT)**:
-   - Never duplicate lists of identifiers (e.g. Starter Decks, Ability IDs) across multiple classes (`GameMode`, `Subsystem`, etc.). Read them from a single DataAsset or DataTable.
-4. **Delegate Lifecycle Safety**:
-   - Never register raw `this`-capturing lambdas (`.AddLambda([this])`). Always use `AddWeakLambda(this, ...)` or explicit `RemoveAll(this)` before binding.
+## 5. Banned Footgun APIs (Hard `ERROR` in `verify_replication.py`)
+1. **Index-0 Single-Player Getters** (`CODE_BANNED_INDEX0_PLAYER_API`): Never call `UGameplayStatics::GetPlayerController/GetPlayerPawn/GetPlayerCharacter(World, 0)`. Resolve via `GetController()`, `GetOwningPlayer()`, or Server RPC context.
+2. **Raw `this` Delegate Lambdas** (`CODE_UNSAFE_RAW_THIS_LAMBDA`): Never call `.AddLambda([this, ...])` or `.BindLambda([this, ...])`. Use `.AddWeakLambda(this, ...)` / `.BindWeakLambda(this, ...)`.
+3. **Hardcoded Constructor Asset Paths** (`CODE_HARDCODED_ASSET_PATH`): Never add `ConstructorHelpers::FObjectFinder` or `FClassFinder` in C++ constructors. Configure assets via `TSoftObjectPtr`, `UPrimaryDataAsset`, or Blueprint Class Defaults (`BP_*`). *(Pre-existing legacy items are frozen in `Scripts/linter_baseline.json`; 0 new items allowed.)*
