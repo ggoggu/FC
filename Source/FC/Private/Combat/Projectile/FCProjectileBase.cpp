@@ -57,6 +57,21 @@ AFCProjectileBase::AFCProjectileBase()
 	InitialLifeSpan = 5.0f;
 }
 
+void AFCProjectileBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(AFCProjectileBase, ProjectileDataAsset, COND_InitialOnly);
+}
+
+void AFCProjectileBase::OnRep_ProjectileDataAsset()
+{
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
+	{
+		InitializeFromDataAsset(ProjectileDataAsset);
+	}
+}
+
 void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset)
 {
 	if (!InDataAsset)
@@ -65,6 +80,7 @@ void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* In
 	}
 
 	ProjectileDataAsset = InDataAsset;
+	bInitializedFromDataAsset = true;
 
 	// Combat configuration
 	Damage = InDataAsset->Damage;
@@ -105,7 +121,7 @@ void AFCProjectileBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (ProjectileDataAsset)
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
 	{
 		InitializeFromDataAsset(ProjectileDataAsset);
 	}
@@ -290,6 +306,12 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 		return;
 	}
 
+	const bool bIsBombDamageable = TargetActor->Implements<UFCBombDamageable>();
+	if (!bIsBombDamageable && !UFCCombatUtils::IsAttackableTarget(GetInstigator(), TargetActor))
+	{
+		return;
+	}
+
 	// Resolve Target Ability System Component
 	UAbilitySystemComponent* TargetASC = nullptr;
 	if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(TargetActor))
@@ -307,6 +329,7 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 
 			if (FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, Context); SpecHandle.IsValid())
 			{
+				SpecHandle.Data->SetSetByCallerMagnitude(FName("Data.Damage"), -Damage);
 				TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 			}
 		}

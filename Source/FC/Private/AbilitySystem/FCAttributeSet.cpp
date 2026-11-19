@@ -54,8 +54,8 @@ void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Mana, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Mana, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxMana, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, AttackPower, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Shield, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxShield, COND_None, REPNOTIFY_Always);
@@ -64,6 +64,12 @@ void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
+
+	if (!FMath::IsFinite(NewValue))
+	{
+		NewValue = 0.f;
+		return;
+	}
 
 	if (Attribute == GetHealthAttribute())
 	{
@@ -90,20 +96,6 @@ void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, fl
 void UFCAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
-
-	if (Attribute == GetHealthAttribute() && NewValue <= 0.0f)
-	{
-		if (UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent())
-		{
-			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetASC->GetAvatarActor()))
-			{
-				if (!Char->IsDead())
-				{
-					Char->Die(nullptr);
-				}
-			}
-		}
-	}
 }
 
 void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
@@ -143,6 +135,7 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 		{
 			const float IncomingDamage = -Data.EvaluatedData.Magnitude;
 			const float CurrentShield = GetShield();
+			const float UnclampedPostModHealth = FMath::Min(GetHealth(), Health.GetBaseValue());
 
 			if (CurrentShield > 0.f)
 			{
@@ -150,14 +143,14 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 				{
 					// Shield completely absorbs damage
 					SafeSetShield(CurrentShield - IncomingDamage);
-					SafeSetHealth(FMath::Clamp(GetHealth() + IncomingDamage, 0.f, GetMaxHealth()));
+					SafeSetHealth(FMath::Clamp(UnclampedPostModHealth + IncomingDamage, 0.f, GetMaxHealth()));
 				}
 				else
 				{
 					// Shield partially absorbs damage
 					const float Absorbed = CurrentShield;
 					SafeSetShield(0.f);
-					SafeSetHealth(FMath::Clamp(GetHealth() + Absorbed, 0.f, GetMaxHealth()));
+					SafeSetHealth(FMath::Clamp(UnclampedPostModHealth + Absorbed, 0.f, GetMaxHealth()));
 				}
 			}
 			else

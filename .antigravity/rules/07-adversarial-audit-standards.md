@@ -1,58 +1,33 @@
 # 07. Adversarial Code Audit & Optimization Standards
 
-This document establishes the official review rubric used by the **`adversarial-auditor`** subagent and code review workflows (`/interrogate`) in the FC project.
+Official review rubric for the read-only `adversarial-auditor` subagent (`/interrogate`).
 
-All proposed code changes and refactorings are evaluated against the following **5 Core Dimensions**:
+## 0. Proof-Carrying Audit Prerequisite
+Verify that the diff includes concrete execution proofs (`pipeline.py audit` / `static`, and `build` / `test` results for non-trivial gameplay or networking changes). Flag missing build/test proof on risky changes as `WARNING` or `BLOCKING`.
 
----
+## 1. Code Conciseness (최소 수정 원칙)
+- Minimal clean functional diff strictly scoped to the task.
+- Reject premature wrappers, single-use indirections, redundant pass-throughs, and obscure template gymnastics.
 
-## 1. Code Conciseness (코드 간결성 & 최소 수정 원칙)
+## 2. Reuse of Existing Architecture & SSOT (기존 구조 활용)
+- Verify existing `Source/FC/` subsystems, components, utilities, and DataAssets (`AGENTS.md` §4) are reused rather than duplicated.
+- Reject parallel state stores, duplicate ID lists, or loose disk `.csv` reads (`FPaths::ProjectContentDir() / *.csv`).
 
-- **Minimal Surface Area**: Strive for the smallest clean functional diff required to fulfill the feature or fix the bug.
-- **No Premature Over-Engineering**: Avoid boilerplate wrappers, single-use helper classes, excessive indirection, or redundant pass-through layers.
-- **Clarity & Idiomatic C++20**: Favor readable, standard Unreal Engine idioms over deeply nested templates or obscure metaprogramming.
+## 3. Scoped Extensibility (범위 내 확장성 / YAGNI)
+- Design extensibility strictly to the stated requirements—reject speculative abstractions for hypothetical future features.
+- Keep modular leaf boundaries so new variants (cards, abilities, enemies) extend via data or leaf subclasses without editing core loops.
 
----
+## 4. Network & Replication Optimization + 6 Universal Security Invariants
+- **Optimization**: `HasAuthority()` guards, connection-owned `Server_*` RPCs only, explicit `DOREPLIFETIME_CONDITION`, `OnRep_*` over tick RPCs, `FFastArraySerializer` for dynamic arrays.
+- **6 Universal Security Invariants**:
+  1. **Zero Client Trust**: Independently verify client-supplied `AActor*`, locations, destinations, `ItemId`, counts, and costs server-side (distance/reach, LOS, `UFCCombatUtils::IsAttackableTarget`, ownership, DataAsset constraints).
+  2. **Lifecycle & Cost Gating**: Every `Server_*` RPC checks valid possessed alive pawn (`!IsDead()`), valid game phase, cooldowns, and resource costs on the server.
+  3. **Information Disclosure Control**: Never replicate private state (hand/deck/mana/cooldowns, undiscovered rooms, secret doors/traps, server RNG) with `COND_None`; enforce `COND_OwnerOnly` or discovery-gated replication.
+  4. **Input Sanitization & Anti-DoS**: Sanitize float/vector RPC payloads (`!ContainsNaN()` / `FMath::IsFinite()`), validate enum bounds, cap `TArray`/`FString` lengths, rate-limit `Reliable` Server RPCs, and keep `NetMulticast` cosmetics `Unreliable`.
+  5. **Identity & Persistence Integrity**: Key persistence/matchmaking on verified server identity (`FUniqueNetIdRepl`) over mutable client `PlayerName`/URL options and enforce server authority.
+  6. **GAS Security**: Enforce server-controlled ability policies (`ServerInitiated` / `ServerOnly`), validate `TargetData`/prediction keys, and sanitize `NaN` in `UAttributeSet::PreAttributeChange`.
 
-## 2. Reuse of Existing Architecture & Code (기존 구조 및 코드 활용)
-
-- **Leverage Existing Systems**: Before creating any new subsystem, component, manager, or utility, verify whether an existing class in `Source/FC/` or the engine handles it.
-- **No Parallel Workflows**: Prohibit creating duplicate data pipelines, redundant state stores, or parallel event dispatches when an established pattern already exists in the codebase.
-- **Cooked Asset SSOT**: Gameplay data must originate from existing Engine Assets (`UDataTable`, `UPrimaryDataAsset`, `DeveloperSettings`). Direct loose file I/O (`FPaths::ProjectContentDir() / *.csv`) is forbidden.
-
----
-
-## 3. Scoped Extensibility (범위 내 적정 확장성)
-
-- **Fit-to-Scope Design**: If a new structure, interface, or class must be introduced, its extensibility must strictly match the **scope of the provided design/specification**.
-- **YAGNI Enforcement**: Reject speculative generalizations designed for hypothetical "future" features that are not part of the active design doc.
-- **Modular Boundaries**: Ensure clean separation of concerns so that future planned variants (e.g., adding a new weapon type or ability) require only adding data or extending a leaf subclass, without modifying core engine loops or coupling unrelated systems.
-
----
-
-## 4. Network & Replication Optimization (네트워크 및 복제 최적화)
-
-- **Authority Discipline**:
-  - All state mutation (health, inventory, combat resolution) must be strictly guarded by `HasAuthority()` or `GetLocalRole() == ROLE_Authority`.
-- **RPC Ownership Validation**:
-  - `Server_*` RPCs can **only** be declared on actors owned by the calling client's Connection (`APlayerController`, `APlayerState`, possessed `APawn`, or their components). Never place Server RPCs on unowned world actors.
-- **Bandwidth Economy**:
-  - Every replicated property must use explicit `DOREPLIFETIME_CONDITION` (`COND_OwnerOnly`, `COND_SimulatedOnly`, `COND_InitialOnly`) to eliminate redundant replication traffic.
-  - Reject per-tick or high-frequency RPCs. Favor `ReplicatedUsing = OnRep_*` for state synchronization.
-- **Fast Array Serialization**:
-  - Dynamic replicated lists or inventories must use `FFastArraySerializer` instead of raw `TArray<T>` to replicate only delta elements.
-
----
-
-## 5. General Performance Optimization (일반 성능 및 리소스 최적화)
-
-- **Tick Hygiene**:
-  - Set `PrimaryActorTick.bCanEverTick = false` by default on all Actors and ActorComponents unless per-frame continuous simulation is strictly required. Use timers or event delegates instead.
-- **Hot-Path Allocations**:
-  - Prohibit dynamic heap allocations (`TArray::Add` without `Reserve`, string formatting, lambda copy captures) inside `Tick()`, animation notifies, or tight physics loops.
-- **Memory & GC Safety**:
-  - All UObject member properties must use `TObjectPtr<T>`.
-  - Non-owning cached references must use `TWeakObjectPtr<T>` to prevent memory leaks and circular reference cycles.
-  - Pass non-primitive parameters by `const &` to avoid unnecessary copy constructors.
-- **IWYU (Include-What-You-Use)**:
-  - Keep header includes strictly minimal; use forward declarations (`class UAbilitySystemComponent;`) in headers and `#include` in `.cpp`.
+## 5. General Performance & Memory Hygiene
+- **Tick Hygiene**: `bCanEverTick = false` by default; use timers or event delegates unless per-frame simulation is required.
+- **Hot-Path Allocations**: No dynamic heap allocations (`TArray::Add` without `Reserve`, string formatting, copy-capturing lambdas) in `Tick()`, notifies, or tight physics loops.
+- **Memory & IWYU**: `TObjectPtr<T>` for UObject `UPROPERTY`s, `TWeakObjectPtr<T>` for non-owning caches, `AddWeakLambda(this, ...)` for UObject delegates, `const &` for non-primitive params, forward declarations in `.h`.

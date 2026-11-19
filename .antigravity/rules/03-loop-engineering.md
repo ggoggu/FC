@@ -1,91 +1,56 @@
-# Loop Engineering & Autonomous Self-Healing Protocols
+# 03. Loop Engineering, Hooks & Autonomous Self-Healing
 
-This document specifies the operational protocols for autonomous agents executing modifications, builds, static replication verification, and automated tests.
+## 1. Self-Healing Loop & Circuit Breaker
+1. **Autonomous Remediation**: On `pipeline.py static` or `build` failures, parse the structured diagnostics (`RuleID`, `File:Line`, `Fix`, `Ref`), reason about the root cause, and patch immediately without stalling for manual help.
+2. **Loop Budget & Oscillation Circuit Breaker (`Saved/LoopMemory/last_error_state.json`)**:
+   - Budget: max **5 iterative self-correction cycles** per task.
+   - `pipeline.py` computes **line-number-invariant** fingerprints `(file, rule_or_code)` scoped per target (`static::<file>` or `build`).
+   - **Breaker Trigger**: If the same fingerprint repeats **2 consecutive times** (or any **3 consecutive failures** occur on the same target), halt blind patching immediately and run a **Reflexion Step** (state why the prior hypothesis failed and re-inspect Ground Truth headers/assets before changing strategy).
+3. **Mechanical Anti-Reward-Hacking Guard**:
+   - Never weaken, delete, or comment out checks in `Scripts/verify_*.py`, `Scripts/audit_bandwidth.py`, `Scripts/linter_baseline.json`, or test assertions.
+   - Enforced mechanically by `.agents/hooks.json` (`PreToolUse` `guard_verifiers.py` -> `force_ask`), `.agents/hooks/stop_static_gate.py` (`Stop` -> `continue` on unverified C++ errors), and `.git/hooks/pre-commit`.
 
----
-
-## 1. Autonomous Self-Healing Principles
-
-1. **No Unnecessary Human Interruption**:
-   - When a build fails via `Scripts/build_harness.py` or replication analysis fails via `Scripts/verify_replication.py`, do not ask the user for manual fixes or stop prematurely.
-   - Autonomous agents must parse the structured JSON diagnostic output, locate the offending files and lines, reason about the root cause, and apply targeted patches immediately.
-
-2. **Self-Healing Loop Budget**:
-   - Up to **5 iterative self-correction cycles** are allocated per task for resolving build/replication errors.
-   - If after 5 iterations the build or static verification is still failing, halt the loop and output a detailed diagnosis containing:
-     - The persistent error codes (`C2xxx`, `LNKxxxx`, UHT errors).
-     - The files and line numbers where the error recurs.
-     - Hypotheses on the root cause and recommended structural adjustments.
-
----
-
-## 2. Execution Sequence & Tiered Modes
-
-- **Default (Fast Mode)**: Regular coding and Q&A run with zero script overhead.
-- **On-Demand Pipelines**: When verification is requested, invoke the master runner `Scripts/pipeline.py`:
-
+## 2. Deterministic Verification Sequence
 ```
-[ Step 1: Write Code / Refactor ]
-          |
-          v
-[ On-Demand: python Scripts/pipeline.py <mode> ]
-  - 'static'  : GAS, Bandwidth, Replication Static Verification (~0.4s)
-  - 'build'   : UBT compile harness + JSON self-healing loop (Max 5 cycles)
-  - 'balance' : Mathematical TTK and effective DPS curve simulation (~0.2s)
-  - 'test'    : Headless automation specs
-  - 'full'    : Static -> Build -> Test -> [Auto-Commit]
+[ Edit C++ (.h/.cpp) ]
+         |
+         v
+[ Incremental Static Gate (~0.1s) ]
+  python Scripts/pipeline.py static --file <path>
+         |
+         v
+[ Repo-Wide / Compile / Runtime Verification ]
+  - static  : GAS + Bandwidth + Replication (all Hard Constraints = ERROR)
+  - build   : UBT compile harness + JSON diagnostics + Circuit Breaker
+  - test    : Headless UE Automation Specs (`FC.*`; fails on 0 matched tests)
+  - net     : Network degradation run (`-pktlag/-pktloss/-pktdup`; fails on missing map/timeout/0 tests)
+  - audit   : C++ diff + FULL static check (GAS + Bandwidth + Replication) for `/interrogate`
+  - full    : static -> build -> test -> [--auto-commit]
 ```
+- **Harness Self-Test**: Whenever harness scripts or hooks are legitimately updated, run `python Scripts/tests/test_linters.py`.
 
----
-
-## 3. Tool Invocations
-
-The project provides a unified master runner for all verification tasks:
-
-- **Static Verification**:
-  ```powershell
-  python Scripts/pipeline.py static
-  ```
-- **UBT Build & Patch Loop**:
-  ```powershell
-  python Scripts/pipeline.py build
-  ```
-- **Combat / TTK Balance**:
-  ```powershell
-  python Scripts/pipeline.py balance
-  ```
-- **Full Release Pipeline**:
-  ```powershell
-  python Scripts/pipeline.py full --auto-commit -m "<conventional_commit_msg>"
-  ```
-
----
-
-## 4. Error Parsing & Triage Guide
-
-| Error Type | Common Source | Automated Resolution Strategy |
+## 3. Error Triage Quick Reference
+| Error Pattern | Root Cause | Resolution |
 | :--- | :--- | :--- |
-| **`C2065: undeclared identifier`** | Missing header / forward declaration | Check type name and add required `#include` in `.cpp` or forward declare in `.h`. |
-| **`UHT Error: Missing WithValidation`** | `UFUNCTION(Server, ...)` without `WithValidation` | Add `WithValidation` to specifiers and declare both `_Implementation` and `_Validate`. |
-| **`UHT Error: Replicated property missing LifetimeProps`** | Replicated variable declared without `GetLifetimeReplicatedProps` | Implement `GetLifetimeReplicatedProps` with `DOREPLIFETIME_CONDITION`. |
-| **`LNK2019 / LNK2001: unresolved external symbol`** | Missing Module dependency in `Build.cs` or unimplemented member | Add missing module to `FC.Build.cs` (e.g. `NetCore`, `EnhancedInput`) or define the function body. |
-| **Replication Verification Failure** | Server header includes widget or missing `bReplicates` | Move widget includes to `.cpp` / use forward declaration; ensure `bReplicates = true;` in constructor. |
+| `C2065` | Missing include / forward decl | Add `#include` in `.cpp` or forward declare in `.h`. |
+| `LNK2019 / LNK2001` | Missing module in `FC.Build.cs` or undefined symbol | Add module dependency or implement body. |
+| `CODE_UNSAFE_RAW_THIS_LAMBDA` | `.AddLambda([this])` / `.BindLambda([this])` | Switch to `.AddWeakLambda(this, ...)` / `.BindWeakLambda(this, ...)`. |
+| `CODE_HARDCODED_ASSET_PATH` | New `ConstructorHelpers::FObjectFinder`/`FClassFinder` | Use `TSoftObjectPtr`, `UPrimaryDataAsset`, or BP Class Defaults. |
+| `REPL_BYPASSED_AUTHORITY_SETTER` | `Replicated` + `BlueprintReadWrite` missing `BlueprintSetter` | Add `BlueprintSetter = Set<Prop>` or use `BlueprintReadOnly`. |
 
----
+## 4. Editor Asset Inspection Protocol (BP / WBP / Anim / DT)
+Never hallucinate `.uasset` internals. Follow strict priority:
+1. **Priority 1 — Live Editor MCP (`wildcard-mcp`, Editor running)**:
+   - Call `list_toolsets` / `describe_toolset` / `call_tool` on `wildcard-mcp`.
+   - Prefer `fc_toolset.FCTools.inspect_asset_summary`, `UMGToolSet.UMGToolSet` (+ `ObjectTools.list_properties` before property reads/writes), `MVVMToolset.UMVVMToolset`, and `editor_toolset.toolsets.blueprint.BlueprintTools`.
+2. **Priority 2 — Offline Fast Scan (Editor closed)**:
+   - `python Scripts/pipeline.py inspect --asset <path>` (`Saved/AssetCache/asset_schema_cache.json` `mtime_ns` cache; add `--no-cache` to refresh or `--deep` for headless reflection when `wildcard-mcp` is unavailable).
 
-## 5. Editor Asset Inspection Protocol (BP / WBP / Animation)
+## 5. Worktree Isolation (`Workspace="share"`) for UE 5.8
+1. **Read-Only Subagents (`Workspace="inherit"`)**: `/interrogate` (`adversarial-auditor`) and `research` always run with `Workspace="inherit"` and `EnableWriteTools=false`.
+2. **Parallel C++ Worktrees (`Workspace="share"`)**: Lock shared contract headers (`FC.Build.cs`, shared types) upfront, assign disjoint directory ownership, validate inside worktrees via `pipeline.py static` + `/interrogate`, and run UBT `pipeline.py build` once after integrating into the main workspace.
+3. **Binary `.uasset` / Live MCP Pinning**: Never mutate `.uasset`/`.umap` or invoke `wildcard-mcp` from a `share`/`branch` worktree—pin all live editor actions to the primary `inherit` workspace.
 
-To guarantee 100% reasoning accuracy and eliminate hallucinations when working with binary `.uasset` files:
-
-1. **Mandatory Ground Truth Inspection**:
-   - Before reasoning about or modifying code that interfaces with existing Blueprints (`BP_*`), Widget Blueprints (`WBP_*`), or Animation assets (`MM_*`, `ABP_*`), autonomous agents **MUST** inspect the asset metadata using:
-     ```powershell
-     python Scripts/pipeline.py inspect --asset <path>
-     ```
-     *(or append `--deep` for live reflection)*
-2. **Extracted Schema Utilization**:
-   - **Widget Blueprints (WBP)**: Cross-reference `detected_widgets`, `detected_viewmodels`, and `detected_bindings` with C++ `UMVVMViewModelBase` / `FieldNotify` properties.
-   - **AnimMontages & AnimBlueprints**: Use `detected_notifies`, `detected_slots`, and `detected_tracks` to verify exact notify names, gameplay tags, and target skeletal slots without guessing.
-   - **Actor Blueprints (BP)**: Verify `detected_components`, `detected_variables`, and parent C++ classes before adding or binding components.
-3. **Deep Engine Reflection Fallback**:
-   - When exact property values or runtime CDO numbers are required, append `--deep` to execute headless reflection extraction via Unreal Engine.
+## 6. Rule-to-Linter Promotion & Frozen Legacy Baseline
+- Do not pile prose warnings into `AGENTS.md`. Promote recurring defects into deterministic checks in `Scripts/verify_*.py` or `Scripts/audit_bandwidth.py` + regression tests in `Scripts/tests/test_linters.py`.
+- Pre-existing legacy `ConstructorHelpers` debt is explicitly tracked in `Scripts/linter_baseline.json` (inspect full debt anytime via `python Scripts/verify_replication.py --ignore-baseline --pretty`). Never add new entries to the baseline.

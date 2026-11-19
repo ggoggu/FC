@@ -6,6 +6,8 @@
 
 class USpringArmComponent;
 class UCameraComponent;
+class UFCCameraComponent;
+class UFCCameraModeDataAsset;
 class UInputAction;
 class UAnimSequence;
 class UAnimMontage;
@@ -31,6 +33,18 @@ public:
 
 	virtual void Jump() override;
 	virtual void StopJumping() override;
+
+	/** Toggles between 1st Person and Shoulder view */
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void ToggleCameraView();
+
+	/** Sets active camera mode data asset */
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void SetCameraMode(UFCCameraModeDataAsset* NewMode);
+
+	/** Camera mode component getter */
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	UFCCameraComponent* GetCameraModeComponent() const { return CameraModeComponent; }
 
 	/** Jump Input Action getter */
 	UFUNCTION(BlueprintPure, Category = "FC|Player|Input")
@@ -92,6 +106,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> CameraComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCCameraComponent> CameraModeComponent;
+
 	/** Move Input Action (WASD) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> MoveAction;
@@ -103,6 +120,10 @@ protected:
 	/** Jump Input Action (Space) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> JumpAction;
+
+	/** Toggle Camera View Input Action (V) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> ToggleCameraAction;
 
 	/** Directional death animations from Character/Mannequins/Anims/Death */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")

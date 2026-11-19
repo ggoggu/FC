@@ -26,8 +26,8 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
    - Strict utilization of existing subsystems, utilities, components, and data tables.
 3. **Scoped Extensibility (범위 내 적정 확장성)**
    - Clean, modular design sized for the specified feature requirements without speculative YAGNI violations.
-4. **Network & Replication Optimization (네트워크 최적화)**
-   - Strict Server Authority, RPC Ownership, `DOREPLIFETIME_CONDITION`, RepNotify over tick RPCs, and FastArraySerializer.
+4. **Network & Replication Optimization & Security (네트워크 최적화 및 보안)**
+   - Strict Server Authority (`HasAuthority()` in C++ as well as `BlueprintAuthorityOnly`), RPC Ownership, `DOREPLIFETIME_CONDITION` (`COND_OwnerOnly` / discovery-gating for secret data), RepNotify over tick RPCs, FastArraySerializer, and the 6 Universal Network Security Invariants in `07-adversarial-audit-standards.md` (Zero Client Trust, Lifecycle/Cost Gating, Information Disclosure Control, `NaN`/Enum/Container/Rate-Limit Sanitization, Persistence Identity Integrity, GAS Security).
 5. **General Performance Optimization (일반 최적화)**
    - Zero hot-path heap allocations, `bCanEverTick = false` by default, proper `TObjectPtr` & GC lifecycle management.
 
@@ -35,27 +35,23 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
 
 ## Execution Workflow
 
-### Step 1: Collect Context & State Intent (Filtering & Staging)
+### Step 1: Collect Context, Proofs & State Intent (Proof-Carrying Audit)
 1. Run `git add -N .` to ensure newly created untracked C++ files are recognized by git diff.
-2. Extract the text-only C++ diff (excluding binary `.uasset` / `.umap` assets):
+2. Run `python Scripts/pipeline.py audit --json` to capture full static verification status (GAS, Bandwidth, Replication) and changed C++ file list.
+3. Extract the text-only C++ diff (excluding binary `.uasset` / `.umap` assets):
    ```powershell
    git diff HEAD -- "*.h" "*.cpp" "*.cs"
    ```
-   *(Or run `python Scripts/pipeline.py audit --json` to get an aggregated diff & static replication status).*
-3. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
+4. Collect available **Verification Proofs** (latest `pipeline.py static`, `build`, and `test` pass/fail summaries; explicitly state if `build`/`test` has not been run yet).
+5. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
 
 ### Step 2: Invoke the Adversarial Auditor Subagent
-- **기본 모드 (Default)**: 항상 `Model: inherit` (일반적인 `/interrogate` 또는 "코드 검사해줘" 요청 시에는 모델 티어링을 수행하지 않고 기본 모델을 그대로 상속).
-- **자동 티어링 모드 (On-Demand Auto-Tiering)**:
-  사용자가 모델명을 일일이 지정할 필요 없이, **"자동 티어링 적용해줘"**, **"규모에 맞춰 알아서 모델 골라 검사해줘"** 와 같이 자동 티어링을 명시적으로 요청한 경우에만 diff를 분석하여 최적 모델을 자동 선택:
-  - 경량 로컬 로직 (<150 diff lines, 단일 컴포넌트 경미한 수정): `Model: flash` 자동 할당
-  - 복제/아키텍처 (>150 diff lines, Replication, RPC, GAS, 핵심 시스템): `Model: pro` 자동 할당
-  - **사용자의 자동 티어링 요청이 없는 기본 검사에서는 임의로 모델을 분기하지 않고 항상 `Model: inherit` 유지.**
+If `adversarial-auditor` is not yet registered in the current conversation, define it first using `define_subagent` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and a read-only system prompt referencing `.antigravity/rules/07-adversarial-audit-standards.md`.
 
 Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
 - **TypeName**: `adversarial-auditor`
 - **Role**: `Adversarial Code Auditor`
-- **Model**: `inherit` (사용자의 '자동 티어링' 요청 시에만 diff 분석에 따라 `pro` 또는 `flash` 자동 선정)
+- **Model**: `inherit`
 - **Prompt**:
   ```text
   Please perform a rigorous adversarial audit on the following changes.
@@ -63,17 +59,20 @@ Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
   ## Stated Intent
   <Brief summary of intent>
   
+  ## Verification Proofs (Static / Build / Test)
+  <Latest pipeline.py audit / build / test status; flag missing build/test proof as WARNING or BLOCKING for risky changes>
+  
   ## Code Changes (Git Diff / Targeted Files)
   <Git diff or file contents>
   
-  Audit the code strictly against the 5 dimensions:
+  Audit the code strictly against the 5 dimensions in `.antigravity/rules/07-adversarial-audit-standards.md`:
   1. Code Conciseness
   2. Architecture & Existing Code Reuse
   3. Scoped Extensibility
-  4. Network & Replication Optimization
+  4. Network & Replication Optimization & the 6 Security Invariants (Zero Client Trust, Lifecycle/Cost Gating, Information Disclosure Control, Input Sanitization & Anti-DoS, Identity & Persistence Integrity, GAS Security)
   5. General Performance Optimization
   
-  Provide the structured Markdown report with your Verdict.
+  Provide the structured Markdown report with your Verdict (`APPROVED (LGTM)` or `CHANGES REQUESTED (BLOCKING)`).
   ```
 
 ### Step 3: Triage Findings & Closed-Loop Remediation

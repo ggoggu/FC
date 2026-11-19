@@ -4,17 +4,21 @@ Unreal Engine 5.8 Unified Pipeline Runner (Scripts/pipeline.py)
 A token-efficient, fail-fast master runner for FC project verification and automation workflows.
 
 Modes:
-  - static  : Runs GAS verification, bandwidth audit, and replication analysis (Ultra fast, ~1s).
-  - build   : Runs UBT build harness and parses compilation diagnostics.
+  - static  : Runs GAS verification, bandwidth audit, and replication analysis (Ultra fast, ~0.4s full / ~0.03s with --file).
+  - build   : Runs UBT build harness, parses compilation diagnostics, and tracks Oscillation Circuit Breaker state.
   - balance : Runs mathematical TTK and weapon balance simulation.
   - test    : Runs headless automation tests.
   - net     : Runs multiplayer network degradation PIE simulation.
+  - inspect : Extracts Ground Truth JSON metadata for BP/WBP/Anim (.uasset) with mtime schema caching.
+  - audit   : Packages C++ git diff and runs static checks for /interrogate SubAgent review.
   - full    : Runs static -> build -> test sequentially with fail-fast.
 
 Usage:
   python Scripts/pipeline.py static
+  python Scripts/pipeline.py static --file Source/FC/Public/Map/FCDoorBase.h
   python Scripts/pipeline.py build
   python Scripts/pipeline.py balance
+  python Scripts/pipeline.py inspect --asset Content/UI/BP/WBP_HUD.uasset
   python Scripts/pipeline.py full
   python Scripts/pipeline.py full --auto-commit -m "feat(combat): implement stamina ability"
 """
@@ -23,12 +27,59 @@ import sys
 import os
 import time
 import json
+import hashlib
 import subprocess
 import argparse
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = PROJECT_ROOT / "Scripts"
+LOOP_MEMORY_FILE = PROJECT_ROOT / "Saved" / "LoopMemory" / "last_error_state.json"
+
+def update_oscillation_circuit_breaker(mode_key: str, passed: bool, error_items: list[str]) -> dict:
+    """Tracks consecutive identical error fingerprints to prevent Ralph Loop oscillation."""
+    LOOP_MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    state = {}
+    if LOOP_MEMORY_FILE.exists():
+        try:
+            state = json.loads(LOOP_MEMORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+
+    if passed or not error_items:
+        if mode_key in state:
+            state.pop(mode_key, None)
+            try:
+                LOOP_MEMORY_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+        return {"oscillation_detected": False, "consecutive_identical_failures": 0}
+
+    canonical_str = "||".join(sorted(set(error_items)))
+    fingerprint = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()[:16]
+    prev_entry = state.get(mode_key, {})
+    prev_fp = prev_entry.get("fingerprint")
+    count = (prev_entry.get("count", 0) + 1) if prev_fp == fingerprint else 1
+    total_consecutive_failures = prev_entry.get("total_consecutive_failures", 0) + 1
+
+    state[mode_key] = {
+        "fingerprint": fingerprint,
+        "count": count,
+        "total_consecutive_failures": total_consecutive_failures,
+        "sample_errors": error_items[:5],
+        "timestamp": round(time.time(), 2),
+    }
+    try:
+        LOOP_MEMORY_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    return {
+        "oscillation_detected": count >= 2 or total_consecutive_failures >= 3,
+        "consecutive_identical_failures": count,
+        "total_consecutive_failures": total_consecutive_failures,
+        "error_fingerprint": fingerprint,
+    }
 
 def run_script_json(script_name: str, extra_args: list[str] = None) -> tuple[int, dict, str]:
     """Runs a Python script in Scripts/ and parses its JSON output."""
@@ -94,8 +145,14 @@ def run_script_json(script_name: str, extra_args: list[str] = None) -> tuple[int
     parsed_json["_duration"] = round(elapsed, 2)
     return proc.returncode, parsed_json, stdout
 
-def run_static_checks(json_output: bool = False, skip_gas: bool = False, gas_only: bool = False, repl_only: bool = False) -> tuple[bool, dict]:
-    """Runs GAS, Bandwidth, and Replication static verification modularly."""
+def run_static_checks(
+    json_output: bool = False,
+    skip_gas: bool = False,
+    gas_only: bool = False,
+    repl_only: bool = False,
+    target_file: str | None = None
+) -> tuple[bool, dict]:
+    """Runs GAS, Bandwidth, and Replication static verification modularly (supports --file ACI)."""
     results = {}
     total_errors = 0
     total_warnings = 0
@@ -113,8 +170,11 @@ def run_static_checks(json_output: bool = False, skip_gas: bool = False, gas_onl
         checks.append(("Bandwidth & Net Audit", "audit_bandwidth.py"))
         checks.append(("Replication Architecture", "verify_replication.py"))
 
+    extra_args = ["--file", target_file] if target_file else []
+    error_signatures = []
+
     for label, script in checks:
-        retcode, data, _ = run_script_json(script)
+        retcode, data, _ = run_script_json(script, extra_args)
         status = data.get("status", "FAIL").upper()
         errs = data.get("error_count", 0)
         warns = data.get("warning_count", 0)
@@ -125,27 +185,38 @@ def run_static_checks(json_output: bool = False, skip_gas: bool = False, gas_onl
         is_ok = (status in ["PASS", "PASSED", "WARN"] and errs == 0)
         if not is_ok:
             all_passed = False
+            violations = data.get("violations", []) or data.get("issues", [])
+            for v in violations:
+                if v.get("severity") == "ERROR":
+                    # Line-number-invariant fingerprint (file + rule/description) so blank-line shifts cannot bypass circuit breaker
+                    error_signatures.append(f"{v.get('file')}:{v.get('rule', v.get('description', ''))}")
 
         results[label] = {
             "passed": is_ok,
             "status": status,
             "errors": errs,
             "warnings": warns,
+            "baseline_suppressed": data.get("baseline_suppressed", 0),
             "duration": duration,
             "details": data
         }
 
+    cb_key = f"static::{target_file.replace(chr(92), '/')}" if target_file else "static::all"
+    cb_info = update_oscillation_circuit_breaker(cb_key, all_passed, error_signatures)
+
     summary = {
         "mode": "gas" if gas_only else ("replication" if repl_only else "static"),
+        "scoped_file": target_file,
         "passed": all_passed,
         "total_errors": total_errors,
         "total_warnings": total_warnings,
+        "circuit_breaker": cb_info,
         "checks": results
     }
     return all_passed, summary
 
 def run_build_check(clean: bool = False) -> tuple[bool, dict]:
-    """Runs UBT Build Harness."""
+    """Runs UBT Build Harness and evaluates Oscillation Circuit Breaker."""
     extra = ["--clean"] if clean else []
     retcode, data, _ = run_script_json("build_harness.py", extra)
     status = data.get("status", "FAILURE").upper()
@@ -154,6 +225,14 @@ def run_build_check(clean: bool = False) -> tuple[bool, dict]:
     duration = data.get("_duration", 0.0)
     is_ok = (status == "SUCCESS" and errs == 0)
 
+    error_signatures = []
+    if not is_ok:
+        for e in data.get("errors", []):
+            # Line-number-invariant fingerprint (file + code + message)
+            error_signatures.append(f"{e.get('file')}:{e.get('code')}:{e.get('message')}")
+
+    cb_info = update_oscillation_circuit_breaker("build", is_ok, error_signatures)
+
     summary = {
         "mode": "build",
         "passed": is_ok,
@@ -161,6 +240,7 @@ def run_build_check(clean: bool = False) -> tuple[bool, dict]:
         "errors": errs,
         "warnings": warns,
         "duration": duration,
+        "circuit_breaker": cb_info,
         "details": data
     }
     return is_ok, summary
@@ -215,11 +295,13 @@ def run_net_pie_check() -> tuple[bool, dict]:
     }
     return is_ok, summary
 
-def run_inspect_check(asset: str, deep: bool = False) -> tuple[bool, dict]:
+def run_inspect_check(asset: str, deep: bool = False, no_cache: bool = False) -> tuple[bool, dict]:
     """Runs asset metadata extraction for BP, WBP, Animation, or other .uasset files."""
     extra = ["--asset", asset]
     if deep:
         extra.append("--deep")
+    if no_cache:
+        extra.append("--no-cache")
     retcode, data, _ = run_script_json("dump_asset_metadata.py", extra)
     is_ok = (retcode == 0 and "error" not in data and data.get("status") != "ERROR")
     summary = {
@@ -252,17 +334,17 @@ def run_audit_check() -> tuple[bool, dict]:
     diff_text = proc_diff.stdout
     diff_lines = len(diff_text.splitlines())
 
-    passed_repl, repl_data = run_static_checks(json_output=True, repl_only=True)
+    passed_static, static_data = run_static_checks(json_output=True)
     summary = {
         "mode": "audit",
-        "passed": passed_repl,
+        "passed": passed_static,
         "changed_files_count": len(changed_files),
         "changed_files": changed_files,
         "diff_line_count": diff_lines,
-        "static_replication_passed": passed_repl,
-        "static_details": repl_data
+        "static_replication_passed": passed_static,
+        "static_details": static_data
     }
-    return passed_repl, summary
+    return passed_static, summary
 
 def execute_auto_commit(commit_msg: str | None = None) -> bool:
     """Stages modified and new files, then creates a Git commit."""
@@ -272,7 +354,11 @@ def execute_auto_commit(commit_msg: str | None = None) -> bool:
             print("[GIT] Nothing to commit, working tree clean.")
             return True
 
-        subprocess.run(["git", "add", "Source/", "Config/", "Scripts/", "AGENTS.md"], cwd=str(PROJECT_ROOT), check=True)
+        stage_targets = [
+            p for p in ["Source/", "Config/", "Scripts/", "AGENTS.md", ".agents/", ".antigravity/", "Content/Python/"]
+            if (PROJECT_ROOT / p).exists()
+        ]
+        subprocess.run(["git", "add", *stage_targets], cwd=str(PROJECT_ROOT), check=True)
         
         msg = commit_msg or "refactor(core): verify and pass pipeline checks"
         commit_proc = subprocess.run(["git", "commit", "-m", msg], cwd=str(PROJECT_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -291,21 +377,41 @@ def print_compact_summary(summary: dict):
     mode = summary.get("mode", "")
     passed = summary.get("passed", False)
     badge = "PASS" if passed else "FAIL"
+    cb = summary.get("circuit_breaker", {})
 
     if mode in ["static", "gas", "replication"]:
         mode_title = "GAS Verification" if mode == "gas" else ("Replication & Bandwidth Audit" if mode == "replication" else "Static Verification Summary")
-        print(f"[{badge}] {mode_title}:")
+        scoped = f" [File: {summary['scoped_file']}]" if summary.get("scoped_file") else ""
+        print(f"[{badge}] {mode_title}{scoped}:")
         for name, item in summary.get("checks", {}).items():
             item_badge = "PASS" if item["passed"] else "FAIL"
-            print(f"  - [{item_badge}] {name}: {item['errors']} err, {item['warnings']} warn ({item['duration']}s)")
-            if not item["passed"]:
-                violations = item["details"].get("violations", []) or item["details"].get("issues", [])
-                for v in violations[:3]:
+            suppressed = item.get("baseline_suppressed", 0)
+            suppressed_str = f", {suppressed} baselined" if suppressed else ""
+            print(f"  - [{item_badge}] {name}: {item['errors']} err, {item['warnings']} warn{suppressed_str} ({item['duration']}s)")
+            violations = item["details"].get("violations", []) or item["details"].get("issues", [])
+            if violations:
+                for v in violations[:10]:
+                    sev = v.get("severity", "ERROR")
+                    rule = v.get("rule", "")
+                    rule_tag = f"[{sev}:{rule}] " if rule else f"[{sev}] "
                     f = v.get("file", "")
                     l = v.get("line", 0)
                     msg = v.get("detail") or v.get("message") or v.get("description") or ""
-                    print(f"      -> {f}:{l} - {msg}")
+                    fix = v.get("fix") or v.get("recommendation") or ""
+                    ref = v.get("ref") or ""
+                    print(f"      -> {rule_tag}{f}:{l} - {msg}")
+                    if fix:
+                        ref_suffix = f" (Ref: {ref})" if ref else ""
+                        print(f"         Fix: {fix}{ref_suffix}")
+                if len(violations) > 10:
+                    print(f"      ... and {len(violations) - 10} more violation(s). Run with --json for full list.")
         print(f"Total: {summary['total_errors']} error(s), {summary['total_warnings']} warning(s).")
+        if cb.get("oscillation_detected"):
+            print(
+                f"[CIRCUIT BREAKER] Repeated failure detected (identical={cb.get('consecutive_identical_failures')}x, "
+                f"consecutive={cb.get('total_consecutive_failures')}x, fp={cb.get('error_fingerprint')})! "
+                "Halt blind retries and perform Reflexion."
+            )
 
     elif mode == "build":
         duration = summary.get("duration", 0)
@@ -317,6 +423,8 @@ def print_compact_summary(summary: dict):
                 l = e.get("line", 0)
                 msg = e.get("message", "")
                 print(f"  -> Error: {f}:{l} - {msg}")
+            if cb.get("oscillation_detected"):
+                print(f"[CIRCUIT BREAKER] Identical build error fingerprint ({cb.get('error_fingerprint')}) repeated {cb.get('consecutive_identical_failures')}x! Halt blind retries and perform Reflexion.")
 
     elif mode == "balance":
         duration = summary.get("duration", 0)
@@ -400,8 +508,10 @@ def main():
              "  audit       : Package C++ diff & run static checks for SubAgent audit\n"
              "  full        : Sequential full pipeline (static -> build -> test)"
     )
+    parser.add_argument("--file", "-f", type=str, default=None, help="Optional single C++ file path for incremental ACI static check")
     parser.add_argument("--asset", "-a", type=str, default=None, help="Asset path for inspect mode (e.g. Content/UI/BP/WBP_HUD.uasset)")
     parser.add_argument("--deep", action="store_true", help="Perform deep engine reflection inspection in inspect mode")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass mtime schema cache in inspect mode")
     parser.add_argument("--json", action="store_true", help="Emit output strictly as aggregated JSON")
     parser.add_argument("--skip-gas", action="store_true", help="Skip GAS static check in static/full mode (useful for non-GAS tasks)")
     parser.add_argument("--clean", action="store_true", help="Clean build before compiling (build/full mode)")
@@ -414,19 +524,19 @@ def main():
     aggregated_report = {}
 
     if args.mode == "static":
-        overall_passed, aggregated_report = run_static_checks(json_output=args.json, skip_gas=args.skip_gas)
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, skip_gas=args.skip_gas, target_file=args.file)
 
     elif args.mode == "gas":
-        overall_passed, aggregated_report = run_static_checks(json_output=args.json, gas_only=True)
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, gas_only=True, target_file=args.file)
 
     elif args.mode == "replication":
-        overall_passed, aggregated_report = run_static_checks(json_output=args.json, repl_only=True)
+        overall_passed, aggregated_report = run_static_checks(json_output=args.json, repl_only=True, target_file=args.file)
 
     elif args.mode == "inspect":
         if not args.asset:
             print("[ERROR] --asset argument is required for inspect mode (e.g. --asset Content/UI/BP/WBP_HUD.uasset)")
             sys.exit(1)
-        overall_passed, aggregated_report = run_inspect_check(args.asset, deep=args.deep)
+        overall_passed, aggregated_report = run_inspect_check(args.asset, deep=args.deep, no_cache=args.no_cache)
 
     elif args.mode == "build":
         overall_passed, aggregated_report = run_build_check(clean=args.clean)
@@ -446,7 +556,7 @@ def main():
     elif args.mode == "full":
         steps = []
         # Step 1: Static
-        passed_static, static_data = run_static_checks(skip_gas=args.skip_gas)
+        passed_static, static_data = run_static_checks(skip_gas=args.skip_gas, target_file=args.file)
         steps.append(static_data)
         if not passed_static:
             overall_passed = False

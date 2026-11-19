@@ -9,7 +9,8 @@
 #include "UI/View/FCHandWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
-#include "UI/Data/FCStatusToggleTypes.h" 
+#include "UI/Data/FCStatusToggleTypes.h"
+#include "UI/Presenter/FCStatusPresenterComponent.h" 
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
@@ -27,6 +28,7 @@ AFCPlayerController::AFCPlayerController()
 	bShowMouseCursor = false;
 	DefaultMouseCursor = EMouseCursor::Default;
 	bAutoEnableCardCombatInputMode = true;
+	StatusPresenterComponent = CreateDefaultSubobject<UFCStatusPresenterComponent>(TEXT("StatusPresenterComponent"));
 }
 
 void AFCPlayerController::BeginPlay()
@@ -98,6 +100,23 @@ void AFCPlayerController::OnUnPossess()
 
 void AFCPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(CycleHUDUpdateTimerHandle);
+	}
+
+	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
+		{
+			DeckComp->OnCardHandUpdated.RemoveAll(this);
+			DeckComp->OnPileCountsChanged.RemoveAll(this);
+			DeckComp->OnCardCycleTriggered.RemoveAll(this);
+			DeckComp->OnCycleSettingsChanged.RemoveAll(this);
+			DeckComp->OnCycleTimerUpdated.RemoveAll(this);
+		}
+	}
+
 	UnbindAttributeListeners();
 	Super::EndPlay(EndPlayReason);
 }
@@ -181,24 +200,39 @@ void AFCPlayerController::BindDeckComponentEvents()
 	DeckComp->OnPileCountsChanged.RemoveAll(this);
 	DeckComp->OnCardCycleTriggered.RemoveAll(this);
 	DeckComp->OnCycleSettingsChanged.RemoveAll(this);
+	DeckComp->OnCycleTimerUpdated.RemoveAll(this);
 
 	DeckComp->OnCardHandUpdated.AddDynamic(this, &AFCPlayerController::SyncHandToViewModel);
 	DeckComp->OnPileCountsChanged.AddDynamic(this, &AFCPlayerController::OnDeckPileCountsChanged);
 	DeckComp->OnCardCycleTriggered.AddDynamic(this, &AFCPlayerController::OnDeckCycleTriggered);
 	DeckComp->OnCycleSettingsChanged.AddDynamic(this, &AFCPlayerController::OnDeckCycleSettingsChanged);
+	DeckComp->OnCycleTimerUpdated.AddDynamic(this, &AFCPlayerController::UpdateCycleHUD);
 
 	// Perform initial sync
 	SyncHandToViewModel();
 	HUDViewModel->SetDrawPileCount(DeckComp->GetDrawPileCount());
 	HUDViewModel->SetDiscardPileCount(DeckComp->GetDiscardPileCount());
 	HUDViewModel->SetExhaustPileCount(DeckComp->GetExhaustPileCount());
-	HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
-	HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
-	HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
+	UpdateCycleHUD();
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			CycleHUDUpdateTimerHandle,
+			this,
+			&AFCPlayerController::UpdateCycleHUD,
+			0.05f,
+			true);
+	}
 }
 
 void AFCPlayerController::UnbindAttributeListeners()
 {
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->UnbindFromAbilitySystem();
+	}
+
 	if (UAbilitySystemComponent* CurrentASC = BoundASC.Get())
 	{
 		for (const auto& Entry : BoundAttributeHandles)
@@ -237,6 +271,11 @@ void AFCPlayerController::BindAttributeListeners()
 	}
 
 	BoundASC = ASC;
+
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->BindToAbilitySystem(ASC, HUDViewModel->GetOrCreateStatusContainerViewModel());
+	}
 
 	const UFCAttributeSet* AttrSet = ASC->GetSet<UFCAttributeSet>();
 	if (AttrSet)
@@ -327,25 +366,29 @@ void AFCPlayerController::OnDeckPileCountsChanged(int32 DrawCount, int32 Discard
 
 void AFCPlayerController::OnDeckCycleTriggered()
 {
-	if (HUDViewModel)
-	{
-		if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
-		{
-			if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
-			{
-				HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
-				HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
-				HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
-			}
-		}
-	}
+	UpdateCycleHUD();
 }
 
 void AFCPlayerController::OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount)
 {
-	if (HUDViewModel)
+	UpdateCycleHUD();
+}
+
+void AFCPlayerController::UpdateCycleHUD()
+{
+	if (!IsLocalPlayerController() || !HUDViewModel)
 	{
-		HUDViewModel->SetCycleInterval(NewInterval);
+		return;
+	}
+
+	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
+	{
+		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
+		{
+			HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
+			HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
+			HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
+		}
 	}
 }
 
@@ -609,35 +652,51 @@ void AFCPlayerController::OnRightMouseButtonPressed()
 
 bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
 {
-	return PickupActor != nullptr && !PickupActor->IsPendingKillPending();
+	return StaticEnum<EFCCardAddDestination>()->IsValidEnumValue(static_cast<int64>(Destination));
 }
 
 void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
 {
-	if (!HasAuthority() || !PickupActor)
+	if (!HasAuthority() || !IsValid(PickupActor))
 	{
 		return;
 	}
 
-	APawn* ControlledPawn = GetPawn();
-	if (!ControlledPawn)
+	if (const UWorld* World = GetWorld())
+	{
+		const double Now = World->GetTimeSeconds();
+		if (Now - LastClaimPickupServerTime < 0.1)
+		{
+			return;
+		}
+		LastClaimPickupServerTime = Now;
+	}
+
+	AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetPawn());
+	if (!Char || Char->IsDead())
 	{
 		return;
 	}
 
-	const float DistSq = FVector::DistSquared(ControlledPawn->GetActorLocation(), PickupActor->GetActorLocation());
-	if (DistSq > FMath::Square(800.0f))
+	const float DistSq = FVector::DistSquared(Char->GetActorLocation(), PickupActor->GetActorLocation());
+	if (DistSq > FMath::Square(300.0f))
 	{
 		return;
 	}
 
-	PickupActor->ClaimPickup(ControlledPawn, Destination);
+	// Enforce server-authoritative pickup destination regardless of client request
+	const EFCCardAddDestination AuthoritativeDestination = PickupActor->GetDefaultDestination();
+	PickupActor->ClaimPickup(Char, AuthoritativeDestination);
 }
 
 
 void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 {
-	if (HUDViewModel)
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->PushStatusData(InData);
+	}
+	else if (HUDViewModel)
 	{
 		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
 		{
@@ -648,7 +707,11 @@ void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 
 void AFCPlayerController::RemoveStatusToggle(FName InStatusId)
 {
-	if (HUDViewModel)
+	if (StatusPresenterComponent)
+	{
+		StatusPresenterComponent->RemoveStatusById(InStatusId);
+	}
+	else if (HUDViewModel)
 	{
 		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
 		{

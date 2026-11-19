@@ -80,14 +80,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
 	void RegisterConnectedDoor(AFCDoorBase* Door);
 
+	/** Register an externally spawned secret wall actor to this room for lifecycle tracking */
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
+	void RegisterSecretWall(AFCDestructibleWall* Wall);
+
 	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
 	bool IsManagingDoorsExternally() const { return bManageDoorsExternally; }
 
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
-	void SetManageDoorsExternally(bool bEnable) { bManageDoorsExternally = bEnable; }
+	void SetManageDoorsExternally(bool bEnable)
+	{
+		if (!HasAuthority())
+		{
+			return;
+		}
+		bManageDoorsExternally = bEnable;
+	}
 
 	UFUNCTION(BlueprintPure, Category = "FC|Room")
-	const FFCRoomData& GetRoomData() const { return RoomData; }
+	const FFCRoomData& GetRoomData() const { return HasAuthority() ? ServerRoomData : RoomData; }
 
 	UFUNCTION(BlueprintPure, Category = "FC|Room")
 	EFCRoomState GetRoomState() const { return RoomState; }
@@ -213,9 +224,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Combat")
 	TArray<TObjectPtr<AFCMobSpawnerBase>> ChildSpawners;
 
-	// Replicated State
+	// Replicated State (RoomData stays masked until bIsDiscovered == true to prevent client memory leaks)
 	UPROPERTY(ReplicatedUsing = OnRep_RoomData, BlueprintReadOnly, Category = "FC|Room")
 	FFCRoomData RoomData;
+
+	/** Authoritative server room topology/type/secret mask (never replicated prior to discovery) */
+	UPROPERTY(Transient)
+	FFCRoomData ServerRoomData;
 
 	UPROPERTY(ReplicatedUsing = OnRep_RoomState, BlueprintReadOnly, Category = "FC|Room")
 	EFCRoomState RoomState = EFCRoomState::Unvisited;
@@ -227,7 +242,7 @@ protected:
 	bool bIsVisited = false;
 
 	/** Distance from room center to door/wall sockets (half-width of room). Defaults to 3000 cm (half of 6000 grid / matches RoomBoundsTrigger). */
-	UPROPERTY(ReplicatedUsing = OnRep_DoorOffset, EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors", meta = (ClampMin = "100.0"))
+	UPROPERTY(ReplicatedUsing = OnRep_DoorOffset, EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetDoorOffset, Category = "FC|Room|Doors", meta = (ClampMin = "100.0"))
 	float DoorOffset = 3000.0f;
 
 	/** If true, automatically synchronizes DoorOffset to RoomBoundsTrigger's extent */
@@ -235,7 +250,7 @@ protected:
 	bool bSyncDoorOffsetToTrigger = true;
 
 	/** If true, doorway actors are managed and spawned externally (e.g. by AFCDungeonManager for canonical shared edges) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Doors")
+	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetManageDoorsExternally, Category = "FC|Room|Doors")
 	bool bManageDoorsExternally = false;
 
 	/** Server-authoritative assigned door classes [0: North, 1: South, 2: East, 3: West]. Transient, not replicated. */

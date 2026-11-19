@@ -33,6 +33,8 @@ class FC_API AFCProjectileBase : public AActor
 public:
 	AFCProjectileBase();
 
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	/** Initializes all motion, combat, collision, and presentation parameters from a data asset */
 	UFUNCTION(BlueprintCallable, Category = "Projectile|Data")
 	virtual void InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset);
@@ -79,8 +81,11 @@ protected:
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
 	// --- Data-Driven Configuration ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Data")
+	UPROPERTY(ReplicatedUsing = OnRep_ProjectileDataAsset, EditAnywhere, BlueprintReadWrite, Category = "Projectile|Data")
 	TObjectPtr<const UFCProjectileDataAsset> ProjectileDataAsset;
+
+	UFUNCTION()
+	void OnRep_ProjectileDataAsset();
 
 	// --- Gameplay & Impact Configuration ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay", meta = (ClampMin = "0.0"))
@@ -147,5 +152,6 @@ protected:
 private:
 	int32 CurrentPierceCount = 0;
 	bool bHasPlayedCosmetics = false;
+	bool bInitializedFromDataAsset = false;
 	TSet<TWeakObjectPtr<AActor>> HitActors;
 };

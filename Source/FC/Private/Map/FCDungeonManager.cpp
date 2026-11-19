@@ -124,6 +124,7 @@ void AFCDungeonManager::ClearDungeon()
 	{
 		if (Room)
 		{
+			Room->OnRoomStateChanged.RemoveAll(this);
 			Room->Destroy();
 		}
 	}
@@ -911,6 +912,7 @@ void AFCDungeonManager::SetupSecretPassages()
 						{
 							SecretWall->SetLinkedSecretRoomCoord(SecretCoord);
 							SecretWall->OnWallDestroyed.AddDynamic(this, &AFCDungeonManager::HandleSecretWallDestroyed);
+							NeighborRoom->RegisterSecretWall(SecretWall);
 						}
 					}
 				}

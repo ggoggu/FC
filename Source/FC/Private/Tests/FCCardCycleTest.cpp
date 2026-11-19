@@ -7,6 +7,7 @@
 #include "Character/FCCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "UI/ViewModel/FCHUDViewModel.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -211,6 +212,35 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 			// Toggle auto cycle
 			DeckComp->SetAutoCycleEnabled(false);
 			TestFalse(TEXT("AutoCycleEnabled should be false"), DeckComp->IsAutoCycleEnabled());
+
+			// Inactive timer must report 0 remaining and 0 progress (not 100% full)
+			TestEqual(TEXT("Inactive CycleRemainingTime should be 0.0f"), DeckComp->GetCycleRemainingTime(), 0.0f);
+			TestEqual(TEXT("Inactive CycleProgress should be 0.0f"), DeckComp->GetCycleProgress(), 0.0f);
+		}
+	}
+
+	// =========================================================================
+	// Test 5: HUD ViewModel Cycle Remaining Display Text & Progress
+	// =========================================================================
+	{
+		UFCHUDViewModel* HUDVM = NewObject<UFCHUDViewModel>();
+		TestNotNull(TEXT("HUDVM should be created"), HUDVM);
+
+		if (HUDVM)
+		{
+			HUDVM->SetCycleInterval(30.0f);
+			HUDVM->SetCycleRemainingTime(30.0f);
+			HUDVM->SetCycleProgress(0.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 30.0s should be 30s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("30s"));
+			TestEqual(TEXT("CycleProgress at start should be 0.0f"), HUDVM->CycleProgress, 0.0f);
+
+			HUDVM->SetCycleRemainingTime(0.5f);
+			HUDVM->SetCycleProgress(29.5f / 30.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 0.5s should ceil to 1s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("1s"));
+
+			HUDVM->SetCycleRemainingTime(0.0f);
+			HUDVM->SetCycleProgress(0.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 0.0s should be 0s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("0s"));
 		}
 	}
 

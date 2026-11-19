@@ -27,7 +27,8 @@ public class FC : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 
 			"Slate", 
-			"SlateCore" 
+			"SlateCore",
+			"CoreOnline"
 		});
 		
 		// Uncomment if you are using online features

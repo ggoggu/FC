@@ -2,8 +2,10 @@
 param (
     [Parameter(Position=0)]
     [string]$Mode = "static",
+    [string]$File,
     [string]$Asset,
     [switch]$Deep,
+    [switch]$NoCache,
     [switch]$Json,
     [switch]$SkipGas,
     [switch]$Clean,
@@ -14,8 +16,10 @@ param (
 $ScriptPath = Join-Path $PSScriptRoot "Scripts\pipeline.py"
 $ArgsList = @($ScriptPath, $Mode)
 
+if ($File) { $ArgsList += "--file"; $ArgsList += $File }
 if ($Asset) { $ArgsList += "--asset"; $ArgsList += $Asset }
 if ($Deep) { $ArgsList += "--deep" }
+if ($NoCache) { $ArgsList += "--no-cache" }
 if ($Json) { $ArgsList += "--json" }
 if ($SkipGas) { $ArgsList += "--skip-gas" }
 if ($Clean) { $ArgsList += "--clean" }

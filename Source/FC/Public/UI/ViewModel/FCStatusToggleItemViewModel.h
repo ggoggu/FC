@@ -6,6 +6,8 @@
 #include "UI/Data/FCStatusToggleTypes.h"
 #include "FCStatusToggleItemViewModel.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FFCOnStatusItemDataChanged);
+
 /**
  * UFCStatusToggleItemViewModel
  * 
@@ -53,6 +55,10 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Status")
 	FText TooltipText;
+
+	/** Direct notification broadcast whenever any visual status data changes */
+	UPROPERTY(BlueprintAssignable, Category = "FC|Status")
+	FFCOnStatusItemDataChanged OnItemDataChanged;
 
 public:
 	/** Initializes or synchronizes from data structure */

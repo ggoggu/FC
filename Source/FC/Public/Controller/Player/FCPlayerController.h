@@ -11,6 +11,7 @@ class UFCHUDWidget;
 class UFCHUDViewModel;
 class UFCCardDataAsset;
 class AFCCardPickupActor;
+class UFCStatusPresenterComponent;
 struct FFCCardTargetInfo;
 
 /**
@@ -75,6 +76,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UI")
 	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
 
+	/** Returns the status toggle presentation adapter component */
+	UFUNCTION(BlueprintPure, Category = "UI|Status")
+	UFCStatusPresenterComponent* GetStatusPresenterComponent() const { return StatusPresenterComponent; }
+
 	/** Adds or updates a circular status toggle in the HUD */
 	UFUNCTION(BlueprintCallable, Category = "UI|Status")
 	void SetStatusToggle(const struct FFCStatusToggleData& InData);
@@ -107,6 +112,10 @@ protected:
 	/** Active top-level HUD presentation ViewModel instance */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UFCHUDViewModel> HUDViewModel;
+
+	/** Presentation component translating ASC attributes and tags to status toggles */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Status", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCStatusPresenterComponent> StatusPresenterComponent;
 
 	/** Default Input Mapping Context (e.g. Exploration / Base Movement) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -152,16 +161,24 @@ protected:
 	UFUNCTION()
 	void OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount);
 
+	UFUNCTION()
+	void UpdateCycleHUD();
+
 private:
 	void InitializeDefaultMappingContext();
 	void BindDeckComponentEvents();
 	void BindAttributeListeners();
 	void UnbindAttributeListeners();
 
+	FTimerHandle CycleHUDUpdateTimerHandle;
+
 	UPROPERTY(Transient)
 	TWeakObjectPtr<class UAbilitySystemComponent> BoundASC;
 
 	TArray<TTuple<struct FGameplayAttribute, FDelegateHandle>> BoundAttributeHandles;
+
+	/** Server-side timestamp for pickup RPC rate-limiting */
+	double LastClaimPickupServerTime = -1000.0;
 
 	void OnNumberKey1Pressed() { HandleNumberKeyInput(0); }
 	void OnNumberKey2Pressed() { HandleNumberKeyInput(1); }

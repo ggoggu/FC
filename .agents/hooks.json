@@ -1,0 +1,25 @@
+{
+  "anti-reward-hacking-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "edit_file|write_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python hooks/guard_verifiers.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "pre-completion-static-gate": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python hooks/stop_static_gate.py",
+        "timeout": 30
+      }
+    ]
+  }
+}

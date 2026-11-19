@@ -36,6 +36,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Card|Pickup")
 	FName GetDropCardId() const { return DropCardId; }
 
+	UFUNCTION(BlueprintPure, Category = "Card|Pickup")
+	EFCCardAddDestination GetDefaultDestination() const { return DefaultDestination; }
+
 	/** Authoritative server execution to claim this card pickup into player's deck */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Pickup")
 	bool ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);

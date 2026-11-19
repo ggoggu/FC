@@ -431,6 +431,11 @@ int32 AFCFixedMobSpawner::FindSlotIndexForMob(const AFCMobCharacter* Mob) const
 
 int32 AFCFixedMobSpawner::AddSpawnSlot(const FFCFixedMobSpawnSlot& NewSlot)
 {
+	if (!HasAuthority())
+	{
+		return INDEX_NONE;
+	}
+
 	EnsureTrackingArraysSized();
 	const int32 NewIndex = SpawnSlots.Add(NewSlot);
 	SlotLivingMobs.AddDefaulted(1);
@@ -440,6 +445,11 @@ int32 AFCFixedMobSpawner::AddSpawnSlot(const FFCFixedMobSpawnSlot& NewSlot)
 
 void AFCFixedMobSpawner::ClearSpawnSlots()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	DespawnAllMobs();
 	SpawnSlots.Empty();
 	SlotLivingMobs.Empty();

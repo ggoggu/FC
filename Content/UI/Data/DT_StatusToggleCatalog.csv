@@ -1,0 +1,4 @@
+---,StatusTag,StatusId,DisplayName,BorderColor,bShowCircularProgress,bShowStackCount,DefaultDescription
+Status_MagicShield,"",Status_MagicShield,"매직 실드","(R=0.000000,G=0.750000,B=1.000000,A=1.000000)",False,True,"공격 1회를 무효화하는 보호막입니다."
+Status_AttackBuff,"",Status_AttackBuff,"공격력 강화","(R=1.000000,G=0.850000,B=0.100000,A=1.000000)",False,True,"공격력이 증가한 상태입니다."
+Status_AttackReduction,"",Status_AttackReduction,"공격력 감소","(R=1.000000,G=0.150000,B=0.150000,A=1.000000)",True,True,"적에 의해 공격력이 감소한 상태입니다."

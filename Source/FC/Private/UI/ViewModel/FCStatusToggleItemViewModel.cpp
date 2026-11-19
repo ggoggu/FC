@@ -11,6 +11,8 @@ void UFCStatusToggleItemViewModel::InitializeFromData(const FFCStatusToggleData&
 	SetStackCount(InData.StackCount);
 	SetDuration(InData.RemainingDuration, InData.TotalDuration);
 	SetTooltipText(InData.Description);
+
+	OnItemDataChanged.Broadcast();
 }
 
 void UFCStatusToggleItemViewModel::SetStackCount(int32 InCount)
@@ -19,6 +21,7 @@ void UFCStatusToggleItemViewModel::SetStackCount(int32 InCount)
 	{
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HasStackCount);
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetStackDisplayText);
+		OnItemDataChanged.Broadcast();
 	}
 }
 
@@ -36,6 +39,7 @@ void UFCStatusToggleItemViewModel::SetDuration(float InRemaining, float InTotal)
 	{
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(HasDuration);
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(GetDurationPercent);
+		OnItemDataChanged.Broadcast();
 	}
 }
 

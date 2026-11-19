@@ -1,0 +1,100 @@
+{
+  "_description": "Explicit frozen legacy baseline for CODE_HARDCODED_ASSET_PATH (ConstructorHelpers). Zero new violations are permitted; remove entries as legacy constructors are migrated to UPrimaryDataAsset or Blueprint Class Defaults.",
+  "CODE_HARDCODED_ASSET_PATH": [
+    {
+      "file": "Source/FC/Private/Camera/FCCameraComponent.cpp",
+      "symbol": "ShoulderFinder",
+      "reason": "Legacy /Game/ DataAsset default"
+    },
+    {
+      "file": "Source/FC/Private/Camera/FCCameraComponent.cpp",
+      "symbol": "FirstPersonFinder",
+      "reason": "Legacy /Game/ DataAsset default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "FrontDeathFinder1",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "FrontDeathFinder2",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "FrontDeathFinder3",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "BackDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "LeftDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Mob/FCMobCharacter.cpp",
+      "symbol": "RightDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "FrontDeathFinder1",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "FrontDeathFinder2",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "FrontDeathFinder3",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "BackDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "LeftDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "RightDeathFinder",
+      "reason": "Legacy /Game/ death anim default"
+    },
+    {
+      "file": "Source/FC/Private/Character/Player/FCPlayerCharacter.cpp",
+      "symbol": "JumpActionFinder",
+      "reason": "Legacy /Game/ InputAction default"
+    },
+    {
+      "file": "Source/FC/Private/Combat/Projectile/FCFireballProjectile.cpp",
+      "symbol": "SphereMeshFinder",
+      "reason": "Legacy /Engine/ fallback mesh"
+    },
+    {
+      "file": "Source/FC/Private/Combat/Projectile/FCFireballProjectile.cpp",
+      "symbol": "EmissiveMatFinder",
+      "reason": "Legacy /Engine/ fallback material"
+    },
+    {
+      "file": "Source/FC/Private/Combat/Wall/FCSandWall.cpp",
+      "symbol": "CubeMeshFinder",
+      "reason": "Legacy /Engine/ fallback mesh"
+    },
+    {
+      "file": "Source/FC/Private/Combat/Wall/FCSandWall.cpp",
+      "symbol": "BaseMatFinder",
+      "reason": "Legacy /Engine/ fallback material"
+    }
+  ]
+}

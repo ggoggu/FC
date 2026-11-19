@@ -99,6 +99,7 @@ bool UFCElementComponent::InternalAddSingleElement(EFCElement InElement)
 
 		// FIFO: Discard the oldest stack to maintain strictly capped total
 		StackContainer.Items.RemoveAt(0);
+		StackContainer.MarkArrayDirty();
 	}
 
 	FFCElementStackItem& NewItem = StackContainer.Items.AddDefaulted_GetRef();
@@ -111,6 +112,11 @@ bool UFCElementComponent::InternalAddSingleElement(EFCElement InElement)
 
 bool UFCElementComponent::AddElementStack(EFCElement InElement, int32 Count)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
 	if (Count <= 0 || InElement == EFCElement::None)
 	{
 		return false;
@@ -135,6 +141,11 @@ bool UFCElementComponent::AddElementStack(EFCElement InElement, int32 Count)
 
 void UFCElementComponent::AddElementStacks(const TArray<EFCElement>& InElements)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (InElements.Num() == 0)
 	{
 		return;
@@ -157,6 +168,11 @@ void UFCElementComponent::AddElementStacks(const TArray<EFCElement>& InElements)
 
 bool UFCElementComponent::ConsumeElementStack(EFCElement InElement, int32 InCount)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
 	if (InCount <= 0)
 	{
 		return true;
@@ -190,6 +206,11 @@ bool UFCElementComponent::ConsumeElementStack(EFCElement InElement, int32 InCoun
 
 bool UFCElementComponent::ConsumeElementStacks(const TArray<EFCElement>& RequiredElements)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return false;
+	}
+
 	if (RequiredElements.Num() == 0)
 	{
 		return true;
@@ -228,6 +249,11 @@ bool UFCElementComponent::ConsumeElementStacks(const TArray<EFCElement>& Require
 
 int32 UFCElementComponent::RemoveAllStacksOfElement(EFCElement InElement)
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return 0;
+	}
+
 	if (InElement == EFCElement::None)
 	{
 		return 0;
@@ -254,6 +280,11 @@ int32 UFCElementComponent::RemoveAllStacksOfElement(EFCElement InElement)
 
 void UFCElementComponent::ClearAllElementStacks()
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (StackContainer.Items.Num() > 0)
 	{
 		StackContainer.Items.Empty();

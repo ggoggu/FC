@@ -60,6 +60,11 @@ AFCSandWall::AFCSandWall()
 
 void AFCSandWall::SetWallDuration(float InDuration)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	WallDuration = FMath::Max(0.1f, InDuration);
 	SetLifeSpan(WallDuration);
 }
@@ -99,6 +104,11 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 		return false;
 	}
 
+	if (!Attacker->IsA<AFCProjectileBase>())
+	{
+		return false;
+	}
+
 	// Cannot absorb attacks from the caster or friendly projectiles
 	if (GetInstigator() && (Attacker == GetInstigator() || Attacker->GetInstigator() == GetInstigator()))
 	{
@@ -115,7 +125,7 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 
 void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& ImpactLocation)
 {
-	if (!CanAbsorbAttackFrom(AttackingActor))
+	if (!HasAuthority() || !CanAbsorbAttackFrom(AttackingActor))
 	{
 		return;
 	}
@@ -128,15 +138,12 @@ void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& Im
 
 	AbsorbedAttackCount++;
 
-	if (HasAuthority())
-	{
-		Multicast_PlayAbsorbCosmetics(ImpactLocation);
+	Multicast_PlayAbsorbCosmetics(ImpactLocation);
 
-		// Safely destroy hostile projectile to absorb the attack
-		if (IsValid(AttackingActor))
-		{
-			AttackingActor->Destroy();
-		}
+	// Safely destroy hostile projectile to absorb the attack
+	if (IsValid(AttackingActor))
+	{
+		AttackingActor->Destroy();
 	}
 }
 
@@ -165,6 +172,11 @@ void AFCSandWall::OnWallBeginOverlap(
 
 void AFCSandWall::Multicast_PlayAbsorbCosmetics_Implementation(const FVector_NetQuantize& ImpactLocation)
 {
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
 	if (AbsorbSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, AbsorbSound, ImpactLocation);

@@ -216,8 +216,8 @@ void AFCMobCharacter::Die(AActor* Killer)
 				}
 			}
 
-			// Standalone / Listen server single player fallback if Killer was null (e.g. dot/environment)
-			if (!KillerPlayer && GetWorld())
+			// Standalone / Listen server single-player-only fallback if Killer was null (e.g. dot/environment)
+			if (!KillerPlayer && GetWorld() && GetWorld()->GetNumPlayerControllers() == 1)
 			{
 				if (APlayerController* FirstPC = GetWorld()->GetFirstPlayerController())
 				{
