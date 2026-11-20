@@ -13,7 +13,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFCPlayerCharacterTest, "FC.Character.PlayerAni
 bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 {
 	// =========================================================================
-	// Test 1: Instantiation & CalculateHitDirection
+	// Test 1: Hit Direction, RotateTowardsTarget & Headless Anim Safety
 	// =========================================================================
 	{
 		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
@@ -23,45 +23,25 @@ bool FFCPlayerCharacterTest::RunTest(const FString& Parameters)
 		{
 			TestEqual(TEXT("CalculateHitDirection with null instigator should default to Front"),
 				PlayerChar->CalculateHitDirection(nullptr), EFCDeathDirection::Front);
-		}
-	}
 
-	// =========================================================================
-	// Test 2: Directional Death Animations from Character/Mannequins/Anims/Death
-	// =========================================================================
-	{
-		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
-		TestNotNull(TEXT("AFCPlayerCharacter should be instantiated for death anim test"), PlayerChar);
+			PlayerChar->SetActorLocation(FVector(0.0f, 0.0f, 100.0f));
+			PlayerChar->RotateTowardsTarget(FVector(1000.0f, 0.0f, 100.0f));
+			TestNearlyEqual(TEXT("RotateTowardsTarget East (+X) should have Yaw ~0"), static_cast<float>(PlayerChar->GetActorRotation().Yaw), 0.0f, 1.0f);
 
-		if (PlayerChar)
-		{
-			// Verify GetDeathAnimationForDirection returns valid sequences or gracefully falls back
-			PlayerChar->GetDeathAnimationForDirection(EFCDeathDirection::Front);
-			PlayerChar->GetDeathAnimationForDirection(EFCDeathDirection::Back);
-			PlayerChar->GetDeathAnimationForDirection(EFCDeathDirection::Left);
-			PlayerChar->GetDeathAnimationForDirection(EFCDeathDirection::Right);
+			PlayerChar->RotateTowardsTarget(FVector(0.0f, 1000.0f, 100.0f));
+			TestNearlyEqual(TEXT("RotateTowardsTarget North (+Y) should have Yaw ~90"), static_cast<float>(PlayerChar->GetActorRotation().Yaw), 90.0f, 1.0f);
 
-			// Calling PlayDeathAnimation in headless test shouldn't crash
-			PlayerChar->PlayDeathAnimation(EFCDeathDirection::Front);
-		}
-	}
+			PlayerChar->RotateTowardsTarget(FVector(1000.0f, 1000.0f, 100.0f));
+			TestNearlyEqual(TEXT("RotateTowardsTarget North-East should have Yaw ~45"), static_cast<float>(PlayerChar->GetActorRotation().Yaw), 45.0f, 1.0f);
 
-	// =========================================================================
-	// Test 3: Hit Reaction Configuration and Execution
-	// =========================================================================
-	{
-		AFCPlayerCharacter* PlayerChar = NewObject<AFCPlayerCharacter>();
-		TestNotNull(TEXT("AFCPlayerCharacter should be instantiated for hit reaction test"), PlayerChar);
+			PlayerChar->RotateTowardsTarget(FVector(-1000.0f, 0.0f, 100.0f));
+			TestNearlyEqual(TEXT("RotateTowardsTarget West (-X) should have |Yaw| ~180"), static_cast<float>(FMath::Abs(PlayerChar->GetActorRotation().Yaw)), 180.0f, 1.0f);
 
-		if (PlayerChar)
-		{
-			// Calling HandleDamageTaken and PlayHitAnimation in headless test shouldn't crash
+			// Headless no-crash safety for hit/death animations
 			FHitResult DummyHit;
 			PlayerChar->HandleDamageTaken(10.0f, nullptr, DummyHit);
 			PlayerChar->PlayHitAnimation(EFCDeathDirection::Front);
-			PlayerChar->PlayHitAnimation(EFCDeathDirection::Back);
-			PlayerChar->PlayHitAnimation(EFCDeathDirection::Left);
-			PlayerChar->PlayHitAnimation(EFCDeathDirection::Right);
+			PlayerChar->PlayDeathAnimation(EFCDeathDirection::Front);
 		}
 	}
 

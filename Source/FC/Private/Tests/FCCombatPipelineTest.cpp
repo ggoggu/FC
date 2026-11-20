@@ -11,9 +11,12 @@
 #include "Combat/FCCombatUtils.h"
 #include "Combat/Element/FCElementComponent.h"
 #include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "Combat/Projectile/Behaviors/FCProjectileBehaviors.h"
 #include "Combat/Wall/FCSandWall.h"
+#include "Components/SphereComponent.h"
 #include "Data/FCGameplayTags.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "AbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 
@@ -56,6 +59,44 @@ bool FFCCombatPipelineTest::RunTest(const FString& Parameters)
 		AttrSet->ApplyIncomingDamageValue(90.0f, nullptr, nullptr);
 		TestEqual(TEXT("Health must clamp to 0 on fatal damage"), AttrSet->GetHealth(), 0.0f);
 		TestTrue(TEXT("TargetMob must be dead after fatal damage"), TargetMob->IsDead());
+
+		// GAS Meta-Attribute PostGameplayEffectExecute (Shield absorption + meta reset) & PreAttributeChange clamping
+		AActor* GasActor = NewObject<AActor>();
+		UAbilitySystemComponent* GasASC = NewObject<UAbilitySystemComponent>(GasActor);
+		UFCAttributeSet* GasAttr = NewObject<UFCAttributeSet>(GasActor);
+		GasAttr->InitMaxHealth(100.0f);
+		GasAttr->InitHealth(100.0f);
+		GasAttr->InitMaxShield(100.0f);
+		GasAttr->InitShield(20.0f);
+
+		FGameplayEffectSpec DummyDamageSpec;
+		FGameplayModifierEvaluatedData Eval1(UFCAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, 15.0f);
+		FGameplayEffectModCallbackData ModData1(DummyDamageSpec, Eval1, *GasASC);
+		GasAttr->InitIncomingDamage(15.0f);
+		GasAttr->PostGameplayEffectExecute(ModData1);
+		TestEqual(TEXT("Shield absorbs 15 -> 5 remaining"), GasAttr->GetShield(), 5.0f);
+		TestEqual(TEXT("Health stays 100 while shielded"), GasAttr->GetHealth(), 100.0f);
+		TestEqual(TEXT("IncomingDamage meta-attribute resets to 0"), GasAttr->GetIncomingDamage(), 0.0f);
+
+		FGameplayModifierEvaluatedData Eval2(UFCAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, 10.0f);
+		FGameplayEffectModCallbackData ModData2(DummyDamageSpec, Eval2, *GasASC);
+		GasAttr->InitIncomingDamage(10.0f);
+		GasAttr->PostGameplayEffectExecute(ModData2);
+		TestEqual(TEXT("Shield depletes to 0 on overflow damage"), GasAttr->GetShield(), 0.0f);
+		TestEqual(TEXT("Residual 5 damage reduces Health to 95"), GasAttr->GetHealth(), 95.0f);
+		TestEqual(TEXT("IncomingDamage meta-attribute resets to 0 after overflow"), GasAttr->GetIncomingDamage(), 0.0f);
+
+		float NegShield = -10.0f;
+		GasAttr->PreAttributeChange(UFCAttributeSet::GetShieldAttribute(), NegShield);
+		TestEqual(TEXT("Shield clamps at 0"), NegShield, 0.0f);
+
+		float OverShield = 150.0f;
+		GasAttr->PreAttributeChange(UFCAttributeSet::GetShieldAttribute(), OverShield);
+		TestEqual(TEXT("Shield clamps at MaxShield"), OverShield, 100.0f);
+
+		float NegAttack = -5.0f;
+		GasAttr->PreAttributeChange(UFCAttributeSet::GetAttackPowerAttribute(), NegAttack);
+		TestEqual(TEXT("AttackPower clamps at 0"), NegAttack, 0.0f);
 	}
 
 	// =========================================================================
@@ -74,6 +115,8 @@ bool FFCCombatPipelineTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Wall team tag must be Combat.Target.Destructible"), Wall->GetCombatTeamTag() == FCGameplayTags::Combat_Target_Destructible);
 
 		TestFalse(TEXT("Player must not attack friendly player"), UFCCombatUtils::IsAttackableTarget(PlayerA, PlayerB));
+		TestFalse(TEXT("Player must not attack self"), UFCCombatUtils::IsAttackableTarget(PlayerA, PlayerA));
+		TestFalse(TEXT("Null target must not be attackable"), UFCCombatUtils::IsAttackableTarget(PlayerA, nullptr));
 		TestTrue(TEXT("Player must be able to attack alive Mob"), UFCCombatUtils::IsAttackableTarget(PlayerA, Mob));
 		TestTrue(TEXT("Player must be able to attack unopened Chest"), UFCCombatUtils::IsAttackableTarget(PlayerA, Chest));
 		TestTrue(TEXT("Player must be able to attack intact DestructibleWall"), UFCCombatUtils::IsAttackableTarget(PlayerA, Wall));
@@ -128,11 +171,34 @@ bool FFCCombatPipelineTest::RunTest(const FString& Parameters)
 	}
 
 	// =========================================================================
-	// Test 5: Composable TInstancedStruct Projectile Behaviors (Pierce & ElementTags)
+	// Test 5: Projectile DataAsset Injection & Composable TInstancedStruct Behaviors
 	// =========================================================================
 	{
+		UFCProjectileDataAsset* ProjData = NewObject<UFCProjectileDataAsset>();
+		ProjData->Damage = 2.5f;
+		ProjData->LaunchSpeed = 3200.0f;
+		ProjData->MaxSpeed = 3200.0f;
+		ProjData->GravityScale = 0.0f;
+		ProjData->LifeSpan = 4.0f;
+
 		AFCProjectileBase* Proj = NewObject<AFCProjectileBase>();
 		AFCMobCharacter* Mob = NewObject<AFCMobCharacter>();
+
+		if (Proj->GetCollisionComponent())
+		{
+			Proj->GetCollisionComponent()->InitSphereRadius(14.0f);
+		}
+		Proj->InitializeFromDataAsset(ProjData);
+		TestEqual(TEXT("Injected projectile damage must be 2.5"), Proj->GetDamage(), 2.5f);
+		TestTrue(TEXT("Projectile must replicate"), Proj->GetIsReplicated());
+		if (Proj->GetCollisionComponent())
+		{
+			TestEqual(TEXT("Native BP collision radius must be preserved"), Proj->GetCollisionComponent()->GetUnscaledSphereRadius(), 14.0f);
+		}
+		if (Proj->GetProjectileMovement())
+		{
+			TestEqual(TEXT("Injected projectile speed must be 3200.0"), Proj->GetProjectileMovement()->InitialSpeed, 3200.0f);
+		}
 
 		FFCProjectileBehavior_Pierce Pierce;
 		Pierce.MaxPierceCount = 2;
