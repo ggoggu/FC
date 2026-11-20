@@ -4,6 +4,7 @@
 #include "Components/ChildActorComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
 #include "Character/FCCharacterBase.h"
 #include "Character/Mob/FCMobCharacter.h"
 #include "Gameplay/Spawner/FCMobSpawnerBase.h"
@@ -63,7 +64,7 @@ AFCRoomBase::AFCRoomBase()
 void AFCRoomBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	if (bSyncDoorOffsetToTrigger && RoomBoundsTrigger)
+	if (bSyncDoorOffsetToTrigger && !bTriggerInsetApplied && RoomBoundsTrigger)
 	{
 		DoorOffset = RoomBoundsTrigger->GetUnscaledBoxExtent().X;
 	}
@@ -88,50 +89,72 @@ void AFCRoomBase::BeginPlay()
 void AFCRoomBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
+	CleanupSpawnedActors();
+}
 
-	if (HasAuthority())
+void AFCRoomBase::Destroyed()
+{
+	CleanupSpawnedActors();
+	Super::Destroyed();
+}
+
+void AFCRoomBase::CleanupSpawnedActors()
+{
+	if (!HasAuthority())
 	{
-		for (TObjectPtr<AFCMobSpawnerBase>& Spawner : ChildSpawners)
-		{
-			if (Spawner)
-			{
-				Spawner->OnAllMobsDefeated.RemoveAll(this);
-				Spawner->OnMobSpawned.RemoveAll(this);
-			}
-		}
-		ChildSpawners.Empty();
-		ActiveSpawnersRemaining.Empty();
-
-		if (!bManageDoorsExternally)
-		{
-			for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
-			{
-				if (IsValid(Door) && !Door->IsActorBeingDestroyed())
-				{
-					Door->Destroy();
-				}
-			}
-		}
-		ConnectedDoors.Empty();
-
-		for (TObjectPtr<AFCDestructibleWall>& SecretWall : SecretWalls)
-		{
-			if (IsValid(SecretWall) && !SecretWall->IsActorBeingDestroyed())
-			{
-				SecretWall->Destroy();
-			}
-		}
-		SecretWalls.Empty();
-
-		for (TObjectPtr<AFCWallBase>& Wall : SpawnedWalls)
-		{
-			if (Wall)
-			{
-				Wall->Destroy();
-			}
-		}
-		SpawnedWalls.Empty();
+		return;
 	}
+
+	for (TObjectPtr<AFCMobSpawnerBase>& Spawner : ChildSpawners)
+	{
+		if (Spawner)
+		{
+			Spawner->OnAllMobsDefeated.RemoveAll(this);
+			Spawner->OnMobSpawned.RemoveAll(this);
+		}
+	}
+	ChildSpawners.Empty();
+	ActiveSpawnersRemaining.Empty();
+
+	if (!bManageDoorsExternally)
+	{
+		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
+		{
+			if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+			{
+				Door->Destroy();
+			}
+		}
+	}
+	else
+	{
+		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
+		{
+			if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+			{
+				Door->SetDoorLockedBySource(this, false);
+			}
+		}
+	}
+	ConnectedDoors.Empty();
+
+	for (TObjectPtr<AFCDestructibleWall>& SecretWall : SecretWalls)
+	{
+		if (IsValid(SecretWall) && !SecretWall->IsActorBeingDestroyed())
+		{
+			SecretWall->Destroy();
+		}
+	}
+	SecretWalls.Empty();
+
+	for (TObjectPtr<AFCWallBase>& Wall : SpawnedWalls)
+	{
+		if (IsValid(Wall) && !Wall->IsActorBeingDestroyed())
+		{
+			Wall->Destroy();
+		}
+	}
+	SpawnedWalls.Empty();
 }
 
 void AFCRoomBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -167,11 +190,12 @@ void AFCRoomBase::InitializeRoom(const FFCRoomData& InRoomData)
 		SetRoomState(EFCRoomState::Cleared);
 	}
 
-	if (bSyncDoorOffsetToTrigger && !bManageDoorsExternally && RoomBoundsTrigger)
+	if (bSyncDoorOffsetToTrigger && !bManageDoorsExternally && !bTriggerInsetApplied && RoomBoundsTrigger)
 	{
 		DoorOffset = RoomBoundsTrigger->GetUnscaledBoxExtent().X;
 	}
 
+	ApplyTriggerBoundaryInset();
 	UpdateDoorSockets();
 
 	OnSetupDoorsAndWalls(ServerRoomData.DoorMask);
@@ -240,13 +264,9 @@ void AFCRoomBase::LockAllDoors(bool bLock)
 
 	for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
 	{
-		if (Door)
+		if (IsValid(Door) && !Door->IsActorBeingDestroyed())
 		{
-			Door->SetDoorLocked(bLock);
-			if (!bLock)
-			{
-				Door->SetDoorOpen(true);
-			}
+			Door->SetDoorLockedBySource(this, bLock);
 		}
 	}
 }
@@ -404,20 +424,23 @@ void AFCRoomBase::OnSetupDoorsAndWalls_Implementation(uint8 DoorMask)
 		return;
 	}
 
-	// Clean up previous doors
-	for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
+	// Clean up previous locally owned doors (never destroy shared doors owned externally)
+	if (!bManageDoorsExternally)
 	{
-		if (Door)
+		for (TObjectPtr<AFCDoorBase>& Door : ConnectedDoors)
 		{
-			Door->Destroy();
+			if (IsValid(Door) && !Door->IsActorBeingDestroyed())
+			{
+				Door->Destroy();
+			}
 		}
+		ConnectedDoors.Empty();
 	}
-	ConnectedDoors.Empty();
 
 	// Clean up previous walls
 	for (TObjectPtr<AFCWallBase>& Wall : SpawnedWalls)
 	{
-		if (Wall)
+		if (IsValid(Wall) && !Wall->IsActorBeingDestroyed())
 		{
 			Wall->Destroy();
 		}
@@ -427,22 +450,90 @@ void AFCRoomBase::OnSetupDoorsAndWalls_Implementation(uint8 DoorMask)
 	TSubclassOf<AFCDoorBase> DoorClassToSpawn = DefaultDoorClass ? DefaultDoorClass : TSubclassOf<AFCDoorBase>(AFCDoorBase::StaticClass());
 	TSubclassOf<AFCWallBase> WallClassToSpawn = DefaultWallClass ? DefaultWallClass : TSubclassOf<AFCWallBase>(AFCWallBase::StaticClass());
 
-	auto SpawnBoundary = [&](uint8 DirectionBit)
+	const FTransform ActorWorldTransform = GetActorTransform();
+	const float RoomSpan = DoorOffset * 2.0f;
+	const float EffectiveWallThickness = FMath::Max(10.0f, WallThickness);
+	const float EffectiveWallHeight = FMath::Max(100.0f, WallHeight);
+	const float WallCenterDist = DoorOffset + EffectiveWallThickness * 0.5f;
+	const float LintelBottomZ = FloorThickness + DoorOpeningHeight;
+	const float LintelHeight = FMath::Max(0.0f, EffectiveWallHeight - LintelBottomZ);
+
+	auto SpawnSizedWall = [&](const FVector& LocalPos, const FRotator& LocalRot, const FVector& Dimensions, float BaseZOffset)
 	{
-		const FTransform SocketTransform = GetDoorSocketTransform(DirectionBit);
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		if (Dimensions.X <= KINDA_SMALL_NUMBER || Dimensions.Y <= KINDA_SMALL_NUMBER || Dimensions.Z <= KINDA_SMALL_NUMBER)
+		{
+			return;
+		}
+
+		const FTransform WorldTransform = FTransform(LocalRot, LocalPos, FVector::OneVector) * ActorWorldTransform;
+		AFCWallBase* NewWall = World->SpawnActorDeferred<AFCWallBase>(
+			WallClassToSpawn,
+			WorldTransform,
+			this,
+			nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+		);
+		if (NewWall)
+		{
+			NewWall->SetWallDimensions(Dimensions, BaseZOffset);
+			UGameplayStatics::FinishSpawningActor(NewWall, WorldTransform);
+			SpawnedWalls.Add(NewWall);
+		}
+	};
+
+	// Spawn 4 non-overlapping corner pillars strictly filling [+-DoorOffset, +-(DoorOffset + WallThickness)]
+	const FVector PillarDimensions(EffectiveWallThickness, EffectiveWallThickness, EffectiveWallHeight);
+	SpawnSizedWall(FVector(WallCenterDist,  WallCenterDist, 0.0f), FRotator::ZeroRotator, PillarDimensions, 0.0f);
+	SpawnSizedWall(FVector(-WallCenterDist, WallCenterDist, 0.0f), FRotator::ZeroRotator, PillarDimensions, 0.0f);
+	SpawnSizedWall(FVector(WallCenterDist, -WallCenterDist, 0.0f), FRotator::ZeroRotator, PillarDimensions, 0.0f);
+	SpawnSizedWall(FVector(-WallCenterDist,-WallCenterDist, 0.0f), FRotator::ZeroRotator, PillarDimensions, 0.0f);
+
+	auto SpawnBoundary = [&](uint8 DirectionBit, const FVector& OutwardDir, const FVector& LateralDir, const FRotator& FaceRot)
+	{
+		const FVector WallCenter = OutwardDir * WallCenterDist;
 
 		if (DoorMask & DirectionBit)
 		{
+			TSubclassOf<AFCDoorBase> DirDoorClass = GetDirectionDoorClass(DirectionBit);
+			if (!DirDoorClass)
+			{
+				DirDoorClass = DoorClassToSpawn;
+			}
+
+			float OpeningWidth = 300.0f;
+			if (DirDoorClass)
+			{
+				if (const AFCDoorBase* DoorCDO = GetDefault<AFCDoorBase>(DirDoorClass))
+				{
+					OpeningWidth = DoorCDO->GetDoorWidth();
+				}
+			}
+			OpeningWidth = FMath::Clamp(OpeningWidth, 50.0f, FMath::Max(50.0f, RoomSpan - 100.0f));
+
+			// Left and right flanking wall segments cleanly framing the doorway opening without overlap
+			const float SideSegmentLength = (RoomSpan - OpeningWidth) * 0.5f;
+			if (SideSegmentLength > KINDA_SMALL_NUMBER)
+			{
+				const float SideCenterOffset = (OpeningWidth + SideSegmentLength) * 0.5f;
+				const FVector SideDimensions(EffectiveWallThickness, SideSegmentLength, EffectiveWallHeight);
+				SpawnSizedWall(WallCenter - LateralDir * SideCenterOffset, FaceRot, SideDimensions, 0.0f);
+				SpawnSizedWall(WallCenter + LateralDir * SideCenterOffset, FaceRot, SideDimensions, 0.0f);
+			}
+
+			// Header/lintel wall above the doorway opening
+			if (LintelHeight > KINDA_SMALL_NUMBER)
+			{
+				const FVector LintelDimensions(EffectiveWallThickness, OpeningWidth, LintelHeight);
+				SpawnSizedWall(WallCenter, FaceRot, LintelDimensions, LintelBottomZ);
+			}
+
 			if (!bManageDoorsExternally)
 			{
-				TSubclassOf<AFCDoorBase> DirDoorClass = GetDirectionDoorClass(DirectionBit);
-				if (!DirDoorClass)
-				{
-					DirDoorClass = DoorClassToSpawn;
-				}
+				const FTransform SocketTransform = GetDoorSocketTransform(DirectionBit);
+				FActorSpawnParameters SpawnParams;
+				SpawnParams.Owner = this;
+				SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
 				AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DirDoorClass, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
 				if (NewDoor)
 				{
@@ -452,23 +543,20 @@ void AFCRoomBase::OnSetupDoorsAndWalls_Implementation(uint8 DoorMask)
 		}
 		else if (GetRoomData().SecretDoorMask & DirectionBit)
 		{
-			// Secret passage - boundary is handled by AFCDestructibleWall
+			// Secret passage - boundary is handled by AFCDestructibleWall spanning [-DoorOffset, +DoorOffset]
 		}
 		else
 		{
-			// Non-door direction: spawn standard solid wall
-			AFCWallBase* NewWall = World->SpawnActor<AFCWallBase>(WallClassToSpawn, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
-			if (NewWall)
-			{
-				SpawnedWalls.Add(NewWall);
-			}
+			// Non-door direction: spawn standard solid wall strictly between corner pillars
+			const FVector WallDimensions(EffectiveWallThickness, RoomSpan, EffectiveWallHeight);
+			SpawnSizedWall(WallCenter, FaceRot, WallDimensions, 0.0f);
 		}
 	};
 
-	SpawnBoundary(EFCDungeonDoor::North);
-	SpawnBoundary(EFCDungeonDoor::South);
-	SpawnBoundary(EFCDungeonDoor::East);
-	SpawnBoundary(EFCDungeonDoor::West);
+	SpawnBoundary(EFCDungeonDoor::North, FVector(0.0f,  1.0f, 0.0f), FVector(-1.0f,  0.0f, 0.0f), FRotator(0.0f,  90.0f, 0.0f));
+	SpawnBoundary(EFCDungeonDoor::South, FVector(0.0f, -1.0f, 0.0f), FVector( 1.0f,  0.0f, 0.0f), FRotator(0.0f, -90.0f, 0.0f));
+	SpawnBoundary(EFCDungeonDoor::East,  FVector( 1.0f, 0.0f, 0.0f), FVector( 0.0f,  1.0f, 0.0f), FRotator(0.0f,   0.0f, 0.0f));
+	SpawnBoundary(EFCDungeonDoor::West,  FVector(-1.0f, 0.0f, 0.0f), FVector( 0.0f, -1.0f, 0.0f), FRotator(0.0f, 180.0f, 0.0f));
 }
 
 void AFCRoomBase::OnRoomBoundsBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
@@ -588,6 +676,11 @@ void AFCRoomBase::OnMonsterDestroyed(AActor* DestroyedActor)
 		return;
 	}
 
+	ActiveMonsters.RemoveAll([DestroyedActor](const TWeakObjectPtr<APawn>& Monster)
+	{
+		return !Monster.IsValid() || Monster.Get() == DestroyedActor;
+	});
+
 	CheckWaveCleared();
 }
 
@@ -607,12 +700,6 @@ void AFCRoomBase::CheckWaveCleared()
 	{
 		SetRoomState(EFCRoomState::Cleared);
 	}
-}
-
-void AFCRoomBase::OnSecretWallDestroyed(AFCDestructibleWall* Wall)
-{
-	// Discovered by explosion
-	SetDiscovered(true);
 }
 
 void AFCRoomBase::OnRep_RoomData()
@@ -638,13 +725,40 @@ void AFCRoomBase::OnRep_IsVisited()
 
 void AFCRoomBase::SetDoorOffset(float NewDoorOffset)
 {
-	if (!HasAuthority())
+	if (!HasAuthority() || !FMath::IsFinite(NewDoorOffset))
 	{
 		return;
 	}
 
 	DoorOffset = FMath::Max(100.0f, NewDoorOffset);
+	if (bTriggerInsetApplied)
+	{
+		ApplyTriggerBoundaryInset();
+	}
 	UpdateDoorSockets();
+}
+
+void AFCRoomBase::SetWallThickness(float NewWallThickness)
+{
+	if (!HasAuthority() || !FMath::IsFinite(NewWallThickness))
+	{
+		return;
+	}
+
+	WallThickness = FMath::Max(10.0f, NewWallThickness);
+}
+
+void AFCRoomBase::ApplyTriggerBoundaryInset()
+{
+	if (!RoomBoundsTrigger)
+	{
+		return;
+	}
+
+	const FVector CurrentExtent = RoomBoundsTrigger->GetUnscaledBoxExtent();
+	const float InsetExtent = FMath::Max(100.0f, DoorOffset - FMath::Max(0.0f, TriggerBoundaryInset));
+	RoomBoundsTrigger->SetBoxExtent(FVector(InsetExtent, InsetExtent, CurrentExtent.Z));
+	bTriggerInsetApplied = true;
 }
 
 void AFCRoomBase::UpdateDoorSockets()

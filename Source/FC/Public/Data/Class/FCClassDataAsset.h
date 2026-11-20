@@ -7,9 +7,8 @@
 
 /**
  * UFCClassDataAsset
- * 
- * Primary Data Asset holding immutable definitions of a playable character class,
- * including base stats, affinity elements, starting deck, and tags.
+ *
+ * Primary Data Asset wrapper holding immutable class definitions keyed by FGameplayTag (Class.*).
  */
 UCLASS(BlueprintType)
 class FC_API UFCClassDataAsset : public UPrimaryDataAsset
@@ -19,14 +18,11 @@ class FC_API UFCClassDataAsset : public UPrimaryDataAsset
 public:
 	UFCClassDataAsset();
 
-	/** Authoritative class configuration and stats */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Class")
 	FFCCharacterClassData ClassData;
 
-	/** Primary Asset ID override for Asset Manager discovery */
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 
-	/** Helper to get Class Type */
 	UFUNCTION(BlueprintPure, Category = "Class|Data")
-	EFCCharacterClass GetClassType() const { return ClassData.ClassType; }
+	FGameplayTag GetClassTag() const { return ClassData.ClassTag; }
 };

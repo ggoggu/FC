@@ -2,7 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Combat/Projectile/Behaviors/FCProjectileBehaviorBase.h"
 #include "FCProjectileDataAsset.generated.h"
 
 class AFCProjectileBase;
@@ -50,17 +53,29 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
 	TSubclassOf<AActor> SpawnActorOnImpact;
 
-	/** Elemental affinities carried by this projectile to apply on hit */
+	/** Elemental GameplayTags carried by this projectile (Element.*) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
-	TArray<EFCElement> ProjectileElements;
+	TArray<FGameplayTag> ProjectileElementTags;
 
-	/** Character class associated with this projectile */
+	/** Attack classification tags (e.g. Combat.Attack.Projectile, Combat.Attack.Unblockable) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
-	EFCCharacterClass SourceClass = EFCCharacterClass::Mage;
+	FGameplayTagContainer AttackTags;
 
-	/** Source card functional type */
+	/** Composable TInstancedStruct projectile behaviors (Explosion, Pierce, SpawnActor, ApplyElementTags) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat|Behaviors", meta = (ExcludeBaseStruct))
+	TArray<TInstancedStruct<FFCProjectileBehaviorBase>> Behaviors;
+
+	/** AttackPower scaling multiplier evaluated by UFCExecCalc_Damage (1.0 = 100% AttackPower) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat", meta = (ClampMin = "0.0"))
+	float AttackPowerScale = 1.0f;
+
+	/** Character class GameplayTag associated with this projectile (Class.*) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
-	EFCCardType SourceCardType = EFCCardType::Attack;
+	FGameplayTag SourceClassTag;
+
+	/** Source card functional type GameplayTag (Card.Type.*) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Combat")
+	FGameplayTag SourceCardTypeTag;
 
 	// --- Flight & Movement Parameters ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.0"))

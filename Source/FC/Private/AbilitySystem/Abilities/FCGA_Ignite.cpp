@@ -1,13 +1,15 @@
 #include "AbilitySystem/Abilities/FCGA_Ignite.h"
 #include "Combat/FCCombatUtils.h"
 #include "Combat/Element/FCElementComponent.h"
-#include "Character/Mob/FCMobCharacter.h"
+#include "Card/FCCardExecutionContext.h"
 #include "Data/Card/FCCardDataAsset.h"
+#include "Data/FCGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "AbilitySystem/Effects/FCGE_Damage.h"
+#include "Character/FCCharacterBase.h"
 #include "Engine/World.h"
-#include "Engine/EngineTypes.h"
 #include "Engine/OverlapResult.h"
 #include "CollisionQueryParams.h"
 #include "Kismet/GameplayStatics.h"
@@ -18,9 +20,11 @@ UFCGA_Ignite::UFCGA_Ignite()
 {
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
+	TargetElementTag = FCGameplayTags::Element_Fire;
 	DamagePerStack = 10.0f;
 	Radius = 1000.0f;
 	bConsumeFireStacks = false;
+	DamageEffectClass = UFCGE_Damage::StaticClass();
 }
 
 void UFCGA_Ignite::ActivateAbility(
@@ -42,7 +46,6 @@ void UFCGA_Ignite::ActivateAbility(
 		return;
 	}
 
-	// 1. Resolve Effective Damage Per Stack from CardDataAsset if available
 	float EffectiveDamagePerStack = DamagePerStack;
 	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
@@ -58,7 +61,6 @@ void UFCGA_Ignite::ActivateAbility(
 		}
 	}
 
-	// 2. Play Caster Presentation (Audio & VFX)
 	const FVector CasterLocation = Avatar->GetActorLocation();
 	const FRotator CasterRotation = Avatar->GetActorRotation();
 
@@ -71,12 +73,30 @@ void UFCGA_Ignite::ActivateAbility(
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, CastVFX, CasterLocation, CasterRotation);
 	}
 
-	// 3. Server-Authoritative Target Search & Damage Application
 	if (HasAuthority(&ActivationInfo))
 	{
-		TArray<AActor*> NearbyEnemies = FindNearbyEnemies(Avatar, Radius);
+		TArray<AActor*> Targets;
+		if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+		{
+			if (const FGameplayAbilityTargetData* RawData = TriggerEventData->TargetData.Get(0))
+			{
+				for (const TWeakObjectPtr<AActor>& TargetPtr : RawData->GetActors())
+				{
+					if (AActor* Target = TargetPtr.Get())
+					{
+						Targets.AddUnique(Target);
+					}
+				}
+			}
+		}
 
-		for (AActor* Enemy : NearbyEnemies)
+		if (Targets.Num() == 0)
+		{
+			Targets = FindNearbyEnemies(Avatar, Radius);
+		}
+
+		const FGameplayTag EffectiveTag = TargetElementTag.IsValid() ? TargetElementTag : FCGameplayTags::Element_Fire;
+		for (AActor* Enemy : Targets)
 		{
 			if (Enemy)
 			{
@@ -85,8 +105,8 @@ void UFCGA_Ignite::ActivateAbility(
 					Enemy,
 					EffectiveDamagePerStack,
 					bConsumeFireStacks,
-					DamageEffectClass
-				);
+					DamageEffectClass,
+					EffectiveTag);
 
 				if (AppliedDamage > 0.0f && TargetImpactVFX)
 				{
@@ -104,29 +124,29 @@ float UFCGA_Ignite::ApplyIgniteToTarget(
 	AActor* TargetActor,
 	float InDamagePerStack,
 	bool bInConsumeStacks,
-	TSubclassOf<UGameplayEffect> InDamageEffectClass)
+	TSubclassOf<UGameplayEffect> InDamageEffectClass,
+	FGameplayTag InElementTag)
 {
 	if (!TargetActor || InDamagePerStack <= 0.0f)
 	{
 		return 0.0f;
 	}
 
-	// Server-authoritative check (allow test execution if no world authority check fails)
 	if (TargetActor->GetWorld() && !TargetActor->HasAuthority())
 	{
 		return 0.0f;
 	}
 
-	// Query fire stacks on target
-	const int32 FireStacks = UFCCombatUtils::GetTargetElementCount(TargetActor, EFCElement::Fire);
-	if (FireStacks <= 0)
+	const FGameplayTag EffectiveTag = InElementTag.IsValid() ? InElementTag : FCGameplayTags::Element_Fire;
+	UFCElementComponent* ElementComp = UFCCombatUtils::GetElementComponent(TargetActor);
+	const int32 StackCount = ElementComp ? ElementComp->GetElementTagCount(EffectiveTag) : 0;
+	if (StackCount <= 0)
 	{
 		return 0.0f;
 	}
 
-	const float DamageToDeal = FireStacks * InDamagePerStack;
+	const float DamageToDeal = static_cast<float>(StackCount) * InDamagePerStack;
 
-	// Resolve target Ability System Component & AttributeSet
 	UAbilitySystemComponent* TargetASC = nullptr;
 	if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(TargetActor))
 	{
@@ -143,65 +163,30 @@ float UFCGA_Ignite::ApplyIgniteToTarget(
 		AttributeSet = const_cast<UFCAttributeSet*>(TargetASC->GetSet<UFCAttributeSet>());
 	}
 
-	if (TargetASC && InDamageEffectClass)
+	// Route through unified GAS IncomingDamage pipeline when ASC is live, or unified AttributeSet helper in headless tests
+	if (TargetASC && TargetASC->GetWorld() && InDamageEffectClass)
 	{
 		FGameplayEffectContextHandle Context = TargetASC->MakeEffectContext();
 		Context.AddInstigator(InstigatorActor, InstigatorActor);
 
 		if (FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(InDamageEffectClass, 1.0f, Context); SpecHandle.IsValid())
 		{
-			SpecHandle.Data->SetSetByCallerMagnitude(FName("Data.Damage"), -DamageToDeal);
+			SpecHandle.Data->SetSetByCallerMagnitude(FCGameplayTags::Data_Damage, DamageToDeal);
 			TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 		}
 	}
 	else if (AttributeSet)
 	{
-		const float CurrentShield = AttributeSet->GetShield();
-		const float CurrentHealth = AttributeSet->GetHealth();
-		float RemainingDamage = DamageToDeal;
-
-		const bool bUseAscSetters = TargetASC && TargetASC->GetOwner() && TargetASC->GetWorld();
-
-		if (CurrentShield > 0.0f)
-		{
-			const float Absorbed = FMath::Min(CurrentShield, RemainingDamage);
-			const float NewShield = CurrentShield - Absorbed;
-			if (bUseAscSetters)
-			{
-				AttributeSet->SetShield(NewShield);
-			}
-			else
-			{
-				AttributeSet->InitShield(NewShield);
-			}
-			RemainingDamage -= Absorbed;
-		}
-
-		if (RemainingDamage > 0.0f)
-		{
-			const float NewHealth = FMath::Clamp(CurrentHealth - RemainingDamage, 0.0f, AttributeSet->GetMaxHealth());
-			if (bUseAscSetters)
-			{
-				AttributeSet->SetHealth(NewHealth);
-			}
-			else
-			{
-				AttributeSet->InitHealth(NewHealth);
-			}
-		}
+		AttributeSet->ApplyIncomingDamageValue(DamageToDeal, InstigatorActor, InstigatorActor);
 	}
 	else
 	{
 		UGameplayStatics::ApplyDamage(TargetActor, DamageToDeal, InstigatorActor ? InstigatorActor->GetInstigatorController() : nullptr, InstigatorActor, nullptr);
 	}
 
-	// Optional: Consume/Remove Fire stacks if requested
-	if (bInConsumeStacks)
+	if (bInConsumeStacks && ElementComp)
 	{
-		if (UFCElementComponent* ElementComp = UFCCombatUtils::GetElementComponent(TargetActor))
-		{
-			ElementComp->RemoveAllStacksOfElement(EFCElement::Fire);
-		}
+		ElementComp->RemoveAllStacksOfElementTag(EffectiveTag);
 	}
 
 	return DamageToDeal;
@@ -223,7 +208,7 @@ TArray<AActor*> UFCGA_Ignite::FindNearbyEnemies(AActor* CenterActor, float InRad
 
 	const FVector Origin = CenterActor->GetActorLocation();
 	TArray<FOverlapResult> OverlapResults;
-	FCollisionShape SphereShape = FCollisionShape::MakeSphere(InRadius);
+	const FCollisionShape SphereShape = FCollisionShape::MakeSphere(InRadius);
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(CenterActor);
 
@@ -233,8 +218,7 @@ TArray<AActor*> UFCGA_Ignite::FindNearbyEnemies(AActor* CenterActor, float InRad
 		FQuat::Identity,
 		ECC_Pawn,
 		SphereShape,
-		QueryParams
-	);
+		QueryParams);
 
 	for (const FOverlapResult& Overlap : OverlapResults)
 	{
@@ -257,15 +241,6 @@ bool UFCGA_Ignite::IsEnemyActor(AActor* SourceActor, AActor* CandidateActor)
 		return false;
 	}
 
-	if (const AFCCharacterBase* CandidateChar = Cast<AFCCharacterBase>(CandidateActor))
-	{
-		if (CandidateChar->IsDead())
-		{
-			return false;
-		}
-	}
-
-	// 1. If candidate is explicitly marked as Player, ignore (no friendly fire)
 	if (CandidateActor->ActorHasTag(FName("Player")))
 	{
 		return false;
@@ -279,17 +254,11 @@ bool UFCGA_Ignite::IsEnemyActor(AActor* SourceActor, AActor* CandidateActor)
 		}
 	}
 
-	// 2. Candidate has Mob / Enemy tag or is AFCMobCharacter
-	if (CandidateActor->ActorHasTag(FName("Enemy")) || CandidateActor->ActorHasTag(FName("Mob")) || CandidateActor->IsA<AFCMobCharacter>())
+	// Single SSOT targetability via polymorphic IFCCombatTargetInterface
+	if (UFCCombatUtils::IsAttackableTarget(SourceActor, CandidateActor))
 	{
 		return true;
 	}
 
-	// 3. Any actor possessing an element component or attribute set that is not player controlled
-	if (UFCCombatUtils::GetElementComponent(CandidateActor) != nullptr)
-	{
-		return true;
-	}
-
-	return false;
+	return UFCCombatUtils::GetElementComponent(CandidateActor) != nullptr;
 }

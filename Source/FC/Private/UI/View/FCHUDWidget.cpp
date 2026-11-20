@@ -1,9 +1,12 @@
 #include "UI/View/FCHUDWidget.h"
 #include "UI/View/FCHandWidget.h"
 #include "UI/View/FCStatusToggleContainerWidget.h"
+#include "UI/View/FCCardPileWidget.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
+#include "UI/ViewModel/FCCardPileViewModel.h"
+#include "Components/Button.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Card/FCCardDeckComponent.h"
@@ -13,6 +16,9 @@ UFCHUDWidget::UFCHUDWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, HandWidget(nullptr)
 	, StatusToggleContainerWidget(nullptr)
+	, CardPileWidget(nullptr)
+	, Btn_DrawPile(nullptr)
+	, Btn_DiscardPile(nullptr)
 	, HUDViewModel(nullptr)
 {
 }
@@ -20,6 +26,18 @@ UFCHUDWidget::UFCHUDWidget(const FObjectInitializer& ObjectInitializer)
 void UFCHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	if (Btn_DrawPile)
+	{
+		Btn_DrawPile->OnClicked.RemoveDynamic(this, &UFCHUDWidget::HandleDrawPileButtonClicked);
+		Btn_DrawPile->OnClicked.AddDynamic(this, &UFCHUDWidget::HandleDrawPileButtonClicked);
+	}
+
+	if (Btn_DiscardPile)
+	{
+		Btn_DiscardPile->OnClicked.RemoveDynamic(this, &UFCHUDWidget::HandleDiscardPileButtonClicked);
+		Btn_DiscardPile->OnClicked.AddDynamic(this, &UFCHUDWidget::HandleDiscardPileButtonClicked);
+	}
 
 	if (HUDViewModel)
 	{
@@ -44,6 +62,11 @@ void UFCHUDWidget::NativeConstruct()
 		if (StatusToggleContainerWidget)
 		{
 			StatusToggleContainerWidget->SetContainerViewModel(HUDViewModel->GetOrCreateStatusContainerViewModel());
+		}
+
+		if (CardPileWidget)
+		{
+			CardPileWidget->SetPileViewModel(HUDViewModel->GetOrCreatePileViewerViewModel());
 		}
 	}
 }
@@ -76,9 +99,45 @@ void UFCHUDWidget::SetHUDViewModel(UFCHUDViewModel* InViewModel)
 		{
 			StatusToggleContainerWidget->SetContainerViewModel(HUDViewModel->GetOrCreateStatusContainerViewModel());
 		}
+
+		if (CardPileWidget)
+		{
+			CardPileWidget->SetPileViewModel(HUDViewModel->GetOrCreatePileViewerViewModel());
+		}
 	}
 
 	OnHUDViewModelAssigned(InViewModel);
+}
+
+bool UFCHUDWidget::IsPileViewerOpen() const
+{
+	return HUDViewModel && HUDViewModel->IsPileViewerOpen();
+}
+
+void UFCHUDWidget::HandleDrawPileButtonClicked()
+{
+	if (HandWidget && HandWidget->HasHeldCard())
+	{
+		HandWidget->ClearHeldCard();
+	}
+
+	if (HUDViewModel)
+	{
+		HUDViewModel->TogglePileViewer(EFCCardZone::DrawPile);
+	}
+}
+
+void UFCHUDWidget::HandleDiscardPileButtonClicked()
+{
+	if (HandWidget && HandWidget->HasHeldCard())
+	{
+		HandWidget->ClearHeldCard();
+	}
+
+	if (HUDViewModel)
+	{
+		HUDViewModel->TogglePileViewer(EFCCardZone::DiscardPile);
+	}
 }
 
 FReply UFCHUDWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)

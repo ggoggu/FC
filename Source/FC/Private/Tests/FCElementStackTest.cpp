@@ -3,9 +3,11 @@
 #include "Combat/Element/FCElementComponent.h"
 #include "Combat/FCCombatUtils.h"
 #include "Character/Mob/FCMobCharacter.h"
-#include "Combat/Projectile/FCFireballProjectile.h"
-#include "AbilitySystem/Abilities/FCGA_Fireball.h"
+#include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Projectile/FCProjectileDataAsset.h"
+#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "UI/ViewModel/FCElementOverheadViewModel.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/GameInstance.h"
@@ -19,7 +21,8 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 	// =========================================================================
 	// Test 1: Basic Element Stack Accumulation & Query Integrity
 	// =========================================================================
-	UFCElementComponent* ElementComp = NewObject<UFCElementComponent>();
+	AActor* ElementOwnerActor = NewObject<AActor>();
+	UFCElementComponent* ElementComp = NewObject<UFCElementComponent>(ElementOwnerActor);
 	TestNotNull(TEXT("UFCElementComponent should be instantiable"), ElementComp);
 
 	if (ElementComp)
@@ -27,18 +30,17 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Initial total element stacks must be 0"), ElementComp->GetTotalElementStacks(), 0);
 		TestEqual(TEXT("Default MaxTotalStacks must be 7"), ElementComp->GetMaxTotalStacks(), 7);
 
-		// Fireball hit simulation: Add Fire and Earth stacks (+1 each)
-		ElementComp->AddElementStacks({ EFCElement::Fire, EFCElement::Earth });
+		ElementComp->AddElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() });
 
 		TestEqual(TEXT("Total stacks after Fireball should be 2"), ElementComp->GetTotalElementStacks(), 2);
-		TestEqual(TEXT("Fire stack count should be 1"), ElementComp->GetElementCount(EFCElement::Fire), 1);
-		TestEqual(TEXT("Earth stack count should be 1"), ElementComp->GetElementCount(EFCElement::Earth), 1);
-		TestEqual(TEXT("Water stack count should be 0"), ElementComp->GetElementCount(EFCElement::Water), 0);
+		TestEqual(TEXT("Fire stack count should be 1"), ElementComp->GetElementCount(FCGameplayTags::Element_Fire), 1);
+		TestEqual(TEXT("Earth stack count should be 1"), ElementComp->GetElementCount(FCGameplayTags::Element_Earth), 1);
+		TestEqual(TEXT("Water stack count should be 0"), ElementComp->GetElementCount(FCGameplayTags::Element_Water), 0);
 
-		TestTrue(TEXT("HasElementStack for Fire (1) must be true"), ElementComp->HasElementStack(EFCElement::Fire, 1));
-		TestFalse(TEXT("HasElementStack for Fire (2) must be false"), ElementComp->HasElementStack(EFCElement::Fire, 2));
-		TestTrue(TEXT("HasElementStacks for {Fire, Earth} must be true"), ElementComp->HasElementStacks({ EFCElement::Fire, EFCElement::Earth }));
-		TestFalse(TEXT("HasElementStacks for {Fire, Water} must be false"), ElementComp->HasElementStacks({ EFCElement::Fire, EFCElement::Water }));
+		TestTrue(TEXT("HasElementStack for Fire (1) must be true"), ElementComp->HasElementStack(FCGameplayTags::Element_Fire, 1));
+		TestFalse(TEXT("HasElementStack for Fire (2) must be false"), ElementComp->HasElementStack(FCGameplayTags::Element_Fire, 2));
+		TestTrue(TEXT("HasElementStacks for {Fire, Earth} must be true"), ElementComp->HasElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() }));
+		TestFalse(TEXT("HasElementStacks for {Fire, Water} must be false"), ElementComp->HasElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Water.GetTag() }));
 	}
 
 	// =========================================================================
@@ -46,22 +48,24 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 	// =========================================================================
 	if (ElementComp)
 	{
-		// Currently has [Fire, Earth] (2 stacks). Add 5 more to reach 7.
-		ElementComp->AddElementStacks({ EFCElement::Water, EFCElement::Wind, EFCElement::Lightning, EFCElement::Holy, EFCElement::Dark });
+		ElementComp->AddElementStacks({
+			FCGameplayTags::Element_Water.GetTag(),
+			FCGameplayTags::Element_Wind.GetTag(),
+			FCGameplayTags::Element_Lightning.GetTag(),
+			FCGameplayTags::Element_Holy.GetTag(),
+			FCGameplayTags::Element_Dark.GetTag()
+		});
 		TestEqual(TEXT("Total stacks at cap must be 7"), ElementComp->GetTotalElementStacks(), 7);
 
-		// Stacks order: [Fire, Earth, Water, Wind, Lightning, Holy, Dark]
-		const TArray<EFCElement>& CurrentStacks = ElementComp->GetAllElementStacks();
-		TestEqual(TEXT("Oldest stack is Fire"), (uint8)CurrentStacks[0], (uint8)EFCElement::Fire);
+		const TArray<FGameplayTag> CurrentStacks = ElementComp->GetAllElementStacks();
+		TestTrue(TEXT("Oldest stack is Fire"), CurrentStacks.Num() == 7 && CurrentStacks[0] == FCGameplayTags::Element_Fire);
 
-		// In FIFO mode (default): Adding a new Fire stack should evict the oldest stack (Fire) and add Fire at the end
-		ElementComp->AddElementStack(EFCElement::Fire, 1);
+		ElementComp->AddElementStack(FCGameplayTags::Element_Fire, 1);
 		TestEqual(TEXT("Total stacks must remain capped at 7"), ElementComp->GetTotalElementStacks(), 7);
 
-		// The new order should start with Earth (oldest) and end with Fire (newest)
-		const TArray<EFCElement>& FifoStacks = ElementComp->GetAllElementStacks();
-		TestEqual(TEXT("After FIFO overflow, first element must be Earth"), (uint8)FifoStacks[0], (uint8)EFCElement::Earth);
-		TestEqual(TEXT("After FIFO overflow, last element must be Fire"), (uint8)FifoStacks.Last(), (uint8)EFCElement::Fire);
+		const TArray<FGameplayTag> FifoStacks = ElementComp->GetAllElementStacks();
+		TestTrue(TEXT("After FIFO overflow, first element must be Earth"), FifoStacks.Num() == 7 && FifoStacks[0] == FCGameplayTags::Element_Earth);
+		TestTrue(TEXT("After FIFO overflow, last element must be Fire"), FifoStacks.Num() == 7 && FifoStacks.Last() == FCGameplayTags::Element_Fire);
 	}
 
 	// =========================================================================
@@ -72,8 +76,7 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 		ElementComp->SetOverflowPolicy(EFCElementOverflowPolicy::Clamp);
 		TestEqual(TEXT("Overflow policy should be Clamp"), (uint8)ElementComp->GetOverflowPolicy(), (uint8)EFCElementOverflowPolicy::Clamp);
 
-		// With 7 stacks present, trying to add in Clamp mode should fail
-		const bool bAdded = ElementComp->AddElementStack(EFCElement::Water, 1);
+		const bool bAdded = ElementComp->AddElementStack(FCGameplayTags::Element_Water, 1);
 		TestFalse(TEXT("Adding beyond 7 in Clamp mode must return false"), bAdded);
 		TestEqual(TEXT("Total stacks must stay 7"), ElementComp->GetTotalElementStacks(), 7);
 	}
@@ -83,37 +86,36 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 	// =========================================================================
 	if (ElementComp)
 	{
-		// Reset to known state: [Fire, Fire, Earth]
 		ElementComp->ClearAllElementStacks();
 		TestEqual(TEXT("Stacks after clear must be 0"), ElementComp->GetTotalElementStacks(), 0);
 
-		ElementComp->AddElementStacks({ EFCElement::Fire, EFCElement::Fire, EFCElement::Earth });
+		ElementComp->AddElementStacks({
+			FCGameplayTags::Element_Fire.GetTag(),
+			FCGameplayTags::Element_Fire.GetTag(),
+			FCGameplayTags::Element_Earth.GetTag()
+		});
 		TestEqual(TEXT("Total stacks should be 3"), ElementComp->GetTotalElementStacks(), 3);
-		TestEqual(TEXT("Fire count should be 2"), ElementComp->GetElementCount(EFCElement::Fire), 2);
-		TestEqual(TEXT("Earth count should be 1"), ElementComp->GetElementCount(EFCElement::Earth), 1);
+		TestEqual(TEXT("Fire count should be 2"), ElementComp->GetElementCount(FCGameplayTags::Element_Fire), 2);
+		TestEqual(TEXT("Earth count should be 1"), ElementComp->GetElementCount(FCGameplayTags::Element_Earth), 1);
 
-		// 1. Failure Case: Attempt to consume elements where one is missing (Atomic preservation)
-		// Needs {Fire, Water} - Water is missing!
-		const bool bFailedConsume = ElementComp->ConsumeElementStacks({ EFCElement::Fire, EFCElement::Water });
+		const bool bFailedConsume = ElementComp->ConsumeElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Water.GetTag() });
 		TestFalse(TEXT("Consume missing element must fail"), bFailedConsume);
-		TestEqual(TEXT("Atomic check: Fire count must still be 2"), ElementComp->GetElementCount(EFCElement::Fire), 2);
+		TestEqual(TEXT("Atomic check: Fire count must still be 2"), ElementComp->GetElementCount(FCGameplayTags::Element_Fire), 2);
 		TestEqual(TEXT("Atomic check: Total stacks must remain 3"), ElementComp->GetTotalElementStacks(), 3);
 
-		// 2. Success Case: Consume 1 Fire and 1 Earth
-		const bool bSuccessConsume = ElementComp->ConsumeElementStacks({ EFCElement::Fire, EFCElement::Earth });
+		const bool bSuccessConsume = ElementComp->ConsumeElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() });
 		TestTrue(TEXT("Consume existing {Fire, Earth} must succeed"), bSuccessConsume);
-		TestEqual(TEXT("Remaining Fire count should be 1"), ElementComp->GetElementCount(EFCElement::Fire), 1);
-		TestEqual(TEXT("Remaining Earth count should be 0"), ElementComp->GetElementCount(EFCElement::Earth), 0);
+		TestEqual(TEXT("Remaining Fire count should be 1"), ElementComp->GetElementCount(FCGameplayTags::Element_Fire), 1);
+		TestEqual(TEXT("Remaining Earth count should be 0"), ElementComp->GetElementCount(FCGameplayTags::Element_Earth), 0);
 		TestEqual(TEXT("Total stacks should now be 1"), ElementComp->GetTotalElementStacks(), 1);
 
-		// 3. Single consume
-		const bool bSingleConsume = ElementComp->ConsumeElementStack(EFCElement::Fire, 1);
+		const bool bSingleConsume = ElementComp->ConsumeElementStack(FCGameplayTags::Element_Fire, 1);
 		TestTrue(TEXT("Single consume Fire should succeed"), bSingleConsume);
 		TestEqual(TEXT("Total stacks should now be 0"), ElementComp->GetTotalElementStacks(), 0);
 	}
 
 	// =========================================================================
-	// Test 5: Character & CombatUtils Integration
+	// Test 5: Character & CombatUtils Polymorphic Trait Integration
 	// =========================================================================
 	AFCMobCharacter* MobCharacter = NewObject<AFCMobCharacter>();
 	TestNotNull(TEXT("AFCMobCharacter should be instantiable"), MobCharacter);
@@ -125,52 +127,55 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 
 		if (MobElementComp)
 		{
-			// 1. Hit with Mage Attack Card (Fire + Earth)
 			UFCCombatUtils::ApplyAttackCardHitTraits(
 				nullptr,
 				MobCharacter,
-				EFCCharacterClass::Mage,
-				EFCCardType::Attack,
-				{ EFCElement::Fire, EFCElement::Earth }
+				FCGameplayTags::Class_Mage,
+				FCGameplayTags::Card_Type_Attack,
+				{ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() }
 			);
 
-			TestEqual(TEXT("Mob must receive Fire stack"), MobElementComp->GetElementCount(EFCElement::Fire), 1);
-			TestEqual(TEXT("Mob must receive Earth stack"), MobElementComp->GetElementCount(EFCElement::Earth), 1);
+			TestEqual(TEXT("Mob must receive Fire stack"), MobElementComp->GetElementCount(FCGameplayTags::Element_Fire), 1);
+			TestEqual(TEXT("Mob must receive Earth stack"), MobElementComp->GetElementCount(FCGameplayTags::Element_Earth), 1);
 			TestEqual(TEXT("Mob total element stacks should be 2"), MobElementComp->GetTotalElementStacks(), 2);
 
-			// 2. Hit with Mage Skill Card -> Should NOT add element stacks
 			UFCCombatUtils::ApplyAttackCardHitTraits(
 				nullptr,
 				MobCharacter,
-				EFCCharacterClass::Mage,
-				EFCCardType::Skill,
-				{ EFCElement::Fire }
+				FCGameplayTags::Class_Mage,
+				FCGameplayTags::Card_Type_Skill,
+				{ FCGameplayTags::Element_Fire.GetTag() }
 			);
-			TestEqual(TEXT("Skill card must not add element stacks"), MobElementComp->GetElementCount(EFCElement::Fire), 1);
+			TestEqual(TEXT("Skill card must not add element stacks"), MobElementComp->GetElementCount(FCGameplayTags::Element_Fire), 1);
 
-			// 3. Hit with Neutral Attack Card -> Should NOT add element stacks
 			UFCCombatUtils::ApplyAttackCardHitTraits(
 				nullptr,
 				MobCharacter,
-				EFCCharacterClass::Neutral,
-				EFCCardType::Attack,
-				{ EFCElement::Fire }
+				FCGameplayTags::Class_Neutral,
+				FCGameplayTags::Card_Type_Attack,
+				{ FCGameplayTags::Element_Fire.GetTag() }
 			);
-			TestEqual(TEXT("Neutral card must not add element stacks"), MobElementComp->GetElementCount(EFCElement::Fire), 1);
+			TestEqual(TEXT("Neutral card must not add element stacks"), MobElementComp->GetElementCount(FCGameplayTags::Element_Fire), 1);
 		}
 	}
 
 	// =========================================================================
-	// Test 6: Projectile & Ability Element Configurations
+	// Test 6: Projectile & Ability Element Configurations (Data-Driven)
 	// =========================================================================
-	AFCFireballProjectile* FireballProj = GetMutableDefault<AFCFireballProjectile>();
-	TestNotNull(TEXT("AFCFireballProjectile CDO should exist"), FireballProj);
+	UFCProjectileDataAsset* FireballProjData = NewObject<UFCProjectileDataAsset>();
+	FireballProjData->SourceClassTag = FCGameplayTags::Class_Mage;
+	FireballProjData->SourceCardTypeTag = FCGameplayTags::Card_Type_Attack;
+	FireballProjData->ProjectileElementTags = { FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() };
+
+	AFCProjectileBase* FireballProj = NewObject<AFCProjectileBase>();
+	TestNotNull(TEXT("AFCProjectileBase should be instantiable"), FireballProj);
 	if (FireballProj)
 	{
-		TestEqual(TEXT("Fireball projectile source class must be Mage"), (uint8)FireballProj->GetSourceClass(), (uint8)EFCCharacterClass::Mage);
-		TestEqual(TEXT("Fireball projectile source card type must be Attack"), (uint8)FireballProj->GetSourceCardType(), (uint8)EFCCardType::Attack);
-		TestTrue(TEXT("Fireball projectile elements must contain Fire"), FireballProj->GetProjectileElements().Contains(EFCElement::Fire));
-		TestTrue(TEXT("Fireball projectile elements must contain Earth"), FireballProj->GetProjectileElements().Contains(EFCElement::Earth));
+		FireballProj->InitializeFromDataAsset(FireballProjData);
+		TestTrue(TEXT("Fireball projectile source class must be Mage"), FireballProj->GetSourceClassTag() == FCGameplayTags::Class_Mage);
+		TestTrue(TEXT("Fireball projectile source card type must be Attack"), FireballProj->GetSourceCardTypeTag() == FCGameplayTags::Card_Type_Attack);
+		TestTrue(TEXT("Fireball projectile elements must contain Fire"), FireballProj->GetProjectileElementTags().Contains(FCGameplayTags::Element_Fire.GetTag()));
+		TestTrue(TEXT("Fireball projectile elements must contain Earth"), FireballProj->GetProjectileElementTags().Contains(FCGameplayTags::Element_Earth.GetTag()));
 	}
 
 	// =========================================================================
@@ -182,37 +187,33 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 
 	if (TargetA && TargetB && TargetC)
 	{
-		// TargetA has Fire
-		TargetA->GetElementComponent()->AddElementStack(EFCElement::Fire, 1);
-		// TargetB has Earth
-		TargetB->GetElementComponent()->AddElementStack(EFCElement::Earth, 1);
-		// TargetC has Fire + Earth
-		TargetC->GetElementComponent()->AddElementStacks({ EFCElement::Fire, EFCElement::Earth });
+		TargetA->GetElementComponent()->AddElementStack(FCGameplayTags::Element_Fire, 1);
+		TargetB->GetElementComponent()->AddElementStack(FCGameplayTags::Element_Earth, 1);
+		TargetC->GetElementComponent()->AddElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() });
 
 		TArray<AActor*> AllTargets = { TargetA, TargetB, TargetC };
-		TArray<AActor*> AffectedTargets = UFCCombatUtils::FilterAndConsumeElements(AllTargets, { EFCElement::Fire });
+		TArray<AActor*> AffectedTargets = UFCCombatUtils::FilterAndConsumeElements(AllTargets, { FCGameplayTags::Element_Fire.GetTag() });
 
-		// TargetA and TargetC should be affected and their Fire stack consumed
 		TestEqual(TEXT("Affected targets count should be 2"), AffectedTargets.Num(), 2);
 		TestTrue(TEXT("TargetA must be in affected list"), AffectedTargets.Contains(TargetA));
 		TestFalse(TEXT("TargetB must NOT be in affected list"), AffectedTargets.Contains(TargetB));
 		TestTrue(TEXT("TargetC must be in affected list"), AffectedTargets.Contains(TargetC));
 
-		TestEqual(TEXT("TargetA Fire stack should be consumed"), TargetA->GetElementComponent()->GetElementCount(EFCElement::Fire), 0);
-		TestEqual(TEXT("TargetB Earth stack should remain untouched"), TargetB->GetElementComponent()->GetElementCount(EFCElement::Earth), 1);
-		TestEqual(TEXT("TargetC Fire stack should be consumed"), TargetC->GetElementComponent()->GetElementCount(EFCElement::Fire), 0);
-		TestEqual(TEXT("TargetC Earth stack should be preserved"), TargetC->GetElementComponent()->GetElementCount(EFCElement::Earth), 1);
+		TestEqual(TEXT("TargetA Fire stack should be consumed"), TargetA->GetElementComponent()->GetElementCount(FCGameplayTags::Element_Fire), 0);
+		TestEqual(TEXT("TargetB Earth stack should remain untouched"), TargetB->GetElementComponent()->GetElementCount(FCGameplayTags::Element_Earth), 1);
+		TestEqual(TEXT("TargetC Fire stack should be consumed"), TargetC->GetElementComponent()->GetElementCount(FCGameplayTags::Element_Fire), 0);
+		TestEqual(TEXT("TargetC Earth stack should be preserved"), TargetC->GetElementComponent()->GetElementCount(FCGameplayTags::Element_Earth), 1);
 	}
 
 	// =========================================================================
-	// Test 8: Card Gameplay Data ConsumedElements Specification
+	// Test 8: Card Gameplay Data ConsumedElementTags Specification
 	// =========================================================================
 	FFCCardGameplayData CardData;
 	CardData.CardId = FName("Card_FireConsumeSpell");
-	CardData.ConsumedElements = { EFCElement::Fire, EFCElement::Fire };
+	CardData.ConsumedElementTags = { FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Fire.GetTag() };
 
-	TestTrue(TEXT("Card with ConsumedElements must RequireElementConsumption"), CardData.RequiresElementConsumption());
-	TestEqual(TEXT("Card should require 2 consumed elements"), CardData.ConsumedElements.Num(), 2);
+	TestTrue(TEXT("Card with ConsumedElementTags must RequireElementConsumption"), CardData.RequiresElementConsumption());
+	TestEqual(TEXT("Card should require 2 consumed elements"), CardData.ConsumedElementTags.Num(), 2);
 
 	// =========================================================================
 	// Test 9: Element Overhead ViewModel & Mob Overhead Widget Component
@@ -239,22 +240,20 @@ bool FFCElementStackTest::RunTest(const FString& Parameters)
 			TestFalse(TEXT("OverheadVM bHasAnyStack should be false"), OverheadVM->bHasAnyStack);
 			TestEqual(TEXT("OverheadVM Visibility should be Collapsed"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Collapsed);
 
-			// Add Fire and Water stacks to mob
-			MobElemComp->AddElementStacks({ EFCElement::Fire, EFCElement::Water });
+			MobElemComp->AddElementStacks({ FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Water.GetTag() });
 			TestEqual(TEXT("OverheadVM TotalStacks should be 2"), OverheadVM->TotalStacks, 2);
 			TestTrue(TEXT("OverheadVM bHasAnyStack should be true"), OverheadVM->bHasAnyStack);
 			TestEqual(TEXT("OverheadVM Visibility should be Visible"), OverheadVM->GetVisibilityBasedOnStacks(), ESlateVisibility::Visible);
-			TestEqual(TEXT("OverheadVM FireCount should be 1"), OverheadVM->FireCount, 1);
-			TestEqual(TEXT("OverheadVM WaterCount should be 1"), OverheadVM->WaterCount, 1);
+			TestEqual(TEXT("OverheadVM Fire count should be 1"), OverheadVM->GetElementCount(FCGameplayTags::Element_Fire), 1);
+			TestEqual(TEXT("OverheadVM Water count should be 1"), OverheadVM->GetElementCount(FCGameplayTags::Element_Water), 1);
 			TestEqual(TEXT("OverheadVM CurrentStacks size should be 2"), OverheadVM->CurrentStacks.Num(), 2);
 
 			if (OverheadVM->CurrentStacks.Num() == 2)
 			{
-				TestEqual(TEXT("Stack 0 element is Fire"), OverheadVM->CurrentStacks[0], EFCElement::Fire);
-				TestEqual(TEXT("Stack 1 element is Water"), OverheadVM->CurrentStacks[1], EFCElement::Water);
+				TestTrue(TEXT("Stack 0 element is Fire"), OverheadVM->CurrentStacks[0] == FCGameplayTags::Element_Fire);
+				TestTrue(TEXT("Stack 1 element is Water"), OverheadVM->CurrentStacks[1] == FCGameplayTags::Element_Water);
 			}
 
-			// Clear stacks
 			MobElemComp->ClearAllElementStacks();
 			TestEqual(TEXT("OverheadVM TotalStacks after clear should be 0"), OverheadVM->TotalStacks, 0);
 			TestFalse(TEXT("OverheadVM bHasAnyStack after clear should be false"), OverheadVM->bHasAnyStack);

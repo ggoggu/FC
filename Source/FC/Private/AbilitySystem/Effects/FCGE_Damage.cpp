@@ -1,17 +1,11 @@
 #include "AbilitySystem/Effects/FCGE_Damage.h"
-#include "AbilitySystem/FCAttributeSet.h"
+#include "AbilitySystem/ExecCalc/FCExecCalc_Damage.h"
 
 UFCGE_Damage::UFCGE_Damage()
 {
 	DurationPolicy = EGameplayEffectDurationType::Instant;
 
-	FGameplayModifierInfo ModInfo;
-	ModInfo.Attribute = UFCAttributeSet::GetHealthAttribute();
-	ModInfo.ModifierOp = EGameplayModOp::Additive;
-
-	FSetByCallerFloat SetByCaller;
-	SetByCaller.DataName = FName("Data.Damage");
-	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
-
-	Modifiers.Add(ModInfo);
+	FGameplayEffectExecutionDefinition ExecDef;
+	ExecDef.CalculationClass = UFCExecCalc_Damage::StaticClass();
+	Executions.Add(ExecDef);
 }

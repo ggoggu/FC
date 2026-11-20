@@ -1,5 +1,6 @@
 ﻿#include "AbilitySystem/Effects/FCGE_MagicShield.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Data/FCGameplayTags.h"
 
 UFCGE_MagicShield::UFCGE_MagicShield()
 {
@@ -9,9 +10,9 @@ UFCGE_MagicShield::UFCGE_MagicShield()
 	ModInfo.Attribute = UFCAttributeSet::GetShieldAttribute();
 	ModInfo.ModifierOp = EGameplayModOp::Additive;
 
-	FScalableFloat ScalableMagnitude;
-	ScalableMagnitude.SetValue(20.0f);
-	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(ScalableMagnitude);
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataTag = FCGameplayTags::Data_Magnitude;
+	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 
 	Modifiers.Add(ModInfo);
 }

@@ -1,12 +1,13 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
-#include "AbilitySystem/Abilities/FCGA_Fireball.h"
+#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "AbilitySystem/Effects/FCGE_AttackBuff.h"
 #include "AbilitySystem/FCAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "Engine/GameInstance.h"
 
@@ -37,7 +38,7 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 			NewBuff->GameplayData.TargetType = EFCCardTargetType::Self;
 			NewBuff->GameplayData.BaseValue = 1.0f;
 			NewBuff->GameplayData.CardEffectClasses.Add(UFCGE_AttackBuff::StaticClass());
-			NewBuff->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+			NewBuff->GameplayData.RequiredClassTag = FCGameplayTags::Class_Neutral;
 			NewBuff->DisplayData.CardName = FText::FromString(TEXT("공격력 강화"));
 			NewBuff->DisplayData.CardDescription = FText::FromString(TEXT("1분 동안 자신의 공격력을 1 증가시킵니다."));
 			NewBuff->DisplayData.Rarity = EFCCardRarity::Common;
@@ -50,9 +51,9 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 			NewFireball->GameplayData.CardType = EFCCardType::Attack;
 			NewFireball->GameplayData.TargetType = EFCCardTargetType::DirectionalAoE;
 			NewFireball->GameplayData.BaseValue = 1.0f;
-			NewFireball->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
-			NewFireball->GameplayData.RequiredClass = EFCCharacterClass::Mage;
-			NewFireball->GameplayData.Elements = { EFCElement::Fire, EFCElement::Earth };
+			NewFireball->GameplayData.CardAbilityClass = UFCGA_SpawnProjectile::StaticClass();
+			NewFireball->GameplayData.RequiredClassTag = FCGameplayTags::Class_Mage;
+			NewFireball->GameplayData.ElementTags = { FCGameplayTags::Element_Fire.GetTag(), FCGameplayTags::Element_Earth.GetTag() };
 			NewFireball->DisplayData.CardName = FText::FromString(TEXT("파이어 볼"));
 			NewFireball->DisplayData.CardDescription = FText::FromString(TEXT("전방으로 화염구를 직선 발사하여 적중한 대상에게 1의 피해를 입힙니다."));
 			NewFireball->DisplayData.Rarity = EFCCardRarity::Common;
@@ -77,10 +78,10 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 				TestFalse(TEXT("AttackBuff SpawnsProjectile() must return false"), AttackBuffAsset->GameplayData.SpawnsProjectile());
 
 				// Neutral Class & Trait Check
-				TestEqual(TEXT("AttackBuff RequiredClass must be Neutral"), (uint8)AttackBuffAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Neutral);
+				TestTrue(TEXT("AttackBuff RequiredClassTag must be Neutral"), AttackBuffAsset->GameplayData.RequiredClassTag == FCGameplayTags::Class_Neutral);
 				TestTrue(TEXT("AttackBuff must be Neutral"), AttackBuffAsset->GameplayData.IsNeutral());
 				TestFalse(TEXT("Neutral card cannot hold elements"), AttackBuffAsset->GameplayData.CanHaveElements());
-				TestTrue(TEXT("AttackBuff must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(AttackBuffAsset->GameplayData.RequiredClass, EFCCharacterClass::Mage));
+				TestTrue(TEXT("AttackBuff must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(AttackBuffAsset->GameplayData.RequiredClassTag, FCGameplayTags::Class_Mage));
 			}
 
 			// Verify Attack Card: Card_Fireball (Direct projectile damage)
@@ -91,7 +92,7 @@ bool FFCSkillCardTest::RunTest(const FString& Parameters)
 			{
 				TestEqual(TEXT("Fireball Card Type must be Attack"), (uint8)FireballAsset->GameplayData.CardType, (uint8)EFCCardType::Attack);
 				TestEqual(TEXT("Fireball Target Type must be DirectionalAoE"), (uint8)FireballAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::DirectionalAoE);
-				TestTrue(TEXT("Fireball Ability should be UFCGA_Fireball"), FireballAsset->GameplayData.GetCardAbilityClass() == UFCGA_Fireball::StaticClass());
+				TestTrue(TEXT("Fireball Ability should be UFCGA_SpawnProjectile"), FireballAsset->GameplayData.GetCardAbilityClass() == UFCGA_SpawnProjectile::StaticClass());
 			}
 		}
 	}

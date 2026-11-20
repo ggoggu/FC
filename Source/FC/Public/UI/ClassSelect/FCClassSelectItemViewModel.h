@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "GameplayTagContainer.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCClassSelectItemViewModel.generated.h"
 
@@ -11,7 +12,7 @@ class UTexture2D;
  * UFCClassSelectItemViewModel
  * 
  * Presentation ViewModel for an individual class item/card in the Class Selection UI.
- * Tracks class identity, visual assets, combat stats, lock/selectable status, and selection state.
+ * Driven purely by FFCCharacterClassData from DT_ClassCatalog (zero hardcoded class switches/locks).
  */
 UCLASS(BlueprintType)
 class FC_API UFCClassSelectItemViewModel : public UMVVMViewModelBase
@@ -21,7 +22,7 @@ class FC_API UFCClassSelectItemViewModel : public UMVVMViewModelBase
 public:
 	// --- Identity & Info ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|ClassSelect|Item")
-	EFCCharacterClass ClassType = EFCCharacterClass::Neutral;
+	FGameplayTag ClassTag;
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|ClassSelect|Item")
 	FText ClassDisplayName;
@@ -56,11 +57,11 @@ public:
 	FText LockReasonText;
 
 public:
-	/** Populates ViewModel fields from class definition data and enforces selection restrictions */
-	void InitializeFromClassData(const FFCCharacterClassData& InData);
+	/** Populates ViewModel fields from DataTable class definition */
+	void InitializeFromClassData(const FFCCharacterClassData& InData, const UObject* WorldContextObject = nullptr);
 
 	// Setters using UE_MVVM_SET_PROPERTY_VALUE
-	void SetClassType(EFCCharacterClass InType) { UE_MVVM_SET_PROPERTY_VALUE(ClassType, InType); }
+	void SetClassTag(FGameplayTag InTag) { UE_MVVM_SET_PROPERTY_VALUE(ClassTag, InTag); }
 	void SetClassDisplayName(const FText& InName) { UE_MVVM_SET_PROPERTY_VALUE(ClassDisplayName, InName); }
 	void SetClassDescription(const FText& InDesc) { UE_MVVM_SET_PROPERTY_VALUE(ClassDescription, InDesc); }
 	void SetClassIcon(TSoftObjectPtr<UTexture2D> InIcon) { UE_MVVM_SET_PROPERTY_VALUE(ClassIcon, InIcon); }
@@ -74,5 +75,5 @@ public:
 
 	bool GetIsSelectable() const { return bIsSelectable; }
 	bool GetIsSelected() const { return bIsSelected; }
-	EFCCharacterClass GetClassType() const { return ClassType; }
+	FGameplayTag GetClassTag() const { return ClassTag; }
 };

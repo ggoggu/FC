@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "GameplayTagContainer.h"
 #include "UI/ClassSelect/FCClassSelectTypes.h"
 #include "FCClassSelectViewModel.generated.h"
 
@@ -13,8 +14,7 @@ class APlayerController;
  * UFCClassSelectViewModel
  * 
  * Master Presentation ViewModel for the Class Selection Screen.
- * Manages the collection of selectable class cards, active selection state,
- * confirmation validation, and handoff to player state/persistence.
+ * Populates class cards dynamically from UFCClassSubsystem / DT_ClassCatalog (zero class switches).
  */
 UCLASS(BlueprintType)
 class FC_API UFCClassSelectViewModel : public UMVVMViewModelBase
@@ -30,7 +30,7 @@ public:
 	TObjectPtr<UFCClassSelectItemViewModel> SelectedItem;
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|ClassSelect")
-	EFCCharacterClass SelectedClassType = EFCCharacterClass::Neutral;
+	FGameplayTag SelectedClassTag;
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|ClassSelect")
 	bool bHasSelectedClass = false;
@@ -43,13 +43,13 @@ public:
 	FOnClassConfirmedSignature OnClassConfirmed;
 
 public:
-	/** Initializes class items catalog from Subsystem (Mage, Warrior, Rogue, Priest) */
+	/** Initializes class items catalog dynamically from UFCClassSubsystem */
 	UFUNCTION(BlueprintCallable, Category = "FC|ClassSelect")
 	void InitializeClasses(UFCClassSubsystem* Subsystem);
 
-	/** Attempts to select a character class. Returns true if successfully selected. */
+	/** Attempts to select a character class GameplayTag. Returns true if successfully selected. */
 	UFUNCTION(BlueprintCallable, Category = "FC|ClassSelect")
-	bool SelectClass(EFCCharacterClass InClass);
+	bool SelectClass(FGameplayTag InClassTag);
 
 	/** Computes whether the player can confirm and proceed with the current selection */
 	UFUNCTION(BlueprintPure, FieldNotify, Category = "FC|ClassSelect")
@@ -61,6 +61,6 @@ public:
 
 	// Direct setters
 	void SetSelectedItem(UFCClassSelectItemViewModel* InItem);
-	void SetSelectedClassType(EFCCharacterClass InType);
+	void SetSelectedClassTag(FGameplayTag InTag);
 	void SetHasSelectedClass(bool bInHas);
 };

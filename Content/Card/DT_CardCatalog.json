@@ -3,20 +3,38 @@
     "Name": "Card_Fireball",
     "GameplayData": {
       "CardId": "Card_Fireball",
+      "LegacyAliases": [],
       "BaseManaCost": 2,
       "CardType": "Attack",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Attack"
+      },
       "TargetType": "DirectionalAoE",
-      "bSpawnsProjectile": true,
-      "CardAbilityClass": "/Script/FC.FCGA_Fireball",
-      "BaseValue": 1.0,
-      "RequiredClass": "Mage",
-      "Elements": [
-        "Fire",
-        "Earth"
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_Directional()",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_ActivateAbility(AbilityClass=\"/Script/FC.FCGA_SpawnProjectile\",bPassCardAsSourceObject=True)"
       ],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "bSpawnsProjectile": true,
+      "ProjectileDataAsset": "/Game/Combat/Data/DA_Projectile_Fireball.DA_Projectile_Fireball",
+      "CardAbilityClass": "/Script/FC.FCGA_SpawnProjectile",
+      "CardEffectClasses": [],
+      "CardTags": {
+        "GameplayTags": []
+      },
+      "BaseValue": 1.0,
+      "RequiredClassTag": {
+        "TagName": "Class.Mage"
+      },
+      "ElementTags": [
+        {
+          "TagName": "Element.Fire"
+        },
+        {
+          "TagName": "Element.Earth"
+        }
+      ],
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "파이어 볼",
@@ -29,19 +47,35 @@
     "Name": "Card_FireArrow",
     "GameplayData": {
       "CardId": "Card_FireArrow",
+      "LegacyAliases": [],
       "BaseManaCost": 1,
       "CardType": "Attack",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Attack"
+      },
       "TargetType": "SingleTarget",
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_SingleTarget()",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_SpawnProjectile(ProjectileDataAsset=\"/Game/Combat/Data/DA_Projectile_FireArrow.DA_Projectile_FireArrow\",OverrideAbilityClass=\"/Script/FC.FCGA_SpawnProjectile\")"
+      ],
       "bSpawnsProjectile": true,
       "ProjectileDataAsset": "/Game/Combat/Data/DA_Projectile_FireArrow.DA_Projectile_FireArrow",
+      "CardAbilityClass": "/Script/FC.FCGA_SpawnProjectile",
+      "CardEffectClasses": [],
+      "CardTags": {
+        "GameplayTags": []
+      },
       "BaseValue": 10.0,
-      "RequiredClass": "Mage",
-      "Elements": [
-        "Fire"
+      "RequiredClassTag": {
+        "TagName": "Class.Mage"
+      },
+      "ElementTags": [
+        {
+          "TagName": "Element.Fire"
+        }
       ],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "파이어 애로우",
@@ -54,19 +88,31 @@
     "Name": "Card_AttackBuff",
     "GameplayData": {
       "CardId": "Card_AttackBuff",
+      "LegacyAliases": [],
       "BaseManaCost": 1,
       "CardType": "Skill",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Skill"
+      },
       "TargetType": "Self",
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_Self()",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_ApplyGameplayEffect(GameplayEffectClass=\"/Script/FC.FCGE_AttackBuff\",bApplyToSelf=True,MagnitudeOverride=5.0,SetByCallerTag=(TagName=\"Data.Magnitude\"))"
+      ],
       "bSpawnsProjectile": false,
       "CardEffectClasses": [
         "/Script/FC.FCGE_AttackBuff"
       ],
+      "CardTags": {
+        "GameplayTags": []
+      },
       "BaseValue": 5.0,
-      "RequiredClass": "Neutral",
-      "Elements": [],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "RequiredClassTag": {
+        "TagName": "Class.Neutral"
+      },
+      "ElementTags": [],
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "공격력 강화",
@@ -79,19 +125,31 @@
     "Name": "Card_MagicShield",
     "GameplayData": {
       "CardId": "Card_MagicShield",
+      "LegacyAliases": [],
       "BaseManaCost": 1,
       "CardType": "Skill",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Skill"
+      },
       "TargetType": "Self",
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_Self()",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_ApplyGameplayEffect(GameplayEffectClass=\"/Script/FC.FCGE_MagicShield\",bApplyToSelf=True,MagnitudeOverride=20.0,SetByCallerTag=(TagName=\"Data.Magnitude\"))"
+      ],
       "bSpawnsProjectile": false,
       "CardEffectClasses": [
         "/Script/FC.FCGE_MagicShield"
       ],
+      "CardTags": {
+        "GameplayTags": []
+      },
       "BaseValue": 20.0,
-      "RequiredClass": "Mage",
-      "Elements": [],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "RequiredClassTag": {
+        "TagName": "Class.Mage"
+      },
+      "ElementTags": [],
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "매직실드",
@@ -104,19 +162,36 @@
     "Name": "Card_Ignite",
     "GameplayData": {
       "CardId": "Card_Ignite",
+      "LegacyAliases": [
+        "Card_점화"
+      ],
       "BaseManaCost": 1,
       "CardType": "Attack",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Attack"
+      },
       "TargetType": "AllEnemies",
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_AllEnemiesInRadius(Radius=1000.0)",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_ActivateAbility(AbilityClass=\"/Script/FC.FCGA_Ignite\",bPassCardAsSourceObject=True)"
+      ],
       "bSpawnsProjectile": false,
       "CardAbilityClass": "/Script/FC.FCGA_Ignite",
+      "CardEffectClasses": [],
+      "CardTags": {
+        "GameplayTags": []
+      },
       "BaseValue": 10.0,
-      "RequiredClass": "Mage",
-      "Elements": [
-        "None"
+      "RequiredClassTag": {
+        "TagName": "Class.Mage"
+      },
+      "ElementTags": [
+        {
+          "TagName": "Element.None"
+        }
       ],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "점화",
@@ -129,19 +204,36 @@
     "Name": "Card_SandWall",
     "GameplayData": {
       "CardId": "Card_SandWall",
+      "LegacyAliases": [
+        "Card_센드워"
+      ],
       "BaseManaCost": 1,
       "CardType": "Skill",
+      "CardTypeTag": {
+        "TagName": "Card.Type.Skill"
+      },
       "TargetType": "DirectionalAoE",
+      "TargetPolicy": "/Script/FC.FCCardTargetPolicy_Directional()",
+      "Conditions": [],
+      "PlayEffects": [
+        "/Script/FC.FCCardEffect_ActivateAbility(AbilityClass=\"/Script/FC.FCGA_SandWall\",bPassCardAsSourceObject=True)"
+      ],
       "bSpawnsProjectile": false,
       "CardAbilityClass": "/Script/FC.FCGA_SandWall",
+      "CardEffectClasses": [],
+      "CardTags": {
+        "GameplayTags": []
+      },
       "BaseValue": 1.0,
-      "RequiredClass": "Mage",
-      "Elements": [
-        "Earth"
+      "RequiredClassTag": {
+        "TagName": "Class.Mage"
+      },
+      "ElementTags": [
+        {
+          "TagName": "Element.Earth"
+        }
       ],
-      "ConsumedElements": [],
-      "bExhaustsOnPlay": false,
-      "Keywords": []
+      "ConsumedElementTags": []
     },
     "DisplayData": {
       "CardName": "센드 워",

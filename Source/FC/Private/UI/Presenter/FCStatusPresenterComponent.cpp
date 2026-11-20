@@ -83,6 +83,38 @@ void UFCStatusPresenterComponent::BindToAbilitySystem(UAbilitySystemComponent* I
 			HandleAttackPowerChanged(NewVal, OldVal);
 		});
 	}
+
+	// 3. Auto-subscribe to every StatusTag registered in CatalogDataTable (DT_StatusToggleCatalog)
+	if (CatalogDataTable && CatalogDataTable->GetRowStruct() && CatalogDataTable->GetRowStruct()->IsChildOf(FFCStatusToggleDefinitionRow::StaticStruct()))
+	{
+		for (const auto& Pair : CatalogDataTable->GetRowMap())
+		{
+			const FFCStatusToggleDefinitionRow* Row = reinterpret_cast<const FFCStatusToggleDefinitionRow*>(Pair.Value);
+			if (!Row || !Row->StatusTag.IsValid() || BoundTagHandles.Contains(Row->StatusTag))
+			{
+				continue;
+			}
+
+			const FGameplayTag StatusTag = Row->StatusTag;
+			TWeakObjectPtr<UFCStatusPresenterComponent> WeakPresenter(this);
+			FDelegateHandle TagHandle = InASC->RegisterGameplayTagEvent(StatusTag, EGameplayTagEventType::AnyCountChange).AddWeakLambda(
+				this,
+				[WeakPresenter](const FGameplayTag ChangedTag, int32 NewCount)
+				{
+					if (UFCStatusPresenterComponent* Presenter = WeakPresenter.Get())
+					{
+						Presenter->HandleGameplayTagChanged(ChangedTag, NewCount);
+					}
+				});
+			BoundTagHandles.Add(StatusTag, TagHandle);
+
+			const int32 InitialCount = InASC->GetTagCount(StatusTag);
+			if (InitialCount > 0)
+			{
+				HandleGameplayTagChanged(StatusTag, InitialCount);
+			}
+		}
+	}
 }
 
 void UFCStatusPresenterComponent::UnbindFromAbilitySystem()

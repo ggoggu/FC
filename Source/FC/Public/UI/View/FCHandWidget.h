@@ -211,7 +211,6 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
-	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	/** Optional UMG Panel variable (named CardContainer in Blueprint) that will automatically host the card widgets */
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "Hand|View")

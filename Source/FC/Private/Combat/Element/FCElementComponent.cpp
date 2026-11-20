@@ -1,4 +1,10 @@
 #include "Combat/Element/FCElementComponent.h"
+#include "Card/FCCardExecutionContext.h"
+#include "Card/Effects/FCCardEffectBase.h"
+#include "Data/Class/FCClassSubsystem.h"
+#include "Data/FCGameplayTags.h"
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
 #include "Net/UnrealNetwork.h"
 
 UFCElementComponent::UFCElementComponent()
@@ -15,20 +21,25 @@ void UFCElementComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME_CONDITION(UFCElementComponent, StackContainer, COND_None);
 }
 
-TArray<EFCElement> UFCElementComponent::GetAllElementStacks() const
+bool UFCElementComponent::IsValidActiveElementTag(FGameplayTag Tag)
 {
-	TArray<EFCElement> Result;
+	return Tag.IsValid() && Tag != FCGameplayTags::Element_None && Tag != FCGameplayTags::Element_Root;
+}
+
+TArray<FGameplayTag> UFCElementComponent::GetAllElementStacks() const
+{
+	TArray<FGameplayTag> Result;
 	Result.Reserve(StackContainer.Items.Num());
 	for (const FFCElementStackItem& Item : StackContainer.Items)
 	{
-		Result.Add(Item.Element);
+		Result.Add(Item.ElementTag);
 	}
 	return Result;
 }
 
-int32 UFCElementComponent::GetElementCount(EFCElement InElement) const
+int32 UFCElementComponent::GetElementCount(FGameplayTag ElementTag) const
 {
-	if (InElement == EFCElement::None)
+	if (!IsValidActiveElementTag(ElementTag))
 	{
 		return 0;
 	}
@@ -36,7 +47,7 @@ int32 UFCElementComponent::GetElementCount(EFCElement InElement) const
 	int32 Count = 0;
 	for (const FFCElementStackItem& Item : StackContainer.Items)
 	{
-		if (Item.Element == InElement)
+		if (Item.ElementTag == ElementTag)
 		{
 			Count++;
 		}
@@ -44,34 +55,31 @@ int32 UFCElementComponent::GetElementCount(EFCElement InElement) const
 	return Count;
 }
 
-bool UFCElementComponent::HasElementStack(EFCElement InElement, int32 RequiredCount) const
+bool UFCElementComponent::HasElementStack(FGameplayTag ElementTag, int32 RequiredCount) const
 {
 	if (RequiredCount <= 0)
 	{
 		return true;
 	}
-
-	return GetElementCount(InElement) >= RequiredCount;
+	return GetElementCount(ElementTag) >= RequiredCount;
 }
 
-bool UFCElementComponent::HasElementStacks(const TArray<EFCElement>& RequiredElements) const
+bool UFCElementComponent::HasElementStacks(const TArray<FGameplayTag>& RequiredElementTags) const
 {
-	if (RequiredElements.Num() == 0)
+	if (RequiredElementTags.Num() == 0)
 	{
 		return true;
 	}
 
-	// Count required quantities per element
-	TMap<EFCElement, int32> RequiredMap;
-	for (EFCElement Elem : RequiredElements)
+	TMap<FGameplayTag, int32> RequiredMap;
+	for (const FGameplayTag& ElemTag : RequiredElementTags)
 	{
-		if (Elem != EFCElement::None)
+		if (IsValidActiveElementTag(ElemTag))
 		{
-			RequiredMap.FindOrAdd(Elem, 0)++;
+			RequiredMap.FindOrAdd(ElemTag, 0)++;
 		}
 	}
 
-	// Check if this component has enough for every required element
 	for (const auto& Pair : RequiredMap)
 	{
 		if (GetElementCount(Pair.Key) < Pair.Value)
@@ -83,9 +91,9 @@ bool UFCElementComponent::HasElementStacks(const TArray<EFCElement>& RequiredEle
 	return true;
 }
 
-bool UFCElementComponent::InternalAddSingleElement(EFCElement InElement)
+bool UFCElementComponent::InternalAddSingleElement(FGameplayTag InElementTag)
 {
-	if (InElement == EFCElement::None)
+	if (!IsValidActiveElementTag(InElementTag))
 	{
 		return false;
 	}
@@ -97,27 +105,26 @@ bool UFCElementComponent::InternalAddSingleElement(EFCElement InElement)
 			return false;
 		}
 
-		// FIFO: Discard the oldest stack to maintain strictly capped total
 		StackContainer.Items.RemoveAt(0);
 		StackContainer.MarkArrayDirty();
 	}
 
 	FFCElementStackItem& NewItem = StackContainer.Items.AddDefaulted_GetRef();
-	NewItem.Element = InElement;
+	NewItem.ElementTag = InElementTag;
 	StackContainer.MarkItemDirty(NewItem);
 
-	OnElementStackAdded.Broadcast(InElement, StackContainer.Items.Num());
+	OnElementStackAdded.Broadcast(InElementTag, StackContainer.Items.Num());
 	return true;
 }
 
-bool UFCElementComponent::AddElementStack(EFCElement InElement, int32 Count)
+bool UFCElementComponent::AddElementStack(FGameplayTag ElementTag, int32 Count, AActor* InstigatorActor)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return false;
 	}
 
-	if (Count <= 0 || InElement == EFCElement::None)
+	if (Count <= 0 || !IsValidActiveElementTag(ElementTag))
 	{
 		return false;
 	}
@@ -125,7 +132,7 @@ bool UFCElementComponent::AddElementStack(EFCElement InElement, int32 Count)
 	bool bAnyAdded = false;
 	for (int32 i = 0; i < Count; ++i)
 	{
-		if (InternalAddSingleElement(InElement))
+		if (InternalAddSingleElement(ElementTag))
 		{
 			bAnyAdded = true;
 		}
@@ -134,27 +141,28 @@ bool UFCElementComponent::AddElementStack(EFCElement InElement, int32 Count)
 	if (bAnyAdded)
 	{
 		NotifyStacksChanged();
+		EvaluateElementReactions(InstigatorActor);
 	}
 
 	return bAnyAdded;
 }
 
-void UFCElementComponent::AddElementStacks(const TArray<EFCElement>& InElements)
+void UFCElementComponent::AddElementStacks(const TArray<FGameplayTag>& InElementTags, AActor* InstigatorActor)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return;
 	}
 
-	if (InElements.Num() == 0)
+	if (InElementTags.Num() == 0)
 	{
 		return;
 	}
 
 	bool bAnyAdded = false;
-	for (EFCElement Elem : InElements)
+	for (const FGameplayTag& ElemTag : InElementTags)
 	{
-		if (InternalAddSingleElement(Elem))
+		if (InternalAddSingleElement(ElemTag))
 		{
 			bAnyAdded = true;
 		}
@@ -163,10 +171,11 @@ void UFCElementComponent::AddElementStacks(const TArray<EFCElement>& InElements)
 	if (bAnyAdded)
 	{
 		NotifyStacksChanged();
+		EvaluateElementReactions(InstigatorActor);
 	}
 }
 
-bool UFCElementComponent::ConsumeElementStack(EFCElement InElement, int32 InCount)
+bool UFCElementComponent::ConsumeElementStack(FGameplayTag ElementTag, int32 InCount)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
@@ -178,16 +187,15 @@ bool UFCElementComponent::ConsumeElementStack(EFCElement InElement, int32 InCoun
 		return true;
 	}
 
-	if (!HasElementStack(InElement, InCount))
+	if (!HasElementStack(ElementTag, InCount))
 	{
 		return false;
 	}
 
 	int32 Removed = 0;
-	// Remove instances from oldest to newest
 	for (int32 i = 0; i < StackContainer.Items.Num() && Removed < InCount;)
 	{
-		if (StackContainer.Items[i].Element == InElement)
+		if (StackContainer.Items[i].ElementTag == ElementTag)
 		{
 			StackContainer.Items.RemoveAt(i);
 			Removed++;
@@ -199,36 +207,34 @@ bool UFCElementComponent::ConsumeElementStack(EFCElement InElement, int32 InCoun
 	}
 
 	StackContainer.MarkArrayDirty();
-	OnElementStackConsumed.Broadcast(InElement, StackContainer.Items.Num());
+	OnElementStackConsumed.Broadcast(ElementTag, StackContainer.Items.Num());
 	NotifyStacksChanged();
 	return true;
 }
 
-bool UFCElementComponent::ConsumeElementStacks(const TArray<EFCElement>& RequiredElements)
+bool UFCElementComponent::ConsumeElementStacks(const TArray<FGameplayTag>& RequiredElementTags)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return false;
 	}
 
-	if (RequiredElements.Num() == 0)
+	if (RequiredElementTags.Num() == 0)
 	{
 		return true;
 	}
 
-	// Atomic validation check
-	if (!HasElementStacks(RequiredElements))
+	if (!HasElementStacks(RequiredElementTags))
 	{
 		return false;
 	}
 
-	// Remove each required element instance
-	for (EFCElement ReqElem : RequiredElements)
+	for (const FGameplayTag& ReqElem : RequiredElementTags)
 	{
 		int32 Index = INDEX_NONE;
 		for (int32 i = 0; i < StackContainer.Items.Num(); ++i)
 		{
-			if (StackContainer.Items[i].Element == ReqElem)
+			if (StackContainer.Items[i].ElementTag == ReqElem)
 			{
 				Index = i;
 				break;
@@ -247,14 +253,14 @@ bool UFCElementComponent::ConsumeElementStacks(const TArray<EFCElement>& Require
 	return true;
 }
 
-int32 UFCElementComponent::RemoveAllStacksOfElement(EFCElement InElement)
+int32 UFCElementComponent::RemoveAllStacksOfElement(FGameplayTag ElementTag)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
 		return 0;
 	}
 
-	if (InElement == EFCElement::None)
+	if (!IsValidActiveElementTag(ElementTag))
 	{
 		return 0;
 	}
@@ -262,7 +268,7 @@ int32 UFCElementComponent::RemoveAllStacksOfElement(EFCElement InElement)
 	int32 RemovedCount = 0;
 	for (int32 i = StackContainer.Items.Num() - 1; i >= 0; --i)
 	{
-		if (StackContainer.Items[i].Element == InElement)
+		if (StackContainer.Items[i].ElementTag == ElementTag)
 		{
 			StackContainer.Items.RemoveAt(i);
 			RemovedCount++;
@@ -272,7 +278,7 @@ int32 UFCElementComponent::RemoveAllStacksOfElement(EFCElement InElement)
 	if (RemovedCount > 0)
 	{
 		StackContainer.MarkArrayDirty();
-		OnElementStackConsumed.Broadcast(InElement, StackContainer.Items.Num());
+		OnElementStackConsumed.Broadcast(ElementTag, StackContainer.Items.Num());
 		NotifyStacksChanged();
 	}
 	return RemovedCount;
@@ -293,19 +299,83 @@ void UFCElementComponent::ClearAllElementStacks()
 	}
 }
 
+bool UFCElementComponent::EvaluateElementReactions(AActor* InstigatorActor)
+{
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor || !OwnerActor->HasAuthority() || bEvaluatingReactions || StackContainer.Items.Num() == 0)
+	{
+		return false;
+	}
+
+	const UFCClassSubsystem* ClassSubsystem = UFCClassSubsystem::GetClassSubsystem(this);
+	if (!ClassSubsystem)
+	{
+		return false;
+	}
+
+	const TArray<FFCElementReactionRow>& Rules = ClassSubsystem->GetElementReactionRules();
+	if (Rules.Num() == 0)
+	{
+		return false;
+	}
+
+	bEvaluatingReactions = true;
+	bool bTriggeredAny = false;
+
+	for (const FFCElementReactionRow& Rule : Rules)
+	{
+		if (Rule.RequiredElementTags.Num() == 0 || !HasElementStacks(Rule.RequiredElementTags))
+		{
+			continue;
+		}
+
+		if (Rule.bConsumeTriggerElements)
+		{
+			if (!ConsumeElementStacks(Rule.RequiredElementTags))
+			{
+				continue;
+			}
+		}
+
+		FFCCardExecutionContext ReactionContext;
+		ReactionContext.CasterActor = InstigatorActor ? InstigatorActor : OwnerActor;
+		if (const IAbilitySystemInterface* CasterASI = Cast<IAbilitySystemInterface>(ReactionContext.CasterActor.Get()))
+		{
+			ReactionContext.CasterASC = CasterASI->GetAbilitySystemComponent();
+		}
+		ReactionContext.VerifiedTargets.Add(OwnerActor);
+		ReactionContext.VerifiedAimLocation = OwnerActor->GetActorLocation();
+
+		for (const TInstancedStruct<FFCCardEffectBase>& EffectStruct : Rule.ReactionEffects)
+		{
+			if (const FFCCardEffectBase* Effect = EffectStruct.GetPtr())
+			{
+				Effect->Execute(ReactionContext);
+			}
+		}
+
+		OnElementReactionTriggered.Broadcast(Rule.ReactionId, OwnerActor);
+		bTriggeredAny = true;
+		break;
+	}
+
+	bEvaluatingReactions = false;
+	return bTriggeredAny;
+}
+
 void UFCElementComponent::NotifyStacksChanged()
 {
 	OnElementStacksChanged.Broadcast(GetAllElementStacks());
 }
 
-void UFCElementComponent::NotifyStackItemAdded(EFCElement InElement)
+void UFCElementComponent::NotifyStackItemAdded(FGameplayTag InElementTag)
 {
-	OnElementStackAdded.Broadcast(InElement, StackContainer.Items.Num());
+	OnElementStackAdded.Broadcast(InElementTag, StackContainer.Items.Num());
 	NotifyStacksChanged();
 }
 
-void UFCElementComponent::NotifyStackItemRemoved(EFCElement InElement)
+void UFCElementComponent::NotifyStackItemRemoved(FGameplayTag InElementTag)
 {
-	OnElementStackConsumed.Broadcast(InElement, StackContainer.Items.Num());
+	OnElementStackConsumed.Broadcast(InElementTag, StackContainer.Items.Num());
 	NotifyStacksChanged();
 }

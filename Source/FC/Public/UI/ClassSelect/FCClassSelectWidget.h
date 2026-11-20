@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GameplayTagContainer.h"
 #include "UI/ClassSelect/FCClassSelectTypes.h"
 #include "FCClassSelectWidget.generated.h"
 
@@ -15,8 +16,7 @@ class UButton;
  * UFCClassSelectWidget
  * 
  * Master Widget for Class Selection Screen (WBP_ClassSelect).
- * Exposes starting deck configurations as editable Blueprint variables,
- * connects presentation ViewModel to UMG widgets, and routes selection/confirmation flows.
+ * Resolves starting decks from optional per-tag Blueprint overrides or UFCClassSubsystem (SSOT).
  */
 UCLASS(Abstract, BlueprintType)
 class FC_API UFCClassSelectWidget : public UUserWidget
@@ -35,42 +35,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|ClassSelect")
 	UFCClassSelectViewModel* GetViewModel() const { return ViewModel; }
 
-	/** Retrieves the starting deck configured for the given character class */
+	/** Retrieves the starting deck configured for the given character class GameplayTag */
 	UFUNCTION(BlueprintCallable, Category = "FC|ClassSelect|StartingDeck")
-	TArray<FName> GetStartingDeckForClass(EFCCharacterClass InClass) const;
+	TArray<FName> GetStartingDeckForClass(FGameplayTag InClassTag) const;
 
-	// --- Blueprint Editable Starting Deck Settings (As Requested by User) ---
-	/**
-	 * Default Starting Deck for Mage (Mage is currently the selectable class).
-	 * Fully editable in Blueprint Details panel and Event Graph!
-	 */
+	/** Optional per-class Blueprint starting deck overrides keyed by Class.* GameplayTag */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|ClassSelect|StartingDeck")
-	TArray<FName> MageStartingDeck = {
-		FName("Card_Fireball"),
-		FName("Card_Fireball"),
-		FName("Card_Fireball"),
-		FName("Card_Fireball"),
-		FName("Card_Fireball"),
-		FName("Card_AttackBuff"),
-		FName("Card_AttackBuff"),
-		FName("Card_AttackBuff"),
-		FName("Card_MagicShield"),
-		FName("Card_MagicShield")
-	};
-
-	/**
-	 * Customizable starting decks per class, easily expandable in BP.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|ClassSelect|StartingDeck")
-	TMap<EFCCharacterClass, FFCClassStartingDeckConfig> StartingDeckOverrides;
+	TMap<FGameplayTag, FFCClassStartingDeckConfig> StartingDeckOverrides;
 
 	/** Blueprint hook when class selection changes (e.g. for SFX or VFX triggers) */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FC|ClassSelect|Events")
-	void BP_OnClassSelected(EFCCharacterClass SelectedClass);
+	void BP_OnClassSelected(FGameplayTag SelectedClassTag);
 
 	/** Blueprint hook when class is confirmed */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FC|ClassSelect|Events")
-	void BP_OnClassConfirmed(EFCCharacterClass ConfirmedClass);
+	void BP_OnClassConfirmed(FGameplayTag ConfirmedClassTag);
 
 protected:
 	UPROPERTY(BlueprintReadOnly, Category = "FC|ClassSelect")
@@ -103,16 +82,16 @@ protected:
 	TArray<TObjectPtr<UFCClassSelectItemWidget>> SpawnedItemWidgets;
 
 	UFUNCTION()
-	void HandleClassItemClicked(EFCCharacterClass ClickedClass);
+	void HandleClassItemClicked(FGameplayTag ClickedClassTag);
 
 	UFUNCTION()
 	void HandleConfirmButtonClicked();
 
 	UFUNCTION()
-	void HandleViewModelClassSelected(EFCCharacterClass SelectedClass);
+	void HandleViewModelClassSelected(FGameplayTag SelectedClassTag);
 
 	UFUNCTION()
-	void HandleViewModelClassConfirmed(EFCCharacterClass ConfirmedClass, const TArray<FName>& StartingDeck);
+	void HandleViewModelClassConfirmed(FGameplayTag ConfirmedClassTag, const TArray<FName>& StartingDeck);
 
 	void RefreshDetailPanel();
 	void BuildClassItems();

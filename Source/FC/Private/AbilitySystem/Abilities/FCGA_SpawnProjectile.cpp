@@ -1,20 +1,19 @@
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Combat/Projectile/FCProjectileBase.h"
 #include "Combat/Projectile/FCProjectileDataAsset.h"
+#include "Combat/Interfaces/FCCombatTargetInterface.h"
+#include "Combat/Interfaces/FCProjectileProviderInterface.h"
+#include "Card/FCCardExecutionContext.h"
 #include "Data/Card/FCCardDataAsset.h"
-#include "AbilitySystemInterface.h"
+#include "Data/FCGameplayTags.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystem/FCAttributeSet.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
-
-#include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ArrowComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "Character/Mob/FCMobCharacter.h"
 #include "Character/FCCharacterBase.h"
 #include "AIController.h"
 
@@ -23,6 +22,8 @@ UFCGA_SpawnProjectile::UFCGA_SpawnProjectile()
 	InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor;
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::ServerInitiated;
 	ProjectileClass = AFCProjectileBase::StaticClass();
+	ClassTag = FCGameplayTags::Class_Mage;
+	CardTypeTag = FCGameplayTags::Card_Type_Attack;
 }
 
 USceneComponent* UFCGA_SpawnProjectile::GetLaunchReferenceComponent(AActor* Avatar) const
@@ -32,7 +33,6 @@ USceneComponent* UFCGA_SpawnProjectile::GetLaunchReferenceComponent(AActor* Avat
 		return nullptr;
 	}
 
-	// 1. Search for scene components named "Arrow" or containing "Arrow" (case-insensitive)
 	TInlineComponentArray<USceneComponent*> SceneComponents;
 	Avatar->GetComponents(SceneComponents);
 	for (USceneComponent* Comp : SceneComponents)
@@ -43,7 +43,6 @@ USceneComponent* UFCGA_SpawnProjectile::GetLaunchReferenceComponent(AActor* Avat
 		}
 	}
 
-	// 2. Fallback to any UArrowComponent found by class
 	if (UArrowComponent* ArrowComp = Avatar->FindComponentByClass<UArrowComponent>())
 	{
 		return ArrowComp;
@@ -52,7 +51,7 @@ USceneComponent* UFCGA_SpawnProjectile::GetLaunchReferenceComponent(AActor* Avat
 	return nullptr;
 }
 
-FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActorInfo* ActorInfo) const
+FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* TriggerEventData) const
 {
 	if (!ActorInfo || !ActorInfo->AvatarActor.IsValid())
 	{
@@ -67,28 +66,19 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 	FRotator SpawnRotation = Avatar->GetActorRotation();
 	FVector BaseLocation = Avatar->GetActorLocation();
 
-	if (const ACharacter* Character = Cast<ACharacter>(Avatar))
+	if (const IFCCombatTargetInterface* AvatarCombatTarget = Cast<IFCCombatTargetInterface>(Avatar))
 	{
-		// 1. 발사 방향: 캐릭터 캡슐의 정면 (이동 방향 설정에 따라 메시가 바라보는 실제 시각적 정면과 100% 일치함)
-		SpawnRotation = Avatar->GetActorRotation();
-		ForwardVector = Avatar->GetActorForwardVector();
-		RightVector = Avatar->GetActorRightVector();
-		UpVector = Avatar->GetActorUpVector();
-
-		// 2. 발사 위치: 바닥(Capsule Z=0) 착시를 방지하기 위해 가슴(spine_03) 높이를 기준으로 설정
+		BaseLocation = AvatarCombatTarget->GetCombatAimLocation();
+	}
+	else if (const ACharacter* Character = Cast<ACharacter>(Avatar))
+	{
 		if (const USkeletalMeshComponent* Mesh = Character->GetMesh())
 		{
-			if (Mesh->DoesSocketExist(FName("spine_03")))
-			{
-				BaseLocation = Mesh->GetSocketLocation(FName("spine_03"));
-			}
-			else
-			{
-				BaseLocation = Avatar->GetActorLocation() + FVector(0.f, 0.f, 50.f);
-			}
+			BaseLocation = Mesh->DoesSocketExist(FName("spine_03"))
+				? Mesh->GetSocketLocation(FName("spine_03"))
+				: Avatar->GetActorLocation() + FVector(0.f, 0.f, 50.f);
 		}
 	}
-	// Fallback to Arrow Component if explicitly requested
 	else if (const USceneComponent* LaunchRefComp = GetLaunchReferenceComponent(Avatar))
 	{
 		ForwardVector = LaunchRefComp->GetForwardVector();
@@ -103,17 +93,35 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 		+ (RightVector * MuzzleOffset.Y)
 		+ (UpVector * MuzzleOffset.Z);
 
-	// 3. 3D 고저차 조준 (Pitch & Yaw Aiming):
-	// 대상(적/상자 등) 또는 목표 좌표(TargetAimLocation)가 있으면
-	// 수평으로만 발사되지 않고 대상을 향해 3D 벡터로 조준을 보정합니다.
+	// 1. Prefer immutable per-invocation FFCCardAbilityTargetData (eliminates shared mutable target races)
 	AActor* TargetActor = nullptr;
 	FVector TargetAimLocation = FVector::ZeroVector;
 
-	if (const AFCCharacterBase* Char = Cast<AFCCharacterBase>(Avatar))
+	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
 	{
-		TargetActor = Char->GetCombatTarget();
-		TargetAimLocation = Char->GetTargetAimLocation();
+		if (const FGameplayAbilityTargetData* RawData = TriggerEventData->TargetData.Get(0))
+		{
+			if (RawData->GetScriptStruct() == FFCCardAbilityTargetData::StaticStruct())
+			{
+				const FFCCardAbilityTargetData* CardTargetData = static_cast<const FFCCardAbilityTargetData*>(RawData);
+				TargetAimLocation = CardTargetData->AimLocation;
+				if (CardTargetData->VerifiedTargets.Num() > 0)
+				{
+					TargetActor = CardTargetData->VerifiedTargets[0].Get();
+				}
+			}
+		}
 	}
+
+	if (!TargetActor && TargetAimLocation.IsZero())
+	{
+		if (const AFCCharacterBase* Char = Cast<AFCCharacterBase>(Avatar))
+		{
+			TargetActor = Char->GetCombatTarget();
+			TargetAimLocation = Char->GetTargetAimLocation();
+		}
+	}
+
 	if (!TargetActor)
 	{
 		if (const APawn* Pawn = Cast<APawn>(Avatar))
@@ -127,35 +135,17 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 
 	if (TargetActor)
 	{
-		if (const ACharacter* TargetChar = Cast<ACharacter>(TargetActor))
+		if (const IFCCombatTargetInterface* TargetCombat = Cast<IFCCombatTargetInterface>(TargetActor))
 		{
-			if (const USkeletalMeshComponent* TargetMesh = TargetChar->GetMesh())
-			{
-				if (TargetMesh->DoesSocketExist(FName("spine_03")))
-				{
-					TargetAimLocation = TargetMesh->GetSocketLocation(FName("spine_03"));
-				}
-				else
-				{
-					TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
-				}
-			}
-			else
-			{
-				TargetAimLocation = TargetActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
-			}
+			TargetAimLocation = TargetCombat->GetCombatAimLocation();
 		}
 		else
 		{
-			// Non-character target (e.g. AFCChestActor, destructibles) -> aim at center
 			TargetAimLocation = TargetActor->GetActorLocation();
 		}
 	}
 	else if (!TargetAimLocation.IsZero())
 	{
-		// When no specific actor target is selected, cursor trace is typically at foot level on the ground.
-		// Level TargetAimLocation to the projectile's spawn height so it travels horizontally in the aim direction,
-		// preventing projectiles from diving steeply into the floor in front of the caster.
 		TargetAimLocation.Z = SpawnLocation.Z;
 	}
 
@@ -165,7 +155,6 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 		if (!AimDirection.IsNearlyZero())
 		{
 			FRotator AimRotator = AimDirection.Rotation();
-			// Clamp pitch angle between -35 and +35 degrees to avoid abnormal extreme elevation
 			AimRotator.Pitch = FMath::ClampAngle(AimRotator.Pitch, -35.0f, 35.0f);
 			AimRotator.Roll = 0.0f;
 			SpawnRotation = AimRotator;
@@ -187,32 +176,35 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		return;
 	}
 
-	// 1. Resolve Effective Projectile Data Asset & Explicit Class Override
+	// 1. Resolve Projectile DataAsset & Class Override via polymorphic IFCProjectileProviderInterface (DIP)
 	const UFCProjectileDataAsset* EffectiveDataAsset = ProjectileDataAsset.Get();
 	TSubclassOf<AFCProjectileBase> ExplicitClassOverride = nullptr;
 
-	// Check if Avatar is a Mob with specific projectile overrides
 	if (ActorInfo && ActorInfo->AvatarActor.IsValid())
 	{
-		if (const AFCMobCharacter* MobChar = Cast<AFCMobCharacter>(ActorInfo->AvatarActor.Get()))
+		if (const IFCProjectileProviderInterface* Provider = Cast<IFCProjectileProviderInterface>(ActorInfo->AvatarActor.Get()))
 		{
-			if (MobChar->GetProjectileClassOverride())
+			if (TSubclassOf<AFCProjectileBase> ClassOverride = Provider->GetProjectileClassOverrideForAbility())
 			{
-				ExplicitClassOverride = MobChar->GetProjectileClassOverride();
+				ExplicitClassOverride = ClassOverride;
 			}
-			if (MobChar->GetProjectileDataAssetOverride())
+			if (const UFCProjectileDataAsset* AssetOverride = Provider->GetProjectileDataAssetOverrideForAbility())
 			{
-				EffectiveDataAsset = MobChar->GetProjectileDataAssetOverride();
+				EffectiveDataAsset = AssetOverride;
 			}
 		}
 	}
 
-	// Check if Ability was granted via a Card Data Asset
+	// Check SourceObject from CardDataAsset or directly passed UFCProjectileDataAsset
 	if (!ExplicitClassOverride && ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
 		if (const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle))
 		{
-			if (const UFCCardDataAsset* CardAsset = Cast<UFCCardDataAsset>(Spec->SourceObject.Get()))
+			if (const UFCProjectileDataAsset* DirectProjAsset = Cast<UFCProjectileDataAsset>(Spec->SourceObject.Get()))
+			{
+				EffectiveDataAsset = DirectProjAsset;
+			}
+			else if (const UFCCardDataAsset* CardAsset = Cast<UFCCardDataAsset>(Spec->SourceObject.Get()))
 			{
 				if (UFCProjectileDataAsset* CardProjAsset = CardAsset->GameplayData.GetProjectileDataAsset())
 				{
@@ -222,12 +214,13 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		}
 	}
 
-	// 2. Synchronize effective flight and presentation parameters if data asset exists
+	// 2. Synchronize flight & presentation parameters from DataAsset
 	float EffectiveLaunchSpeed = LaunchSpeed;
 	float EffectiveBaseDamage = BaseDamage;
-	TArray<EFCElement> EffectiveElements = ProjectileElements;
-	EFCCharacterClass EffectiveClass = CharacterClass;
-	EFCCardType EffectiveCardType = CardType;
+	float EffectiveAttackPowerScale = 1.0f;
+	TArray<FGameplayTag> EffectiveElementTags = ProjectileElementTags;
+	FGameplayTag EffectiveClassTag = ClassTag.IsValid() ? ClassTag : FCGameplayTags::Class_Mage.GetTag();
+	FGameplayTag EffectiveCardTypeTag = CardTypeTag.IsValid() ? CardTypeTag : FCGameplayTags::Card_Type_Attack.GetTag();
 	USoundBase* EffectiveCastSound = CastSound;
 	UNiagaraSystem* EffectiveCastVFX = CastVFX;
 
@@ -235,9 +228,16 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 	{
 		EffectiveLaunchSpeed = EffectiveDataAsset->LaunchSpeed;
 		EffectiveBaseDamage = EffectiveDataAsset->Damage;
-		EffectiveElements = EffectiveDataAsset->ProjectileElements;
-		EffectiveClass = EffectiveDataAsset->SourceClass;
-		EffectiveCardType = EffectiveDataAsset->SourceCardType;
+		EffectiveAttackPowerScale = EffectiveDataAsset->AttackPowerScale;
+		EffectiveElementTags = EffectiveDataAsset->ProjectileElementTags;
+		if (EffectiveDataAsset->SourceClassTag.IsValid())
+		{
+			EffectiveClassTag = EffectiveDataAsset->SourceClassTag;
+		}
+		if (EffectiveDataAsset->SourceCardTypeTag.IsValid())
+		{
+			EffectiveCardTypeTag = EffectiveDataAsset->SourceCardTypeTag;
+		}
 
 		if (USoundBase* LoadedCastSound = EffectiveDataAsset->CastSound.LoadSynchronous())
 		{
@@ -249,7 +249,7 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 		}
 	}
 
-	const FTransform LaunchTransform = GetLaunchTransform(ActorInfo);
+	const FTransform LaunchTransform = GetLaunchTransform(ActorInfo, TriggerEventData);
 	const FVector SpawnLocation = LaunchTransform.GetLocation();
 	const FRotator SpawnRotation = LaunchTransform.Rotator();
 
@@ -261,11 +261,11 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 			? EffectiveDataAsset->ProjectileClass
 			: ProjectileClass;
 	}
-
 	if (!ClassToSpawn)
 	{
 		ClassToSpawn = AFCProjectileBase::StaticClass();
 	}
+
 	if (HasAuthority(&ActivationInfo) && ClassToSpawn)
 	{
 		UWorld* World = GetWorld();
@@ -289,32 +289,16 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 					Projectile->InitializeFromDataAsset(EffectiveDataAsset);
 				}
 
-				float ScaledDamage = EffectiveBaseDamage;
-				if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Avatar))
-				{
-					if (UAbilitySystemComponent* SourceASC = ASI->GetAbilitySystemComponent())
-					{
-						if (const UFCAttributeSet* AttrSet = SourceASC->GetSet<UFCAttributeSet>())
-						{
-							ScaledDamage += AttrSet->GetAttackPower();
-						}
-					}
-				}
-				else if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
-				{
-					if (const UFCAttributeSet* AttrSet = ActorInfo->AbilitySystemComponent->GetSet<UFCAttributeSet>())
-					{
-						ScaledDamage += AttrSet->GetAttackPower();
-					}
-				}
+				// AttackPower scaling is evaluated cleanly inside UFCExecCalc_Damage upon impact
+				Projectile->SetDamage(EffectiveBaseDamage);
+				Projectile->SetAttackPowerScale(EffectiveAttackPowerScale);
 
-				Projectile->SetDamage(ScaledDamage);
-				if (EffectiveElements.Num() > 0)
+				if (EffectiveElementTags.Num() > 0)
 				{
-					Projectile->SetProjectileElements(EffectiveElements);
+					Projectile->SetProjectileElementTags(EffectiveElementTags);
 				}
-				Projectile->SetSourceClass(EffectiveClass);
-				Projectile->SetSourceCardType(EffectiveCardType);
+				Projectile->SetSourceClassTag(EffectiveClassTag);
+				Projectile->SetSourceCardTypeTag(EffectiveCardTypeTag);
 
 				if (UProjectileMovementComponent* MoveComp = Projectile->GetProjectileMovement())
 				{
@@ -326,8 +310,6 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 				}
 
 				UGameplayStatics::FinishSpawningActor(Projectile, LaunchTransform);
-				UE_LOG(LogTemp, Log, TEXT("[UFCGA_SpawnProjectile] Spawned %s at (%s) towards Rot (%s) [Speed: %.1f, Damage: %.1f]"),
-					*ClassToSpawn->GetName(), *SpawnLocation.ToString(), *SpawnRotation.ToString(), EffectiveLaunchSpeed, ScaledDamage);
 			}
 		}
 	}

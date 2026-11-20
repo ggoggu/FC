@@ -1,8 +1,7 @@
 #include "Controller/Player/FCPlayerController.h"
+#include "Controller/Player/FCCardTargetingComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
-#include "Data/Card/FCCardTypes.h"
-#include "Data/Card/FCCardSubsystem.h"
 #include "Card/FCCardDeckComponent.h"
 #include "Game/FCPlayerState.h"
 #include "UI/View/FCHUDWidget.h"
@@ -10,30 +9,35 @@
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
 #include "UI/Data/FCStatusToggleTypes.h"
-#include "UI/Presenter/FCStatusPresenterComponent.h" 
-#include "UI/ViewModel/FCHandViewModel.h"
-#include "AbilitySystemInterface.h"
-#include "AbilitySystemComponent.h"
-#include "AbilitySystem/FCAttributeSet.h"
-#include "Combat/FCCombatUtils.h"
-#include "Data/Card/FCCardDataAsset.h"
-#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
+#include "UI/Presenter/FCStatusPresenterComponent.h"
+#include "UI/Presenter/FCHUDPresenterComponent.h"
 #include "Character/FCCharacterBase.h"
 #include "Gameplay/FCCardPickupActor.h"
 #include "Engine/World.h"
-#include "CollisionQueryParams.h"
 
 AFCPlayerController::AFCPlayerController()
 {
 	bShowMouseCursor = false;
 	DefaultMouseCursor = EMouseCursor::Default;
 	bAutoEnableCardCombatInputMode = true;
+
 	StatusPresenterComponent = CreateDefaultSubobject<UFCStatusPresenterComponent>(TEXT("StatusPresenterComponent"));
+	HUDPresenterComponent = CreateDefaultSubobject<UFCHUDPresenterComponent>(TEXT("HUDPresenterComponent"));
+	CardTargetingComponent = CreateDefaultSubobject<UFCCardTargetingComponent>(TEXT("CardTargetingComponent"));
 }
 
 void AFCPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (CardTargetingComponent)
+	{
+		CardTargetingComponent->ConfigureTargetingParams(
+			bAutoTargetAttackablesOnProjectileCards,
+			ProjectileTargetMaxRange,
+			ProjectileTargetHalfAngleDegrees,
+			ProjectileTargetProximityRadius);
+	}
 
 	InitializeDefaultMappingContext();
 
@@ -49,7 +53,6 @@ void AFCPlayerController::SetupInputComponent()
 
 	if (InputComponent)
 	{
-		// Keyboard number keys 1~0
 		InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AFCPlayerController::OnNumberKey1Pressed);
 		InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AFCPlayerController::OnNumberKey2Pressed);
 		InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AFCPlayerController::OnNumberKey3Pressed);
@@ -61,7 +64,6 @@ void AFCPlayerController::SetupInputComponent()
 		InputComponent->BindKey(EKeys::Nine, IE_Pressed, this, &AFCPlayerController::OnNumberKey9Pressed);
 		InputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &AFCPlayerController::OnNumberKey0Pressed);
 
-		// Keypad number keys 1~0
 		InputComponent->BindKey(EKeys::NumPadOne, IE_Pressed, this, &AFCPlayerController::OnNumberKey1Pressed);
 		InputComponent->BindKey(EKeys::NumPadTwo, IE_Pressed, this, &AFCPlayerController::OnNumberKey2Pressed);
 		InputComponent->BindKey(EKeys::NumPadThree, IE_Pressed, this, &AFCPlayerController::OnNumberKey3Pressed);
@@ -73,10 +75,7 @@ void AFCPlayerController::SetupInputComponent()
 		InputComponent->BindKey(EKeys::NumPadNine, IE_Pressed, this, &AFCPlayerController::OnNumberKey9Pressed);
 		InputComponent->BindKey(EKeys::NumPadZero, IE_Pressed, this, &AFCPlayerController::OnNumberKey0Pressed);
 
-		// Left Mouse Button (play held card)
 		InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AFCPlayerController::OnLeftMouseButtonPressed);
-
-		// Right Mouse Button & Escape (cancel held card)
 		InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AFCPlayerController::OnRightMouseButtonPressed);
 		InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AFCPlayerController::OnRightMouseButtonPressed);
 	}
@@ -94,30 +93,19 @@ void AFCPlayerController::OnPossess(APawn* InPawn)
 
 void AFCPlayerController::OnUnPossess()
 {
-	UnbindAttributeListeners();
+	if (HUDPresenterComponent)
+	{
+		HUDPresenterComponent->UnbindAttributeListeners(StatusPresenterComponent);
+	}
 	Super::OnUnPossess();
 }
 
 void AFCPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (UWorld* World = GetWorld())
+	if (HUDPresenterComponent)
 	{
-		World->GetTimerManager().ClearTimer(CycleHUDUpdateTimerHandle);
+		HUDPresenterComponent->UnbindAttributeListeners(StatusPresenterComponent);
 	}
-
-	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
-	{
-		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
-		{
-			DeckComp->OnCardHandUpdated.RemoveAll(this);
-			DeckComp->OnPileCountsChanged.RemoveAll(this);
-			DeckComp->OnCardCycleTriggered.RemoveAll(this);
-			DeckComp->OnCycleSettingsChanged.RemoveAll(this);
-			DeckComp->OnCycleTimerUpdated.RemoveAll(this);
-		}
-	}
-
-	UnbindAttributeListeners();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -143,32 +131,14 @@ void AFCPlayerController::OnRep_PlayerState()
 
 void AFCPlayerController::SetupHUD()
 {
-	if (!IsLocalPlayerController() || !HUDWidgetClass)
+	if (!IsLocalPlayerController() || !HUDWidgetClass || !HUDPresenterComponent)
 	{
 		return;
 	}
 
-	if (!HUDViewModel)
-	{
-		HUDViewModel = NewObject<UFCHUDViewModel>(this);
-	}
-
-	if (!HUDWidget)
-	{
-		HUDWidget = CreateWidget<UFCHUDWidget>(this, HUDWidgetClass);
-		if (HUDWidget)
-		{
-			HUDWidget->AddToViewport();
-			HUDWidget->SetHUDViewModel(HUDViewModel);
-		}
-	}
-	else
-	{
-		HUDWidget->SetHUDViewModel(HUDViewModel);
-	}
-
-	BindDeckComponentEvents();
-	BindAttributeListeners();
+	HUDPresenterComponent->SetupHUD(HUDWidgetClass, StatusPresenterComponent);
+	HUDWidget = HUDPresenterComponent->GetHUDWidget();
+	HUDViewModel = HUDPresenterComponent->GetHUDViewModel();
 
 	if (bAutoEnableCardCombatInputMode)
 	{
@@ -176,220 +146,14 @@ void AFCPlayerController::SetupHUD()
 	}
 }
 
-void AFCPlayerController::BindDeckComponentEvents()
+UFCHUDWidget* AFCPlayerController::GetHUDWidget() const
 {
-	if (!IsLocalPlayerController() || !HUDViewModel)
-	{
-		return;
-	}
-
-	AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>();
-	if (!FCPS)
-	{
-		return;
-	}
-
-	UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent();
-	if (!DeckComp)
-	{
-		return;
-	}
-
-	// Avoid duplicate delegate bindings
-	DeckComp->OnCardHandUpdated.RemoveAll(this);
-	DeckComp->OnPileCountsChanged.RemoveAll(this);
-	DeckComp->OnCardCycleTriggered.RemoveAll(this);
-	DeckComp->OnCycleSettingsChanged.RemoveAll(this);
-	DeckComp->OnCycleTimerUpdated.RemoveAll(this);
-
-	DeckComp->OnCardHandUpdated.AddDynamic(this, &AFCPlayerController::SyncHandToViewModel);
-	DeckComp->OnPileCountsChanged.AddDynamic(this, &AFCPlayerController::OnDeckPileCountsChanged);
-	DeckComp->OnCardCycleTriggered.AddDynamic(this, &AFCPlayerController::OnDeckCycleTriggered);
-	DeckComp->OnCycleSettingsChanged.AddDynamic(this, &AFCPlayerController::OnDeckCycleSettingsChanged);
-	DeckComp->OnCycleTimerUpdated.AddDynamic(this, &AFCPlayerController::UpdateCycleHUD);
-
-	// Perform initial sync
-	SyncHandToViewModel();
-	HUDViewModel->SetDrawPileCount(DeckComp->GetDrawPileCount());
-	HUDViewModel->SetDiscardPileCount(DeckComp->GetDiscardPileCount());
-	HUDViewModel->SetExhaustPileCount(DeckComp->GetExhaustPileCount());
-	UpdateCycleHUD();
-
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().SetTimer(
-			CycleHUDUpdateTimerHandle,
-			this,
-			&AFCPlayerController::UpdateCycleHUD,
-			0.05f,
-			true);
-	}
+	return HUDPresenterComponent ? HUDPresenterComponent->GetHUDWidget() : HUDWidget.Get();
 }
 
-void AFCPlayerController::UnbindAttributeListeners()
+UFCHUDViewModel* AFCPlayerController::GetHUDViewModel() const
 {
-	if (StatusPresenterComponent)
-	{
-		StatusPresenterComponent->UnbindFromAbilitySystem();
-	}
-
-	if (UAbilitySystemComponent* CurrentASC = BoundASC.Get())
-	{
-		for (const auto& Entry : BoundAttributeHandles)
-		{
-			CurrentASC->GetGameplayAttributeValueChangeDelegate(Entry.Key).Remove(Entry.Value);
-		}
-	}
-	BoundAttributeHandles.Empty();
-	BoundASC.Reset();
-}
-
-void AFCPlayerController::BindAttributeListeners()
-{
-	if (!IsLocalPlayerController() || !HUDViewModel)
-	{
-		return;
-	}
-
-	UnbindAttributeListeners();
-
-	APawn* ControlledPawn = GetPawn();
-	UAbilitySystemComponent* ASC = nullptr;
-
-	if (const IAbilitySystemInterface* PawnASI = Cast<IAbilitySystemInterface>(ControlledPawn))
-	{
-		ASC = PawnASI->GetAbilitySystemComponent();
-	}
-	else if (const IAbilitySystemInterface* PSASI = Cast<IAbilitySystemInterface>(GetPlayerState<APlayerState>()))
-	{
-		ASC = PSASI->GetAbilitySystemComponent();
-	}
-
-	if (!ASC)
-	{
-		return;
-	}
-
-	BoundASC = ASC;
-
-	if (StatusPresenterComponent)
-	{
-		StatusPresenterComponent->BindToAbilitySystem(ASC, HUDViewModel->GetOrCreateStatusContainerViewModel());
-	}
-
-	const UFCAttributeSet* AttrSet = ASC->GetSet<UFCAttributeSet>();
-	if (AttrSet)
-	{
-		HUDViewModel->SetCurrentHealth(FMath::RoundToInt(AttrSet->GetHealth()));
-		HUDViewModel->SetMaxHealth(FMath::RoundToInt(AttrSet->GetMaxHealth()));
-		HUDViewModel->SetCurrentMana(FMath::RoundToInt(AttrSet->GetMana()));
-		HUDViewModel->SetMaxMana(FMath::RoundToInt(AttrSet->GetMaxMana()));
-		HUDViewModel->SetCurrentShield(FMath::RoundToInt(AttrSet->GetShield()));
-		HUDViewModel->SetMaxShield(FMath::RoundToInt(AttrSet->GetMaxShield()));
-	}
-
-	auto RegisterAttrListener = [this, ASC](const FGameplayAttribute& Attribute, auto&& Callback)
-	{
-		FDelegateHandle Handle = ASC->GetGameplayAttributeValueChangeDelegate(Attribute).AddWeakLambda(
-			this,
-			[this, Callback](const FOnAttributeChangeData& Data)
-			{
-				if (HUDViewModel)
-				{
-					Callback(Data);
-				}
-			});
-		BoundAttributeHandles.Add(MakeTuple(Attribute, Handle));
-	};
-
-	RegisterAttrListener(UFCAttributeSet::GetHealthAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetCurrentHealth(FMath::RoundToInt(Data.NewValue));
-	});
-
-	RegisterAttrListener(UFCAttributeSet::GetMaxHealthAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetMaxHealth(FMath::RoundToInt(Data.NewValue));
-	});
-
-	RegisterAttrListener(UFCAttributeSet::GetManaAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetCurrentMana(FMath::RoundToInt(Data.NewValue));
-	});
-
-	RegisterAttrListener(UFCAttributeSet::GetMaxManaAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetMaxMana(FMath::RoundToInt(Data.NewValue));
-	});
-
-	RegisterAttrListener(UFCAttributeSet::GetShieldAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetCurrentShield(FMath::RoundToInt(Data.NewValue));
-	});
-
-	RegisterAttrListener(UFCAttributeSet::GetMaxShieldAttribute(), [this](const FOnAttributeChangeData& Data) {
-		HUDViewModel->SetMaxShield(FMath::RoundToInt(Data.NewValue));
-	});
-}
-
-void AFCPlayerController::SyncHandToViewModel()
-{
-	if (!HUDViewModel)
-	{
-		return;
-	}
-
-	AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>();
-	if (!FCPS)
-	{
-		return;
-	}
-
-	UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent();
-	if (!DeckComp)
-	{
-		return;
-	}
-
-	UFCHandViewModel* HandVM = HUDViewModel->GetOrCreateHandViewModel();
-	if (HandVM)
-	{
-		UFCCardSubsystem* CardSubsystem = UFCCardSubsystem::GetCardSubsystem(this);
-		HandVM->SyncFromHandContainer(DeckComp->GetHandContainer(), CardSubsystem);
-	}
-}
-
-void AFCPlayerController::OnDeckPileCountsChanged(int32 DrawCount, int32 DiscardCount, int32 ExhaustCount)
-{
-	if (HUDViewModel)
-	{
-		HUDViewModel->SetDrawPileCount(DrawCount);
-		HUDViewModel->SetDiscardPileCount(DiscardCount);
-		HUDViewModel->SetExhaustPileCount(ExhaustCount);
-	}
-}
-
-void AFCPlayerController::OnDeckCycleTriggered()
-{
-	UpdateCycleHUD();
-}
-
-void AFCPlayerController::OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount)
-{
-	UpdateCycleHUD();
-}
-
-void AFCPlayerController::UpdateCycleHUD()
-{
-	if (!IsLocalPlayerController() || !HUDViewModel)
-	{
-		return;
-	}
-
-	if (AFCPlayerState* FCPS = GetPlayerState<AFCPlayerState>())
-	{
-		if (UFCCardDeckComponent* DeckComp = FCPS->GetCardDeckComponent())
-		{
-			HUDViewModel->SetCycleInterval(DeckComp->GetCycleInterval());
-			HUDViewModel->SetCycleRemainingTime(DeckComp->GetCycleRemainingTime());
-			HUDViewModel->SetCycleProgress(DeckComp->GetCycleProgress());
-		}
-	}
+	return HUDPresenterComponent ? HUDPresenterComponent->GetHUDViewModel() : HUDViewModel.Get();
 }
 
 void AFCPlayerController::InitializeDefaultMappingContext()
@@ -455,14 +219,13 @@ void AFCPlayerController::SetCardCombatInputMode(bool bEnableCardMode)
 
 void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	// Client-side prediction: immediately rotate local player pawn towards target
 	if (IsLocalPlayerController())
 	{
 		if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetPawn()))
 		{
-			const FVector AimPos = TargetInfo.TargetActor.IsValid() 
-				? TargetInfo.TargetActor->GetActorLocation() 
-				: (FVector)TargetInfo.TargetLocation;
+			const FVector AimPos = TargetInfo.TargetActor.IsValid()
+				? TargetInfo.TargetActor->GetActorLocation()
+				: static_cast<FVector>(TargetInfo.TargetLocation);
 
 			if (!AimPos.IsZero())
 			{
@@ -482,136 +245,47 @@ void AFCPlayerController::RequestPlayCard(const FGuid& CardGuid, const FFCCardTa
 
 FFCCardTargetInfo AFCPlayerController::ResolveCardTargetUnderCursor(const UFCCardDataAsset* CardAsset)
 {
-	float MouseX = 0.0f;
-	float MouseY = 0.0f;
-	if (GetMousePosition(MouseX, MouseY))
+	if (CardTargetingComponent)
 	{
-		return ResolveCardTargetAtScreenPosition(FVector2D(MouseX, MouseY), CardAsset);
+		CardTargetingComponent->ConfigureTargetingParams(
+			bAutoTargetAttackablesOnProjectileCards,
+			ProjectileTargetMaxRange,
+			ProjectileTargetHalfAngleDegrees,
+			ProjectileTargetProximityRadius);
+		return CardTargetingComponent->ResolveCardTargetUnderCursor(CardAsset);
 	}
-
-	// Fallback if no mouse cursor position (e.g. headless test or gamepad mode)
-	if (APawn* MyPawn = GetPawn())
-	{
-		FFCCardTargetInfo FallbackInfo;
-		FallbackInfo.TargetLocation = MyPawn->GetActorLocation() + MyPawn->GetActorForwardVector() * 1000.0f;
-		return FallbackInfo;
-	}
-
 	return FFCCardTargetInfo();
 }
 
 FFCCardTargetInfo AFCPlayerController::ResolveCardTargetAtScreenPosition(const FVector2D& ScreenPos, const UFCCardDataAsset* CardAsset)
 {
-	FFCCardTargetInfo TargetInfo;
-
-	APawn* MyPawn = GetPawn();
-	if (!MyPawn)
+	if (CardTargetingComponent)
 	{
-		return TargetInfo;
-	}
-
-	const FVector PawnLocation = MyPawn->GetActorLocation();
-
-	// 1. Deproject Screen Position to 3D World Ray
-	FVector WorldOrigin = FVector::ZeroVector;
-	FVector WorldDirection = MyPawn->GetActorForwardVector();
-
-	if (!DeprojectScreenPositionToWorld(ScreenPos.X, ScreenPos.Y, WorldOrigin, WorldDirection))
-	{
-		if (PlayerCameraManager)
-		{
-			WorldOrigin = PlayerCameraManager->GetCameraLocation();
-			WorldDirection = PlayerCameraManager->GetCameraRotation().Vector();
-		}
-	}
-
-	// 2. Line trace along WorldDirection to find 3D Impact / Drop Location
-	const float TraceDistance = 15000.0f;
-	const FVector TraceEnd = WorldOrigin + WorldDirection * TraceDistance;
-
-	FHitResult HitResult;
-	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(CardTargetDeprojectTrace), true);
-	TraceParams.AddIgnoredActor(MyPawn);
-
-	UWorld* World = GetWorld();
-	bool bHit = false;
-	if (World)
-	{
-		bHit = World->LineTraceSingleByChannel(
-			HitResult,
-			WorldOrigin,
-			TraceEnd,
-			ECC_Visibility,
-			TraceParams
-		);
-	}
-
-	FVector DropWorldLocation = FVector::ZeroVector;
-	AActor* DirectHitActor = nullptr;
-
-	if (bHit && HitResult.bBlockingHit)
-	{
-		DropWorldLocation = HitResult.ImpactPoint;
-		DirectHitActor = HitResult.GetActor();
-		TargetInfo.TargetHitComponent = HitResult.GetComponent();
-	}
-	else
-	{
-		// Intersect ray with ground plane at player's foot level
-		const FPlane GroundPlane(PawnLocation, FVector::UpVector);
-		DropWorldLocation = FMath::LinePlaneIntersection(WorldOrigin, TraceEnd, GroundPlane);
-	}
-
-	TargetInfo.TargetLocation = DropWorldLocation;
-
-	// Check if this card shoots/spawns projectiles or requires directional targeting, and whether auto-targeting is enabled
-	const TSubclassOf<UGameplayAbility> AbilityClass = CardAsset ? CardAsset->GameplayData.GetCardAbilityClass() : nullptr;
-	const bool bIsTargetedCard = CardAsset && (CardAsset->GameplayData.SpawnsProjectile() || 
-		CardAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE ||
-		CardAsset->GameplayData.TargetType == EFCCardTargetType::SingleTarget ||
-		(AbilityClass && AbilityClass->IsChildOf(UFCGA_SpawnProjectile::StaticClass())));
-
-	// If single target or direct hit on attackable target
-	if (DirectHitActor && UFCCombatUtils::IsAttackableTarget(MyPawn, DirectHitActor))
-	{
-		TargetInfo.TargetActor = DirectHitActor;
-		TargetInfo.TargetLocation = DirectHitActor->GetActorLocation();
-		return TargetInfo;
-	}
-
-	// If projectile or directional auto-targeting is active, search for best attackable target in that direction
-	if (bAutoTargetAttackablesOnProjectileCards && bIsTargetedCard)
-	{
-		const FVector AimDirection2D = (DropWorldLocation - PawnLocation).GetSafeNormal2D();
-
-		AActor* BestTarget = UFCCombatUtils::FindBestAttackableTargetInDirection(
-			MyPawn,
-			AimDirection2D,
-			DropWorldLocation,
+		CardTargetingComponent->ConfigureTargetingParams(
+			bAutoTargetAttackablesOnProjectileCards,
 			ProjectileTargetMaxRange,
 			ProjectileTargetHalfAngleDegrees,
-			ProjectileTargetProximityRadius,
-			true // Check Line of Sight
-		);
-
-		if (BestTarget)
-		{
-			TargetInfo.TargetActor = BestTarget;
-			TargetInfo.TargetLocation = BestTarget->GetActorLocation();
-		}
+			ProjectileTargetProximityRadius);
+		return CardTargetingComponent->ResolveCardTargetAtScreenPosition(ScreenPos, CardAsset);
 	}
-
-	return TargetInfo;
+	return FFCCardTargetInfo();
 }
 
 void AFCPlayerController::HandleNumberKeyInput(int32 SlotIndex)
 {
-	if (!IsLocalPlayerController() || !HUDWidget)
+	UFCHUDWidget* ActiveHUD = GetHUDWidget();
+	UFCHUDViewModel* ActiveVM = GetHUDViewModel();
+	if (!IsLocalPlayerController() || !ActiveHUD)
 	{
 		return;
 	}
 
-	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	if (ActiveVM && ActiveVM->IsPileViewerOpen())
+	{
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = ActiveHUD->GetHandWidget())
 	{
 		HandWidget->SelectAndHoldCardByIndex(SlotIndex);
 	}
@@ -619,12 +293,19 @@ void AFCPlayerController::HandleNumberKeyInput(int32 SlotIndex)
 
 void AFCPlayerController::OnLeftMouseButtonPressed()
 {
-	if (!IsLocalPlayerController() || !HUDWidget)
+	UFCHUDWidget* ActiveHUD = GetHUDWidget();
+	UFCHUDViewModel* ActiveVM = GetHUDViewModel();
+	if (!IsLocalPlayerController() || !ActiveHUD)
 	{
 		return;
 	}
 
-	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	if (ActiveVM && ActiveVM->IsPileViewerOpen())
+	{
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = ActiveHUD->GetHandWidget())
 	{
 		if (HandWidget->HasHeldCard())
 		{
@@ -635,12 +316,20 @@ void AFCPlayerController::OnLeftMouseButtonPressed()
 
 void AFCPlayerController::OnRightMouseButtonPressed()
 {
-	if (!IsLocalPlayerController() || !HUDWidget)
+	UFCHUDWidget* ActiveHUD = GetHUDWidget();
+	UFCHUDViewModel* ActiveVM = GetHUDViewModel();
+	if (!IsLocalPlayerController() || !ActiveHUD)
 	{
 		return;
 	}
 
-	if (UFCHandWidget* HandWidget = HUDWidget->GetHandWidget())
+	if (ActiveVM && ActiveVM->IsPileViewerOpen())
+	{
+		ActiveVM->ClosePileViewer();
+		return;
+	}
+
+	if (UFCHandWidget* HandWidget = ActiveHUD->GetHandWidget())
 	{
 		if (HandWidget->HasHeldCard())
 		{
@@ -649,13 +338,12 @@ void AFCPlayerController::OnRightMouseButtonPressed()
 	}
 }
 
-
-bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
+bool AFCPlayerController::Server_ClaimCardPickup_Validate(AFCCardPickupActor* PickupActor, EFCCardZone Destination)
 {
-	return StaticEnum<EFCCardAddDestination>()->IsValidEnumValue(static_cast<int64>(Destination));
+	return StaticEnum<EFCCardZone>()->IsValidEnumValue(static_cast<int64>(Destination));
 }
 
-void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination)
+void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupActor* PickupActor, EFCCardZone Destination)
 {
 	if (!HasAuthority() || !IsValid(PickupActor))
 	{
@@ -684,11 +372,9 @@ void AFCPlayerController::Server_ClaimCardPickup_Implementation(AFCCardPickupAct
 		return;
 	}
 
-	// Enforce server-authoritative pickup destination regardless of client request
-	const EFCCardAddDestination AuthoritativeDestination = PickupActor->GetDefaultDestination();
+	const EFCCardZone AuthoritativeDestination = PickupActor->GetDefaultDestination();
 	PickupActor->ClaimPickup(Char, AuthoritativeDestination);
 }
-
 
 void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 {
@@ -696,9 +382,9 @@ void AFCPlayerController::SetStatusToggle(const FFCStatusToggleData& InData)
 	{
 		StatusPresenterComponent->PushStatusData(InData);
 	}
-	else if (HUDViewModel)
+	else if (UFCHUDViewModel* ActiveVM = GetHUDViewModel())
 	{
-		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
+		if (UFCStatusToggleContainerViewModel* StatusVM = ActiveVM->GetOrCreateStatusContainerViewModel())
 		{
 			StatusVM->AddOrUpdateStatus(InData);
 		}
@@ -711,9 +397,9 @@ void AFCPlayerController::RemoveStatusToggle(FName InStatusId)
 	{
 		StatusPresenterComponent->RemoveStatusById(InStatusId);
 	}
-	else if (HUDViewModel)
+	else if (UFCHUDViewModel* ActiveVM = GetHUDViewModel())
 	{
-		if (UFCStatusToggleContainerViewModel* StatusVM = HUDViewModel->GetOrCreateStatusContainerViewModel())
+		if (UFCStatusToggleContainerViewModel* StatusVM = ActiveVM->GetOrCreateStatusContainerViewModel())
 		{
 			StatusVM->RemoveStatusById(InStatusId);
 		}

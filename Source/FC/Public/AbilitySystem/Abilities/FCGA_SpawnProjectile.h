@@ -47,17 +47,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ability|Projectile")
 	TSubclassOf<AFCProjectileBase> ProjectileClass;
 
-	/** Elemental affinities carried by spawned projectiles */
+	/** Elemental GameplayTags carried by spawned projectiles (Element.*) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
-	TArray<EFCElement> ProjectileElements;
+	TArray<FGameplayTag> ProjectileElementTags;
 
-	/** Character class associated with this ability */
+	/** Character class GameplayTag associated with this ability (Class.*) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
-	EFCCharacterClass CharacterClass = EFCCharacterClass::Mage;
+	FGameplayTag ClassTag;
 
-	/** Card functional type */
+	/** Card functional type GameplayTag (Card.Type.*) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile")
-	EFCCardType CardType = EFCCardType::Attack;
+	FGameplayTag CardTypeTag;
 
 	/** Projectile launch speed */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Projectile", meta = (ClampMin = "0.0"))
@@ -79,8 +79,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ability|Presentation")
 	TObjectPtr<UNiagaraSystem> CastVFX;
 
-	/** Computes straight-line launch transform oriented along character Arrow component or forward vector */
-	virtual FTransform GetLaunchTransform(const FGameplayAbilityActorInfo* ActorInfo) const;
+	/** Computes straight-line launch transform oriented along immutable TargetData or avatar forward vector */
+	virtual FTransform GetLaunchTransform(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayEventData* TriggerEventData = nullptr) const;
 
 	/** Helper to find the directional reference component (e.g. ArrowComponent) */
 	virtual USceneComponent* GetLaunchReferenceComponent(AActor* Avatar) const;

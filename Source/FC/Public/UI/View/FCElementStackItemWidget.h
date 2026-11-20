@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GameplayTagContainer.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCElementStackItemWidget.generated.h"
 
@@ -13,8 +14,8 @@ class UTexture2D;
 /**
  * UFCElementStackItemWidget
  * 
- * Lightweight UMG UserWidget representing an individual element stack token or gem.
- * Reusable and pooled by UFCElementOverheadWidget without ViewModel allocations.
+ * Lightweight UMG UserWidget representing an individual GameplayTag element stack token or gem.
+ * Resolves color, short code, display name, and icon dynamically from DT_ElementCatalog (OCP).
  */
 UCLASS(BlueprintType, Blueprintable)
 class FC_API UFCElementStackItemWidget : public UUserWidget
@@ -24,43 +25,43 @@ class FC_API UFCElementStackItemWidget : public UUserWidget
 public:
 	UFCElementStackItemWidget(const FObjectInitializer& ObjectInitializer);
 
-	/** Sets the active element and updates visual presentation (Color, Initial, Icon) */
+	/** Sets the active element GameplayTag and updates visual presentation (Color, Initial, Icon) */
 	UFUNCTION(BlueprintCallable, Category = "FC|Element")
-	virtual void SetElement(EFCElement InElement, int32 InSlotIndex = 0);
+	virtual void SetElement(FGameplayTag InElementTag, int32 InSlotIndex = 0);
 
 	/** Resets this item widget to empty/none state */
 	UFUNCTION(BlueprintCallable, Category = "FC|Element")
 	virtual void ClearElement();
 
 	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	EFCElement GetCurrentElement() const { return CurrentElement; }
+	FGameplayTag GetCurrentElement() const { return CurrentElementTag; }
 
 	UFUNCTION(BlueprintPure, Category = "FC|Element")
 	int32 GetCurrentSlotIndex() const { return CurrentSlotIndex; }
 
-	// Static UI styling and formatting helpers
-	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	static FLinearColor GetColorForElement(EFCElement InElement);
+	// Static UI styling and formatting helpers driven by DT_ElementCatalog
+	UFUNCTION(BlueprintPure, Category = "FC|Element", meta = (WorldContext = "WorldContextObject"))
+	static FLinearColor GetColorForElement(FGameplayTag InElementTag, const UObject* WorldContextObject = nullptr);
 
-	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	static FText GetDisplayNameForElement(EFCElement InElement);
+	UFUNCTION(BlueprintPure, Category = "FC|Element", meta = (WorldContext = "WorldContextObject"))
+	static FText GetDisplayNameForElement(FGameplayTag InElementTag, const UObject* WorldContextObject = nullptr);
 
-	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	static FString GetShortNameForElement(EFCElement InElement);
+	UFUNCTION(BlueprintPure, Category = "FC|Element", meta = (WorldContext = "WorldContextObject"))
+	static FString GetShortNameForElement(FGameplayTag InElementTag, const UObject* WorldContextObject = nullptr);
 
 protected:
 	virtual void NativeConstruct() override;
 
 	/** Blueprint event hook triggered whenever element is set or updated */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FC|Element|Events")
-	void OnElementUpdated(EFCElement NewElement, int32 SlotIndex);
+	void OnElementUpdated(FGameplayTag NewElementTag, int32 SlotIndex);
 
 	/** Blueprint event hook triggered when stack added animation should play */
 	UFUNCTION(BlueprintImplementableEvent, Category = "FC|Element|Events")
 	void OnPlayStackAddedAnimation();
 
 	UPROPERTY(BlueprintReadOnly, Category = "FC|Element")
-	EFCElement CurrentElement = EFCElement::None;
+	FGameplayTag CurrentElementTag;
 
 	UPROPERTY(BlueprintReadOnly, Category = "FC|Element")
 	int32 CurrentSlotIndex = 0;

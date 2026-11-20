@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Card/FCCardHandContainer.h"
+#include "Data/Card/FCCardPileContainer.h"
 #include "Data/FCPlayerPersistenceTypes.h"
 #include "FCCardDeckComponent.generated.h"
 
@@ -14,6 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCardHandUpdatedSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCardItemChangedSignature, const FFCCardItem&, ChangedItem);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCardPlayedSignature, const FGuid&, CardGuid, FName, CardId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPileCountsChangedSignature, int32, DrawCount, int32, DiscardCount, int32, ExhaustCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPileSummariesUpdatedSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCardCycleTriggeredSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCycleSettingsChangedSignature, float, NewInterval, int32, NewDrawCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCycleTimerUpdatedSignature);
@@ -48,6 +50,9 @@ public:
 	FOnPileCountsChangedSignature OnPileCountsChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Card|Events")
+	FOnPileSummariesUpdatedSignature OnPileSummariesUpdated;
+
+	UPROPERTY(BlueprintAssignable, Category = "Card|Events")
 	FOnCardCycleTriggeredSignature OnCardCycleTriggered;
 
 	UPROPERTY(BlueprintAssignable, Category = "Card|Events")
@@ -58,6 +63,8 @@ public:
 
 	// --- Getters ---
 	const FFCCardHandContainer& GetHandContainer() const { return HandContainer; }
+	const FFCCardPileContainer& GetDrawPileSummary() const { return DrawPileSummary; }
+	const FFCCardPileContainer& GetDiscardPileSummary() const { return DiscardPileSummary; }
 	int32 GetDrawPileCount() const { return DrawPileCount; }
 	int32 GetDiscardPileCount() const { return DiscardPileCount; }
 	int32 GetExhaustPileCount() const { return ExhaustPileCount; }
@@ -105,9 +112,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void InitializeDeck(const TArray<FName>& StartingDeck);
 
-	/** Initializes deck using starter deck configured for the given character class */
+	/** Initializes deck using starter deck configured for the given character class GameplayTag */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
-	void InitializeDeckForClass(EFCCharacterClass InClass);
+	void InitializeDeckForClass(FGameplayTag InClassTag);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	void DrawCards(int32 Count = 1);
@@ -118,9 +125,9 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	bool ExhaustCard(const FGuid& CardGuid);
 
-	/** Retrieves a card from the exhaust pile and places it into the target destination */
+	/** Retrieves a card from the exhaust pile and places it into the target zone */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
-	bool RetrieveCardFromExhaust(FName CardId, EFCCardAddDestination Destination = EFCCardAddDestination::Hand);
+	bool RetrieveCardFromExhaust(FName CardId, EFCCardZone Destination = EFCCardZone::Hand);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
 	bool UpgradeCardInHand(const FGuid& CardGuid, int32 NewUpgradeLevel = 1);
@@ -136,7 +143,7 @@ public:
 
 	/** Dynamically adds a card to the deck, discard pile, hand, or exhaust pile */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Authority")
-	bool AddCardToDeck(FName CardId, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile, bool bShuffleIfDrawPile = true);
+	bool AddCardToDeck(FName CardId, EFCCardZone Destination = EFCCardZone::DiscardPile, bool bShuffleIfDrawPile = true);
 
 	// --- Periodic Hand & Mana Cycle APIs ---
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Cycle")
@@ -181,6 +188,7 @@ public:
 	/** Client-side helper called by FastArray callbacks */
 	void NotifyHandChanged();
 	void NotifyItemChanged(const FFCCardItem& Item);
+	void NotifyPileSummariesChanged();
 
 protected:
 	virtual void BeginPlay() override;
@@ -199,6 +207,13 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_PileCounts, Category = "Card|Replication")
 	int32 ExhaustPileCount = 0;
+
+	/** Canonically sorted Draw/Discard pile summaries replicated COND_OwnerOnly without leaking draw order */
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_PileSummaries, Category = "Card|Replication")
+	FFCCardPileContainer DrawPileSummary;
+
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_PileSummaries, Category = "Card|Replication")
+	FFCCardPileContainer DiscardPileSummary;
 
 	/** Maximum number of cards allowed in hand (default: 10) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Rules", meta = (ClampMin = "1"))
@@ -227,6 +242,9 @@ protected:
 	virtual void OnRep_PileCounts();
 
 	UFUNCTION()
+	virtual void OnRep_PileSummaries();
+
+	UFUNCTION()
 	virtual void OnRep_CycleSettings();
 
 	UFUNCTION()
@@ -246,4 +264,5 @@ private:
 	double LastPlayCardServerTime = -1000.0;
 
 	UAbilitySystemComponent* GetOwnerAbilitySystemComponent() const;
+	void SyncReplicatedPileSummaries();
 };

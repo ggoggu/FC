@@ -7,6 +7,8 @@
 class UFCHUDViewModel;
 class UFCHandWidget;
 class UFCStatusToggleContainerWidget;
+class UFCCardPileWidget;
+class UButton;
 
 /**
  * UFCHUDWidget
@@ -46,6 +48,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD|Widgets")
 	void SetStatusToggleContainerWidget(UFCStatusToggleContainerWidget* InWidget) { StatusToggleContainerWidget = InWidget; }
 
+	/** Gets the child pile viewer widget */
+	UFUNCTION(BlueprintPure, Category = "HUD|Widgets")
+	UFCCardPileWidget* GetCardPileWidget() const { return CardPileWidget; }
+
+	/** Returns true if the Deck/Discard pile viewer modal is currently open */
+	UFUNCTION(BlueprintPure, Category = "HUD|Widgets")
+	bool IsPileViewerOpen() const;
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -57,6 +67,24 @@ protected:
 	/** Optional child status toggle container widget (placed in PlayerInfoContainer in Blueprint) */
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
 	TObjectPtr<UFCStatusToggleContainerWidget> StatusToggleContainerWidget;
+
+	/** Optional child pile viewer modal widget (named CardPileWidget in Blueprint) */
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
+	TObjectPtr<UFCCardPileWidget> CardPileWidget;
+
+	/** Optional clickable button wrapping DrawPileContainer (named Btn_DrawPile in Blueprint) */
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
+	TObjectPtr<UButton> Btn_DrawPile;
+
+	/** Optional clickable button wrapping DiscardPileContainer (named Btn_DiscardPile in Blueprint) */
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidgetOptional), Category = "HUD|Widgets")
+	TObjectPtr<UButton> Btn_DiscardPile;
+
+	UFUNCTION()
+	void HandleDrawPileButtonClicked();
+
+	UFUNCTION()
+	void HandleDiscardPileButtonClicked();
 
 	/** Blueprint hook triggered whenever a new ViewModel is bound */
 	UFUNCTION(BlueprintImplementableEvent, Category = "HUD|Events")

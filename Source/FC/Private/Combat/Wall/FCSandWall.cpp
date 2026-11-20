@@ -1,5 +1,5 @@
 #include "Combat/Wall/FCSandWall.h"
-#include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Interfaces/FCInterceptableAttack.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -104,23 +104,12 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 		return false;
 	}
 
-	if (!Attacker->IsA<AFCProjectileBase>())
+	if (const IFCInterceptableAttack* Interceptable = Cast<IFCInterceptableAttack>(Attacker))
 	{
-		return false;
+		return Interceptable->CanBeInterceptedBy(this);
 	}
 
-	// Cannot absorb attacks from the caster or friendly projectiles
-	if (GetInstigator() && (Attacker == GetInstigator() || Attacker->GetInstigator() == GetInstigator()))
-	{
-		return false;
-	}
-
-	if (GetOwner() && (Attacker == GetOwner() || Attacker->GetOwner() == GetOwner()))
-	{
-		return false;
-	}
-
-	return true;
+	return false;
 }
 
 void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& ImpactLocation)
@@ -140,10 +129,9 @@ void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& Im
 
 	Multicast_PlayAbsorbCosmetics(ImpactLocation);
 
-	// Safely destroy hostile projectile to absorb the attack
-	if (IsValid(AttackingActor))
+	if (IFCInterceptableAttack* Interceptable = Cast<IFCInterceptableAttack>(AttackingActor))
 	{
-		AttackingActor->Destroy();
+		Interceptable->OnInterceptedBy(this, ImpactLocation);
 	}
 }
 

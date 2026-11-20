@@ -8,7 +8,7 @@
 #include "AI/FCAITypes.h"
 #include "AI/Decorators/FCBTDecorator_IsInAttackRange.h"
 #include "AI/Tasks/FCBTTask_Attack.h"
-#include "AbilitySystem/Abilities/FCGA_Fireball.h"
+#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Gameplay/FCChestActor.h"
 #include "Components/CapsuleComponent.h"
 #include "Combat/Projectile/FCProjectileBase.h"
@@ -130,8 +130,8 @@ bool FFCMobAITest::RunTest(const FString& Parameters)
 			TestNull(TEXT("Default AttackMontage should be null on pure base class"), Mob->GetAttackMontage());
 
 			// Test ability assignment
-			Mob->SetAttackAbilityClass(UFCGA_Fireball::StaticClass());
-			TestEqual(TEXT("AttackAbilityClass matches assigned class"), Mob->GetAttackAbilityClass(), TSubclassOf<UGameplayAbility>(UFCGA_Fireball::StaticClass()));
+			Mob->SetAttackAbilityClass(UFCGA_SpawnProjectile::StaticClass());
+			TestEqual(TEXT("AttackAbilityClass matches assigned class"), Mob->GetAttackAbilityClass(), TSubclassOf<UGameplayAbility>(UFCGA_SpawnProjectile::StaticClass()));
 
 			// Test CombatTarget setting
 			TestNull(TEXT("Initial CombatTarget must be null"), Mob->GetCombatTarget());

@@ -12,6 +12,8 @@
 	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
 	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
+struct FHitResult;
+
 UCLASS()
 class FC_API UFCAttributeSet : public UAttributeSet
 {
@@ -24,6 +26,15 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue) override;
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
+
+	/**
+	 * Single authoritative damage resolution pipeline:
+	 * 1. Absorbs raw damage via Shield first
+	 * 2. Deducts remaining damage from Health (clamped to [0, MaxHealth])
+	 * 3. Triggers death or damage-taken callbacks on the owning actor
+	 * Works seamlessly both inside live GAS worlds and headless unit tests.
+	 */
+	float ApplyIncomingDamageValue(float RawDamage, AActor* InstigatorActor = nullptr, AActor* DamageCauser = nullptr, const FHitResult* HitResult = nullptr);
 
 	/** Exports current health/mana attribute snapshot for persistence */
 	UFUNCTION(BlueprintCallable, Category = "Attributes|Persistence")
@@ -64,6 +75,15 @@ public:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxShield, Category = "Attributes|Shield")
 	FGameplayAttributeData MaxShield;
 	ATTRIBUTE_ACCESSORS(UFCAttributeSet, MaxShield)
+
+	// --- Un-Replicated Server-Only Meta-Attributes ---
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes|Meta")
+	FGameplayAttributeData IncomingDamage;
+	ATTRIBUTE_ACCESSORS(UFCAttributeSet, IncomingDamage)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes|Meta")
+	FGameplayAttributeData IncomingHeal;
+	ATTRIBUTE_ACCESSORS(UFCAttributeSet, IncomingHeal)
 
 protected:
 	UFUNCTION()

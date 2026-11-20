@@ -29,7 +29,7 @@ void UFCClassSelectItemWidget::HandleSelectButtonClicked()
 {
 	if (ViewModel)
 	{
-		OnItemClicked.Broadcast(ViewModel->GetClassType());
+		OnItemClicked.Broadcast(ViewModel->GetClassTag());
 	}
 }
 

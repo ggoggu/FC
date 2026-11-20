@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "GameplayTagContainer.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCClassSelectItemWidget.generated.h"
 
@@ -10,7 +11,7 @@ class UButton;
 class UTextBlock;
 class UImage;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnClassItemClickedSignature, EFCCharacterClass, ClassType);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnClassItemClickedSignature, FGameplayTag, ClassTag);
 
 /**
  * UFCClassSelectItemWidget

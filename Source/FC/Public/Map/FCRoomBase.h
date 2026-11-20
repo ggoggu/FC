@@ -64,6 +64,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
 	void SetDoorOffset(float NewDoorOffset);
 
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Walls")
+	float GetWallThickness() const { return WallThickness; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Room|Walls")
+	void SetWallThickness(float NewWallThickness);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Walls")
+	float GetWallHeight() const { return WallHeight; }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Walls")
+	float GetDoorOpeningHeight() const { return DoorOpeningHeight; }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Walls")
+	float GetFloorThickness() const { return FloorThickness; }
+
+	UFUNCTION(BlueprintPure, Category = "FC|Room|Doors")
+	float GetTriggerBoundaryInset() const { return TriggerBoundaryInset; }
+
+	UBoxComponent* GetRoomBoundsTrigger() const { return RoomBoundsTrigger; }
+
 	UFUNCTION(BlueprintCallable, Category = "FC|Room|Doors")
 	void UpdateDoorSockets();
 
@@ -126,10 +146,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "FC|Room|Events")
 	FOnFCRoomDiscoveryChanged OnRoomDiscoveryChanged;
 
+	UFUNCTION(BlueprintCallable, Category = "FC|Room")
+	void CleanupSpawnedActors();
+
 protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void Destroyed() override;
 
 	// Visual/Modular mesh setup in Blueprint or derived C++
 	UFUNCTION(BlueprintNativeEvent, Category = "FC|Room")
@@ -162,9 +186,6 @@ protected:
 
 	UFUNCTION()
 	virtual void OnChildSpawnerMobSpawned(AFCMobCharacter* Mob);
-
-	UFUNCTION()
-	virtual void OnSecretWallDestroyed(AFCDestructibleWall* Wall);
 
 	UFUNCTION()
 	virtual void OnRep_RoomData();
@@ -253,6 +274,26 @@ protected:
 	UPROPERTY(Replicated, EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetManageDoorsExternally, Category = "FC|Room|Doors")
 	bool bManageDoorsExternally = false;
 
+	/** Outer wall thickness in cm extending outward from DoorOffset (half of the inter-room gap so adjacent rooms never overlap). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Room|Walls", BlueprintSetter = SetWallThickness, meta = (ClampMin = "10.0"))
+	float WallThickness = 150.0f;
+
+	/** Total wall height from Z=0 in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Room|Walls", meta = (ClampMin = "100.0"))
+	float WallHeight = 2300.0f;
+
+	/** Clear doorway opening height above FloorThickness in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Room|Walls", meta = (ClampMin = "100.0"))
+	float DoorOpeningHeight = 500.0f;
+
+	/** Height of the room floor top surface in cm (Z in [0, FloorThickness]). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Room|Walls", meta = (ClampMin = "0.0"))
+	float FloorThickness = 100.0f;
+
+	/** Distance in cm that RoomBoundsTrigger is inset from DoorOffset at runtime so players step fully inside before combat locks doors. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Room|Doors", meta = (ClampMin = "0.0"))
+	float TriggerBoundaryInset = 150.0f;
+
 	/** Server-authoritative assigned door classes [0: North, 1: South, 2: East, 3: West]. Transient, not replicated. */
 	UPROPERTY(Transient)
 	TArray<TSubclassOf<AFCDoorBase>> DirectionDoorClasses;
@@ -267,6 +308,9 @@ protected:
 	TArray<TObjectPtr<AFCWallBase>> SpawnedWalls;
 
 private:
+	void ApplyTriggerBoundaryInset();
+
 	TArray<TWeakObjectPtr<APawn>> ActiveMonsters;
 	TArray<TWeakObjectPtr<AFCMobSpawnerBase>> ActiveSpawnersRemaining;
+	bool bTriggerInsetApplied = false;
 };

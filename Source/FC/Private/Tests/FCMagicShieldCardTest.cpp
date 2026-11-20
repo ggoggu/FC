@@ -9,6 +9,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Class/FCClassTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -38,16 +39,15 @@ bool FFCMagicShieldCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("MagicShield Card Type must be Skill"), (uint8)MagicShieldAsset->GameplayData.CardType, (uint8)EFCCardType::Skill);
 				TestEqual(TEXT("MagicShield Target Type must be Self"), (uint8)MagicShieldAsset->GameplayData.TargetType, (uint8)EFCCardTargetType::Self);
 				TestEqual(TEXT("MagicShield Mana Cost should be 1"), MagicShieldAsset->GameplayData.BaseManaCost, 1);
-				TestEqual(TEXT("MagicShield RequiredClass must be Mage"), (uint8)MagicShieldAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Mage);
-				TestEqual(TEXT("MagicShield must have no elemental affinities (속성 x)"), MagicShieldAsset->GameplayData.Elements.Num(), 0);
+				TestTrue(TEXT("MagicShield RequiredClassTag must be Mage"), MagicShieldAsset->GameplayData.RequiredClassTag == FCGameplayTags::Class_Mage);
+				TestEqual(TEXT("MagicShield must have no elemental affinities (속성 x)"), MagicShieldAsset->GameplayData.ElementTags.Num(), 0);
 				TestEqual(TEXT("MagicShield Base Value should be 20.0"), MagicShieldAsset->GameplayData.BaseValue, 20.0f);
 				TestTrue(TEXT("MagicShield should contain UFCGE_MagicShield effect class"), MagicShieldAsset->GameplayData.GetCardEffectClasses().Contains(UFCGE_MagicShield::StaticClass()));
 				TestEqual(TEXT("MagicShield Card Name should match"), MagicShieldAsset->DisplayData.CardName.ToString(), FString(TEXT("매직실드")));
 
-				// Class usability rules
-				TestTrue(TEXT("MagicShield must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClass, EFCCharacterClass::Mage));
-				TestFalse(TEXT("MagicShield must not be usable by Warrior"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClass, EFCCharacterClass::Warrior));
-				TestFalse(TEXT("MagicShield must not be usable by Rogue"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClass, EFCCharacterClass::Rogue));
+				TestTrue(TEXT("MagicShield must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClassTag, FCGameplayTags::Class_Mage));
+				TestFalse(TEXT("MagicShield must not be usable by Warrior"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClassTag, FCGameplayTags::Class_Warrior));
+				TestFalse(TEXT("MagicShield must not be usable by Rogue"), FCClassTraitUtils::CanCardBeUsedByClass(MagicShieldAsset->GameplayData.RequiredClassTag, FCGameplayTags::Class_Rogue));
 			}
 		}
 	}
@@ -94,30 +94,30 @@ bool FFCMagicShieldCardTest::RunTest(const FString& Parameters)
 			AttrSet->InitShield(20.0f);
 			TestEqual(TEXT("Shield after initialization should be 20.0"), AttrSet->GetShield(), 20.0f);
 
-			// Simulate incoming damage of 15.0 to Health
+			// Simulate incoming damage of 15.0 through IncomingDamage Meta-Attribute
 			FGameplayEffectSpec DummyDamageSpec;
-			FGameplayModifierEvaluatedData EvalData1(UFCAttributeSet::GetHealthAttribute(), EGameplayModOp::Additive, -15.0f);
+			FGameplayModifierEvaluatedData EvalData1(UFCAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, 15.0f);
 			FGameplayEffectModCallbackData ModData1(DummyDamageSpec, EvalData1, *ASC);
 
-			// Health would have been initially decremented to 85.0 by GAS execution before callback
-			AttrSet->InitHealth(85.0f);
+			AttrSet->InitIncomingDamage(15.0f);
 			AttrSet->PostGameplayEffectExecute(ModData1);
 
-			// Shield should have absorbed 15.0 damage: Shield 20 -> 5, Health 85 + 15 -> 100
+			// Shield should have absorbed 15.0 damage: Shield 20 -> 5, Health remains 100, Meta-Attribute reset to 0
 			TestEqual(TEXT("Shield should absorb 15 damage and reduce to 5.0"), AttrSet->GetShield(), 5.0f);
 			TestEqual(TEXT("Health should remain fully protected at 100.0"), AttrSet->GetHealth(), 100.0f);
+			TestEqual(TEXT("IncomingDamage meta-attribute must reset to 0.0"), AttrSet->GetIncomingDamage(), 0.0f);
 
-			// Simulate second incoming damage of 10.0 to Health
-			FGameplayModifierEvaluatedData EvalData2(UFCAttributeSet::GetHealthAttribute(), EGameplayModOp::Additive, -10.0f);
+			// Simulate second incoming damage of 10.0 through IncomingDamage Meta-Attribute
+			FGameplayModifierEvaluatedData EvalData2(UFCAttributeSet::GetIncomingDamageAttribute(), EGameplayModOp::Additive, 10.0f);
 			FGameplayEffectModCallbackData ModData2(DummyDamageSpec, EvalData2, *ASC);
 
-			// Health temporarily decremented by 10 (100 -> 90) before callback
-			AttrSet->InitHealth(90.0f);
+			AttrSet->InitIncomingDamage(10.0f);
 			AttrSet->PostGameplayEffectExecute(ModData2);
 
-			// Shield absorbs 5 remaining and depletes to 0; Health absorbs remaining 5 (90 + 5 = 95)
+			// Shield absorbs 5 remaining and depletes to 0; Health absorbs remaining 5 (100 - 5 = 95)
 			TestEqual(TEXT("Shield should be fully depleted to 0.0"), AttrSet->GetShield(), 0.0f);
 			TestEqual(TEXT("Health should take residual damage and be 95.0"), AttrSet->GetHealth(), 95.0f);
+			TestEqual(TEXT("IncomingDamage meta-attribute must reset to 0.0"), AttrSet->GetIncomingDamage(), 0.0f);
 
 			// Clamping tests
 			float NegativeShield = -10.0f;

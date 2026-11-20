@@ -58,10 +58,10 @@ public:
 
 	// --- Class & Trait Properties ---
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
-	EFCCharacterClass RequiredClass = EFCCharacterClass::Neutral;
+	FGameplayTag RequiredClassTag;
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
-	TArray<EFCElement> Elements;
+	TArray<FGameplayTag> ElementTags;
 
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Card")
 	bool bHasClassTrait = false;
@@ -126,8 +126,8 @@ public:
 	void SetCardIcon(TSoftObjectPtr<UTexture2D> InIcon) { UE_MVVM_SET_PROPERTY_VALUE(CardIcon, InIcon); }
 	void SetCardType(EFCCardType InType) { UE_MVVM_SET_PROPERTY_VALUE(CardType, InType); }
 	void SetRarity(EFCCardRarity InRarity) { UE_MVVM_SET_PROPERTY_VALUE(Rarity, InRarity); }
-	void SetRequiredClass(EFCCharacterClass InClass) { UE_MVVM_SET_PROPERTY_VALUE(RequiredClass, InClass); }
-	void SetElements(const TArray<EFCElement>& InElements) { UE_MVVM_SET_PROPERTY_VALUE(Elements, InElements); }
+	void SetRequiredClassTag(FGameplayTag InClassTag) { UE_MVVM_SET_PROPERTY_VALUE(RequiredClassTag, InClassTag); }
+	void SetElementTags(const TArray<FGameplayTag>& InElementTags) { UE_MVVM_SET_PROPERTY_VALUE(ElementTags, InElementTags); }
 	void SetHasClassTrait(bool bInHasTrait) { UE_MVVM_SET_PROPERTY_VALUE(bHasClassTrait, bInHasTrait); }
 	void SetIsNeutral(bool bInNeutral) { UE_MVVM_SET_PROPERTY_VALUE(bIsNeutral, bInNeutral); }
 	void SetFormattedClassText(const FText& InText) { UE_MVVM_SET_PROPERTY_VALUE(FormattedClassText, InText); }

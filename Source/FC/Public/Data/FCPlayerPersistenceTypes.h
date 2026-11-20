@@ -45,7 +45,7 @@ struct FC_API FFCPlayerStatSaveData
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Class")
-	EFCCharacterClass CharacterClass = EFCCharacterClass::Mage;
+	FGameplayTag CharacterClass;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Persistence|Stats")
 	float Health = 100.0f;

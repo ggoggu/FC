@@ -54,7 +54,7 @@ void AFCClassSelectPlayerController::BeginPlay()
 	}
 }
 
-void AFCClassSelectPlayerController::HandleClassConfirmed(EFCCharacterClass ConfirmedClass, const TArray<FName>& StartingDeck)
+void AFCClassSelectPlayerController::HandleClassConfirmed(FGameplayTag ConfirmedClassTag, const TArray<FName>& StartingDeck)
 {
 	// Trigger level transition via GameMode if server/authority
 	if (AFCClassSelectGameMode* GameMode = GetWorld()->GetAuthGameMode<AFCClassSelectGameMode>())

@@ -8,7 +8,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardTypes.h"
-#include "AbilitySystem/Abilities/FCGA_Fireball.h"
+#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -132,11 +132,11 @@ bool FFCProjectileTargetingTest::RunTest(const FString& Parameters)
 				// Fireball Card
 				UFCCardDataAsset* FireballCard = NewObject<UFCCardDataAsset>(Subsystem);
 				FireballCard->GameplayData.CardId = FName("Test_Fireball");
-				FireballCard->GameplayData.CardAbilityClass = UFCGA_Fireball::StaticClass();
+				FireballCard->GameplayData.CardAbilityClass = UFCGA_SpawnProjectile::StaticClass();
 				FireballCard->GameplayData.bSpawnsProjectile = true;
 
 				TestTrue(TEXT("Fireball card must return SpawnsProjectile = true"), FireballCard->GameplayData.SpawnsProjectile());
-				TestTrue(TEXT("Fireball ability class must be UFCGA_Fireball or derived from UFCGA_SpawnProjectile"),
+				TestTrue(TEXT("Fireball ability class must be UFCGA_SpawnProjectile or derived from it"),
 					FireballCard->GameplayData.GetCardAbilityClass()->IsChildOf(UFCGA_SpawnProjectile::StaticClass()));
 
 				// Fire Arrow Card

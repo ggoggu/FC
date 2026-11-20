@@ -1,6 +1,7 @@
 #include "UI/ViewModel/FCHUDViewModel.h"
 #include "UI/ViewModel/FCHandViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
+#include "UI/ViewModel/FCCardPileViewModel.h"
 #include "UI/Data/FCStatusToggleTypes.h"
 
 UFCHandViewModel* UFCHUDViewModel::GetOrCreateHandViewModel()
@@ -21,6 +22,37 @@ UFCStatusToggleContainerViewModel* UFCHUDViewModel::GetOrCreateStatusContainerVi
 		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(StatusContainerViewModel);
 	}
 	return StatusContainerViewModel;
+}
+
+UFCCardPileViewModel* UFCHUDViewModel::GetOrCreatePileViewerViewModel()
+{
+	if (!PileViewerViewModel)
+	{
+		PileViewerViewModel = NewObject<UFCCardPileViewModel>(this);
+		UE_MVVM_BROADCAST_FIELD_VALUE_CHANGED(PileViewerViewModel);
+	}
+	return PileViewerViewModel;
+}
+
+void UFCHUDViewModel::TogglePileViewer(EFCCardZone InZone)
+{
+	if (UFCCardPileViewModel* PileVM = GetOrCreatePileViewerViewModel())
+	{
+		PileVM->TogglePile(InZone);
+	}
+}
+
+void UFCHUDViewModel::ClosePileViewer()
+{
+	if (PileViewerViewModel)
+	{
+		PileViewerViewModel->ClosePile();
+	}
+}
+
+bool UFCHUDViewModel::IsPileViewerOpen() const
+{
+	return PileViewerViewModel && PileViewerViewModel->bIsOpen;
 }
 
 void UFCHUDViewModel::SetCurrentHealth(int32 InHealth)

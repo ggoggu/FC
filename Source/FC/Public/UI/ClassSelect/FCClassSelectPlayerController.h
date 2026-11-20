@@ -45,5 +45,5 @@ protected:
 	TObjectPtr<UFCClassSelectViewModel> ClassSelectViewModel;
 
 	UFUNCTION()
-	void HandleClassConfirmed(EFCCharacterClass ConfirmedClass, const TArray<FName>& StartingDeck);
+	void HandleClassConfirmed(FGameplayTag ConfirmedClassTag, const TArray<FName>& StartingDeck);
 };

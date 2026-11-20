@@ -22,7 +22,8 @@ public class FC : ModuleRules
 			"Niagara",
 			"NetCore",
 			"AIModule",
-			"NavigationSystem"
+			"NavigationSystem",
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 

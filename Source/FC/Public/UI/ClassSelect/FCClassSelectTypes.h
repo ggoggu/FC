@@ -1,11 +1,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCClassSelectTypes.generated.h"
 
 /**
- * Configuration for starting decks configurable per character class in Blueprints.
+ * Configuration for starting decks configurable per character class GameplayTag in Blueprints.
  */
 USTRUCT(BlueprintType)
 struct FC_API FFCClassStartingDeckConfig
@@ -17,5 +18,5 @@ struct FC_API FFCClassStartingDeckConfig
 	TArray<FName> CardIds;
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnClassSelectedSignature, EFCCharacterClass, SelectedClass);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnClassConfirmedSignature, EFCCharacterClass, ConfirmedClass, const TArray<FName>&, StartingDeck);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnClassSelectedSignature, FGameplayTag, SelectedClassTag);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnClassConfirmedSignature, FGameplayTag, ConfirmedClassTag, const TArray<FName>&, StartingDeck);

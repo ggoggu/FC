@@ -1,4 +1,6 @@
 #include "UI/View/FCElementStackItemWidget.h"
+#include "Data/Class/FCClassSubsystem.h"
+#include "Data/FCGameplayTags.h"
 #include "Components/Image.h"
 #include "Components/Border.h"
 #include "Components/TextBlock.h"
@@ -13,40 +15,66 @@ void UFCElementStackItemWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (CurrentElement != EFCElement::None)
+	if (CurrentElementTag.IsValid() && CurrentElementTag != FCGameplayTags::Element_None)
 	{
-		SetElement(CurrentElement, CurrentSlotIndex);
+		SetElement(CurrentElementTag, CurrentSlotIndex);
 	}
 }
 
-void UFCElementStackItemWidget::SetElement(EFCElement InElement, int32 InSlotIndex)
+void UFCElementStackItemWidget::SetElement(FGameplayTag InElementTag, int32 InSlotIndex)
 {
-	CurrentElement = InElement;
+	CurrentElementTag = InElementTag;
 	CurrentSlotIndex = InSlotIndex;
 
 	if (Border_Background)
 	{
-		Border_Background->SetBrushColor(GetColorForElement(InElement));
+		Border_Background->SetBrushColor(GetColorForElement(InElementTag, this));
 	}
 
 	if (Text_ElementInitial)
 	{
-		Text_ElementInitial->SetText(FText::FromString(GetShortNameForElement(InElement)));
+		Text_ElementInitial->SetText(FText::FromString(GetShortNameForElement(InElementTag, this)));
 		Text_ElementInitial->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 	}
 
-	OnElementUpdated(InElement, InSlotIndex);
+	if (Img_ElementIcon)
+	{
+		UTexture2D* IconTex = nullptr;
+		if (const UFCClassSubsystem* ClassSub = UFCClassSubsystem::GetClassSubsystem(this))
+		{
+			if (const FFCElementDefinitionRow* Row = ClassSub->FindElementRowPtr(InElementTag))
+			{
+				if (!Row->Icon.IsNull())
+				{
+					IconTex = Row->Icon.LoadSynchronous();
+				}
+			}
+		}
+
+		if (IconTex)
+		{
+			Img_ElementIcon->SetBrushFromTexture(IconTex);
+			Img_ElementIcon->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		}
+		else
+		{
+			Img_ElementIcon->SetBrushFromTexture(nullptr);
+			Img_ElementIcon->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	OnElementUpdated(InElementTag, InSlotIndex);
 	OnPlayStackAddedAnimation();
 }
 
 void UFCElementStackItemWidget::ClearElement()
 {
-	CurrentElement = EFCElement::None;
+	CurrentElementTag = FGameplayTag::EmptyTag;
 	CurrentSlotIndex = 0;
 
 	if (Border_Background)
 	{
-		Border_Background->SetBrushColor(GetColorForElement(EFCElement::None));
+		Border_Background->SetBrushColor(GetColorForElement(FCGameplayTags::Element_None, this));
 	}
 
 	if (Text_ElementInitial)
@@ -60,58 +88,20 @@ void UFCElementStackItemWidget::ClearElement()
 		Img_ElementIcon->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	OnElementUpdated(EFCElement::None, 0);
+	OnElementUpdated(FGameplayTag::EmptyTag, 0);
 }
 
-FLinearColor UFCElementStackItemWidget::GetColorForElement(EFCElement InElement)
+FLinearColor UFCElementStackItemWidget::GetColorForElement(FGameplayTag InElementTag, const UObject* WorldContextObject)
 {
-	switch (InElement)
-	{
-	case EFCElement::Fire:
-		return FLinearColor(1.0f, 0.28f, 0.08f, 1.0f); // Bright Fire Orange/Red
-	case EFCElement::Earth:
-		return FLinearColor(0.85f, 0.55f, 0.15f, 1.0f); // Earth Amber/Brown
-	case EFCElement::Water:
-		return FLinearColor(0.12f, 0.65f, 1.0f, 1.0f); // Cyan/Water Blue
-	case EFCElement::Wind:
-		return FLinearColor(0.2f, 0.9f, 0.5f, 1.0f); // Wind Emerald
-	case EFCElement::Lightning:
-		return FLinearColor(1.0f, 0.88f, 0.15f, 1.0f); // Lightning Yellow
-	case EFCElement::Holy:
-		return FLinearColor(1.0f, 0.95f, 0.65f, 1.0f); // Holy Radiant Gold
-	case EFCElement::Dark:
-		return FLinearColor(0.68f, 0.25f, 0.95f, 1.0f); // Dark Violet/Purple
-	case EFCElement::None:
-	default:
-		return FLinearColor(0.5f, 0.5f, 0.5f, 0.5f); // Neutral Slate
-	}
+	return FCClassTraitUtils::GetElementColor(InElementTag, WorldContextObject);
 }
 
-FText UFCElementStackItemWidget::GetDisplayNameForElement(EFCElement InElement)
+FText UFCElementStackItemWidget::GetDisplayNameForElement(FGameplayTag InElementTag, const UObject* WorldContextObject)
 {
-	return FCClassTraitUtils::GetElementDisplayName(InElement);
+	return FCClassTraitUtils::GetElementDisplayName(InElementTag, WorldContextObject);
 }
 
-FString UFCElementStackItemWidget::GetShortNameForElement(EFCElement InElement)
+FString UFCElementStackItemWidget::GetShortNameForElement(FGameplayTag InElementTag, const UObject* WorldContextObject)
 {
-	switch (InElement)
-	{
-	case EFCElement::Fire:
-		return TEXT("F");
-	case EFCElement::Earth:
-		return TEXT("E");
-	case EFCElement::Water:
-		return TEXT("W");
-	case EFCElement::Wind:
-		return TEXT("A");
-	case EFCElement::Lightning:
-		return TEXT("L");
-	case EFCElement::Holy:
-		return TEXT("H");
-	case EFCElement::Dark:
-		return TEXT("D");
-	case EFCElement::None:
-	default:
-		return TEXT("-");
-	}
+	return FCClassTraitUtils::GetElementShortCode(InElementTag, WorldContextObject);
 }

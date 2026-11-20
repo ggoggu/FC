@@ -2,6 +2,7 @@
 #include "UI/ClassSelect/FCClassSelectViewModel.h"
 #include "UI/ClassSelect/FCClassSelectItemViewModel.h"
 #include "UI/ClassSelect/FCClassSelectItemWidget.h"
+#include "Data/Class/FCClassSubsystem.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
@@ -48,9 +49,9 @@ void UFCClassSelectWidget::InitializeWidget(UFCClassSelectViewModel* InViewModel
 	}
 }
 
-TArray<FName> UFCClassSelectWidget::GetStartingDeckForClass(EFCCharacterClass InClass) const
+TArray<FName> UFCClassSelectWidget::GetStartingDeckForClass(FGameplayTag InClassTag) const
 {
-	if (const FFCClassStartingDeckConfig* FoundConfig = StartingDeckOverrides.Find(InClass))
+	if (const FFCClassStartingDeckConfig* FoundConfig = StartingDeckOverrides.Find(InClassTag))
 	{
 		if (FoundConfig->CardIds.Num() > 0)
 		{
@@ -58,12 +59,17 @@ TArray<FName> UFCClassSelectWidget::GetStartingDeckForClass(EFCCharacterClass In
 		}
 	}
 
-	if (InClass == EFCCharacterClass::Mage)
+	if (const UFCClassSubsystem* ClassSub = UFCClassSubsystem::GetClassSubsystem(this))
 	{
-		return MageStartingDeck;
+		return ClassSub->GetStartingDeckForClass(InClassTag);
 	}
 
-	return MageStartingDeck;
+	if (const FFCCharacterClassData* BuiltinRow = UFCClassSubsystem::FindBuiltinClassDefault(InClassTag))
+	{
+		return BuiltinRow->StartingDeck;
+	}
+
+	return {};
 }
 
 void UFCClassSelectWidget::BuildClassItems()
@@ -99,11 +105,11 @@ void UFCClassSelectWidget::BuildClassItems()
 	}
 }
 
-void UFCClassSelectWidget::HandleClassItemClicked(EFCCharacterClass ClickedClass)
+void UFCClassSelectWidget::HandleClassItemClicked(FGameplayTag ClickedClassTag)
 {
 	if (ViewModel)
 	{
-		ViewModel->SelectClass(ClickedClass);
+		ViewModel->SelectClass(ClickedClassTag);
 	}
 }
 
@@ -114,15 +120,14 @@ void UFCClassSelectWidget::HandleConfirmButtonClicked()
 		return;
 	}
 
-	const EFCCharacterClass SelectedClass = ViewModel->SelectedClassType;
-	const TArray<FName> StartingDeck = GetStartingDeckForClass(SelectedClass);
+	const FGameplayTag SelectedClassTag = ViewModel->SelectedClassTag;
+	const TArray<FName> StartingDeck = GetStartingDeckForClass(SelectedClassTag);
 
 	ViewModel->ConfirmSelection(GetOwningPlayer(), StartingDeck);
 }
 
-void UFCClassSelectWidget::HandleViewModelClassSelected(EFCCharacterClass SelectedClass)
+void UFCClassSelectWidget::HandleViewModelClassSelected(FGameplayTag SelectedClassTag)
 {
-	// Refresh all item widgets visual state
 	for (UFCClassSelectItemWidget* ItemWidget : SpawnedItemWidgets)
 	{
 		if (ItemWidget && ItemWidget->GetViewModel())
@@ -132,12 +137,12 @@ void UFCClassSelectWidget::HandleViewModelClassSelected(EFCCharacterClass Select
 	}
 
 	RefreshDetailPanel();
-	BP_OnClassSelected(SelectedClass);
+	BP_OnClassSelected(SelectedClassTag);
 }
 
-void UFCClassSelectWidget::HandleViewModelClassConfirmed(EFCCharacterClass ConfirmedClass, const TArray<FName>& StartingDeck)
+void UFCClassSelectWidget::HandleViewModelClassConfirmed(FGameplayTag ConfirmedClassTag, const TArray<FName>& StartingDeck)
 {
-	BP_OnClassConfirmed(ConfirmedClass);
+	BP_OnClassConfirmed(ConfirmedClassTag);
 }
 
 void UFCClassSelectWidget::RefreshDetailPanel()

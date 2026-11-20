@@ -135,6 +135,16 @@ void UFCCardWidget::SetIsHeldByHotKey(bool bInHeld)
 	}
 }
 
+void UFCCardWidget::SetDisplayOnly(bool bInDisplayOnly)
+{
+	bDisplayOnly = bInDisplayOnly;
+	if (bDisplayOnly && bIsDragging)
+	{
+		bIsDragging = false;
+		bHasMovedDuringDrag = false;
+	}
+}
+
 void UFCCardWidget::SetCardTargetTransform(
 	const FVector2D& InTranslation,
 	float InAngle,
@@ -224,6 +234,11 @@ void UFCCardWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
 FReply UFCCardWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	if (bDisplayOnly)
+	{
+		return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+	}
+
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		if (bIsHeldByHotKey)
@@ -285,6 +300,11 @@ FReply UFCCardWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const
 
 FReply UFCCardWidget::NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	if (bDisplayOnly)
+	{
+		return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
+	}
+
 	if (bIsDragging && HasMouseCapture())
 	{
 		const FVector2D CurrentScreenPos = InMouseEvent.GetScreenSpacePosition();
@@ -315,6 +335,11 @@ FReply UFCCardWidget::NativeOnMouseMove(const FGeometry& InGeometry, const FPoin
 
 FReply UFCCardWidget::NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	if (bDisplayOnly)
+	{
+		return Super::NativeOnMouseButtonUp(InGeometry, InMouseEvent);
+	}
+
 	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bIsDragging)
 	{
 		bIsDragging = false;
