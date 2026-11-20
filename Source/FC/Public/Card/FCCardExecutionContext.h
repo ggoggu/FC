@@ -89,6 +89,44 @@ struct FC_API FFCCardAbilityTargetData : public FGameplayAbilityTargetData
 	{
 		return StaticStruct();
 	}
+
+	static const FFCCardAbilityTargetData* ExtractFromHandle(const FGameplayAbilityTargetDataHandle& TargetData)
+	{
+		if (TargetData.Num() <= 0)
+		{
+			return nullptr;
+		}
+		const FGameplayAbilityTargetData* RawData = TargetData.Get(0);
+		if (!RawData || RawData->GetScriptStruct() != StaticStruct())
+		{
+			return nullptr;
+		}
+		return static_cast<const FFCCardAbilityTargetData*>(RawData);
+	}
+
+	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
+	{
+		bOutSuccess = true;
+		Ar << CardId;
+		Ar << UpgradeLevel;
+
+		bool bAimSuccess = true;
+		AimLocation.NetSerialize(Ar, Map, bAimSuccess);
+		bOutSuccess &= bAimSuccess;
+
+		SafeNetSerializeTArray_Default<31>(Ar, VerifiedTargets);
+		return true;
+	}
+};
+
+template<>
+struct TStructOpsTypeTraits<FFCCardAbilityTargetData> : public TStructOpsTypeTraitsBase2<FFCCardAbilityTargetData>
+{
+	enum
+	{
+		WithNetSerializer = true,
+		WithCopy = true
+	};
 };
 
 /**

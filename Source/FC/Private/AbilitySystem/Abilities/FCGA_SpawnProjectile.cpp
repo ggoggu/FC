@@ -5,6 +5,7 @@
 #include "Combat/Interfaces/FCProjectileProviderInterface.h"
 #include "Card/FCCardExecutionContext.h"
 #include "Data/Card/FCCardDataAsset.h"
+#include "Data/Card/FCCardSubsystem.h"
 #include "Data/FCGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -97,19 +98,12 @@ FTransform UFCGA_SpawnProjectile::GetLaunchTransform(const FGameplayAbilityActor
 	AActor* TargetActor = nullptr;
 	FVector TargetAimLocation = FVector::ZeroVector;
 
-	if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+	if (const FFCCardAbilityTargetData* CardTargetData = TriggerEventData ? FFCCardAbilityTargetData::ExtractFromHandle(TriggerEventData->TargetData) : nullptr)
 	{
-		if (const FGameplayAbilityTargetData* RawData = TriggerEventData->TargetData.Get(0))
+		TargetAimLocation = CardTargetData->AimLocation;
+		if (CardTargetData->VerifiedTargets.Num() > 0)
 		{
-			if (RawData->GetScriptStruct() == FFCCardAbilityTargetData::StaticStruct())
-			{
-				const FFCCardAbilityTargetData* CardTargetData = static_cast<const FFCCardAbilityTargetData*>(RawData);
-				TargetAimLocation = CardTargetData->AimLocation;
-				if (CardTargetData->VerifiedTargets.Num() > 0)
-				{
-					TargetActor = CardTargetData->VerifiedTargets[0].Get();
-				}
-			}
+			TargetActor = CardTargetData->VerifiedTargets[0].Get();
 		}
 	}
 
@@ -212,6 +206,26 @@ void UFCGA_SpawnProjectile::ActivateAbility(
 				}
 			}
 		}
+	}
+
+	if (!ExplicitClassOverride && !EffectiveDataAsset && TriggerEventData)
+	{
+		EffectiveDataAsset = [&]() -> const UFCProjectileDataAsset*
+		{
+			const FFCCardAbilityTargetData* CardTargetData = FFCCardAbilityTargetData::ExtractFromHandle(TriggerEventData->TargetData);
+			if (!CardTargetData || CardTargetData->CardId.IsNone())
+			{
+				return nullptr;
+			}
+
+			const UObject* WorldContextObj = (ActorInfo && ActorInfo->AvatarActor.IsValid())
+				? static_cast<const UObject*>(ActorInfo->AvatarActor.Get())
+				: static_cast<const UObject*>(this);
+
+			const UFCCardSubsystem* CardSubsystem = UFCCardSubsystem::GetCardSubsystem(WorldContextObj);
+			const UFCCardDataAsset* CardAsset = CardSubsystem ? CardSubsystem->GetCardDataAsset(CardTargetData->CardId) : nullptr;
+			return CardAsset ? CardAsset->GameplayData.GetProjectileDataAsset() : nullptr;
+		}();
 	}
 
 	// 2. Synchronize flight & presentation parameters from DataAsset

@@ -78,35 +78,25 @@ void UFCGA_SandWall::ActivateAbility(
 			FTransform SpawnTransform = CalculateSpawnTransform(Avatar);
 
 			// Prefer immutable FFCCardAbilityTargetData from TriggerEventData when present
-			if (TriggerEventData && TriggerEventData->TargetData.Num() > 0)
+			if (const FFCCardAbilityTargetData* CardTargetData = TriggerEventData ? FFCCardAbilityTargetData::ExtractFromHandle(TriggerEventData->TargetData) : nullptr)
 			{
-				if (const FGameplayAbilityTargetData* RawData = TriggerEventData->TargetData.Get(0))
+				const FVector BaseLocation = Avatar->GetActorLocation();
+				FVector AimPoint = FVector::ZeroVector;
+				if (CardTargetData->VerifiedTargets.Num() > 0 && CardTargetData->VerifiedTargets[0].IsValid())
 				{
-					if (RawData->GetScriptStruct() == FFCCardAbilityTargetData::StaticStruct())
-					{
-						const FFCCardAbilityTargetData* CardTargetData = static_cast<const FFCCardAbilityTargetData*>(RawData);
-						const FVector BaseLocation = Avatar->GetActorLocation();
-						FVector AimPoint = FVector::ZeroVector;
-						if (CardTargetData->VerifiedTargets.Num() > 0 && CardTargetData->VerifiedTargets[0].IsValid())
-						{
-							AimPoint = CardTargetData->VerifiedTargets[0]->GetActorLocation();
-						}
-						else if (!CardTargetData->AimLocation.IsZero())
-						{
-							AimPoint = CardTargetData->AimLocation;
-						}
-						if (!AimPoint.IsZero())
-						{
-							const FVector AimDir = (AimPoint - BaseLocation).GetSafeNormal2D();
-							if (!AimDir.IsNearlyZero())
-							{
-								FRotator SpawnRot = AimDir.Rotation();
-								SpawnRot.Pitch = 0.0f;
-								SpawnRot.Roll = 0.0f;
-								SpawnTransform = FTransform(SpawnRot, BaseLocation + AimDir * SpawnForwardDistance);
-							}
-						}
-					}
+					AimPoint = CardTargetData->VerifiedTargets[0]->GetActorLocation();
+				}
+				else if (!CardTargetData->AimLocation.IsZero())
+				{
+					AimPoint = CardTargetData->AimLocation;
+				}
+				const FVector AimDir = !AimPoint.IsZero() ? (AimPoint - BaseLocation).GetSafeNormal2D() : FVector::ZeroVector;
+				if (!AimDir.IsNearlyZero())
+				{
+					FRotator SpawnRot = AimDir.Rotation();
+					SpawnRot.Pitch = 0.0f;
+					SpawnRot.Roll = 0.0f;
+					SpawnTransform = FTransform(SpawnRot, BaseLocation + AimDir * SpawnForwardDistance);
 				}
 			}
 

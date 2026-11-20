@@ -47,7 +47,11 @@ void UFCGA_Ignite::ActivateAbility(
 	}
 
 	float EffectiveDamagePerStack = DamagePerStack;
-	if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
+	if (TriggerEventData && TriggerEventData->EventMagnitude > 0.0f)
+	{
+		EffectiveDamagePerStack = TriggerEventData->EventMagnitude;
+	}
+	else if (ActorInfo && ActorInfo->AbilitySystemComponent.IsValid())
 	{
 		if (const FGameplayAbilitySpec* Spec = ActorInfo->AbilitySystemComponent->FindAbilitySpecFromHandle(Handle))
 		{

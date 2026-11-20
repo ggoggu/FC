@@ -37,7 +37,13 @@ namespace
 		}
 
 		FGameplayAbilitySpec Spec(AbilityClass, Context.UpgradeLevel + 1);
-		Spec.SourceObject = const_cast<UObject*>(OverrideSourceObject ? OverrideSourceObject : static_cast<const UObject*>(Context.CardDataAsset.Get()));
+		const UObject* CandidateSourceObject = OverrideSourceObject
+			? OverrideSourceObject
+			: static_cast<const UObject*>(Context.CardDataAsset.Get());
+		if (CandidateSourceObject && CandidateSourceObject->IsSupportedForNetworking())
+		{
+			Spec.SourceObject = const_cast<UObject*>(CandidateSourceObject);
+		}
 
 		FGameplayEventData EventData;
 		EventData.Instigator = Context.CasterActor.Get();
