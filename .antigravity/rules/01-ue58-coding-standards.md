@@ -18,8 +18,9 @@ All C++ changes in `Source/FC/` must comply with UE 5.8 C++20 (`/std:c++20`) and
 - **Headers (`.h`)**: Forward-declare classes/structs (`class USpringArmComponent;`) whenever not inheriting or embedding by value. Keep `.generated.h` as the **last** `#include`.
 - **Sources (`.cpp`)**: Include only concrete headers used. Never include `Engine.h` or monolithic module headers. Never include UMG/Slate/ViewModel headers in server/gameplay/GAS headers or server `.cpp` files.
 
-## 4. Minimal Footprint & Zero Escape-Hatch Comments
+## 4. Minimal Footprint, Flat Control Flow & Zero Escape-Hatch Comments
 - **Minimal Diff**: Edit only what the task requires; do not reformat or refactor unrelated working code.
+- **Flat Control Flow (Anti-Arrow Pattern)**: Avoid deeply nested `if` chains (e.g., cascading `nullptr`/validity checks). Flatten control flow using Guard Clauses (early returns), immediately-invoked local lambdas (IIFE), or shared extraction helpers (e.g., struct static unpackers) without introducing unnecessary single-use wrapper methods.
 - **SSOT & Reuse**: Survey existing subsystems and DataAssets (`AGENTS.md` §4) before introducing new classes. Never duplicate ID lists (Starter Decks, Ability IDs, Status Definitions) across C++ classes—read from a single `UDataTable` or `UPrimaryDataAsset`.
 - **Zero Escape-Hatch Comments** (`CODE_ESCAPE_HATCH_COMMENT` error): Keep valid `/** ... */` UHT/API docstrings, but never leave `// TODO`, `// FIXME`, `// HACK`, `// XXX`, `// Workaround`, or `// For now` comments.
 

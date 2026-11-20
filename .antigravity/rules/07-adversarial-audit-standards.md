@@ -8,6 +8,7 @@ Verify that the diff includes concrete execution proofs (`pipeline.py audit` / `
 ## 1. Code Conciseness (최소 수정 원칙)
 - Minimal clean functional diff strictly scoped to the task.
 - Reject premature wrappers, single-use indirections, redundant pass-throughs, and obscure template gymnastics.
+- Flag deeply nested control flow (Arrow Anti-Pattern, e.g., 5+ levels of cascading `if` / `nullptr` checks) when Guard Clauses (early returns), local IIFE lambdas, or shared extraction helpers would cleanly flatten it.
 
 ## 2. Reuse of Existing Architecture & SSOT (기존 구조 활용)
 - Verify existing `Source/FC/` subsystems, components, utilities, and DataAssets (`AGENTS.md` §4) are reused rather than duplicated.
