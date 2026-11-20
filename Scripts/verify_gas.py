@@ -169,6 +169,87 @@ class GASVerifier:
         for cpp_file in cpp_files:
             self.verify_cpp(cpp_file, attribute_set_headers)
 
+        self.verify_gameplay_tags(header_files, cpp_files)
+
+    def verify_gameplay_tags(self, header_files: list[Path], cpp_files: list[Path]):
+        """Enforces GameplayTag SSOT: bans raw RequestGameplayTag() and Native/INI duplicates."""
+        raw_req_pat = re.compile(r"\bRequestGameplayTag\s*\(")
+        for src_file in [*header_files, *cpp_files]:
+            try:
+                content = src_file.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            clean_content = self.strip_comments(content)
+            for m in raw_req_pat.finditer(clean_content):
+                line_no = content[: m.start()].count("\n") + 1
+                self.add_violation(
+                    rule_id="TAG_RAW_REQUEST_CALL",
+                    file_path=src_file,
+                    line_number=line_no,
+                    severity="ERROR",
+                    detail="Raw FGameplayTag::RequestGameplayTag() string lookup detected.",
+                    fix="Use a native tag symbol from FCGameplayTags:: or UE_DEFINE_GAMEPLAY_TAG_STATIC instead.",
+                )
+
+        if self.target_file and not any(Path(self.target_file).suffix == ext for ext in (".cpp", ".ini")):
+            return
+
+        project_root = self.source_dir.parent
+        config_dir = project_root / "Config"
+        if not config_dir.exists():
+            return
+
+        ini_files = []
+        default_ini = config_dir / "DefaultGameplayTags.ini"
+        if default_ini.exists():
+            ini_files.append(default_ini)
+        tags_dir = config_dir / "Tags"
+        if tags_dir.exists():
+            ini_files.extend(sorted(tags_dir.glob("*.ini")))
+        if not ini_files:
+            return
+
+        native_tag_pat = re.compile(
+            r'UE_DEFINE_GAMEPLAY_TAG(?:_COMMENT|_STATIC)?\s*\(\s*\w+\s*,\s*"([^"]+)"'
+        )
+        native_tags: dict[str, Path] = {}
+        for cpp_file in self.source_dir.rglob("*.cpp"):
+            try:
+                content = cpp_file.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            clean_content = self.strip_comments(content)
+            for m in native_tag_pat.finditer(clean_content):
+                native_tags.setdefault(m.group(1), cpp_file)
+
+        if not native_tags:
+            return
+
+        ini_tag_pat = re.compile(r'^\s*\+?GameplayTagList\s*=\s*\(.*?\bTag\s*=\s*"([^"]+)"')
+        for ini_file in ini_files:
+            try:
+                lines = ini_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            except Exception:
+                continue
+            for idx, line in enumerate(lines, start=1):
+                stripped = line.strip()
+                if not stripped or stripped.startswith(";"):
+                    continue
+                m = ini_tag_pat.match(line)
+                if not m:
+                    continue
+                tag_name = m.group(1)
+                if tag_name in native_tags:
+                    native_rel = native_tags[tag_name].name
+                    self.add_violation(
+                        rule_id="TAG_DUPLICATE_NATIVE_INI",
+                        file_path=ini_file,
+                        line_number=idx,
+                        severity="ERROR",
+                        detail=f"GameplayTag '{tag_name}' is duplicated in INI and C++ Native ({native_rel}).",
+                        fix="Remove the duplicate entry from INI (keep Native C++ SSOT) or move non-C++ tags exclusively to Config/Tags/<Feature>.ini.",
+                    )
+
     def verify_header(self, h_file: Path) -> dict[str, list[dict]]:
         try:
             content = h_file.read_text(encoding="utf-8", errors="replace")

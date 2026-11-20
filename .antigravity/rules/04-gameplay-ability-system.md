@@ -22,13 +22,20 @@ Reference implementation SSOT: `Source/FC/Public/AbilitySystem/FCAttributeSet.h`
 - **`PreAttributeChange`**: Must check `!FMath::IsFinite(NewValue)` (or `IsNaN`) first (`GAS_PREATTRIBUTE_MISSING_NAN_CHECK` error) and clamp current values to valid bounds (`[0, MaxHealth]`, `[0, MaxMana]`, `[0, MaxShield]`, `>= 0`).
 - **`PostGameplayEffectExecute`**: Server-authoritative resolution (damage/shield absorption, clamping base values, death/hit notifications).
 
-## 3. Gameplay Tag Taxonomy
+## 3. Gameplay Tag Taxonomy & SSOT
 | Category | Pattern | Examples |
 | :--- | :--- | :--- |
 | **State** | `State.<Category>.<Name>` | `State.Debuff.Stun`, `State.Combat.Attacking` |
 | **Ability** | `Ability.<Type>.<Name>` | `Ability.Skill.Fireball`, `Ability.Skill.SandWall` |
 | **Data** | `Data.<Domain>.<Attribute>` | `Data.Damage.Fire`, `Data.Cooldown.Primary` |
 | **Event** | `Event.Montage.<Name>` | `Event.Montage.HitImpact`, `Event.Montage.SpawnProjectile` |
+
+- **SSOT & Conflict Prevention (Enforced by `verify_gas.py`)**:
+  - **Global Core Tags** (`Element.*`, `Class.*`, `Card.Type.*`, `Combat.Team.*`, `Data.*` shared across systems): Declare once in `FCGameplayTags.h` / `FCGameplayTags.cpp`.
+  - **Single-File Native Tags**: Tags used by a single `.cpp` file should use `UE_DEFINE_GAMEPLAY_TAG_STATIC(TagName, "...")` inside that `.cpp` instead of modifying `FCGameplayTags.h/.cpp` (prevents merge conflicts and wide header recompilation).
+  - **Feature / Data-Only Tags**: Put non-C++ / editor / data-driven tags in feature-scoped files under `Config/Tags/<Feature>.ini` instead of accumulating them in `Config/DefaultGameplayTags.ini`.
+  - **Zero Native ↔ INI Duplication** (`TAG_DUPLICATE_NATIVE_INI`): Never duplicate a C++ `UE_DEFINE_GAMEPLAY_TAG*` tag in `DefaultGameplayTags.ini` or `Config/Tags/*.ini`.
+  - **No Raw String Lookups** (`TAG_RAW_REQUEST_CALL`): Never call `FGameplayTag::RequestGameplayTag(FName(...))` in C++; use Native Tag symbols (`FCGameplayTags::*` or `UE_DEFINE_GAMEPLAY_TAG_STATIC`).
 
 ## 4. Prediction, Gameplay Cues & Architectural Decoupling
 - **Client Prediction & Security**: Trigger player abilities via `TryActivateAbility` with prediction keys; enforce server execution policies (`ServerInitiated` / `ServerOnly`) and validate `TargetData`.

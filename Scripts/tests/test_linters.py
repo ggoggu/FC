@@ -258,6 +258,67 @@ class TestVerifyGAS(TempSourceTestCase):
         self.assertIn("GAS_MISSING_ATTRIBUTE_ACCESSORS", rules)
         self.assertNotIn("GAS_ATTRIBUTE_MISSING_REPLICATED_USING", rules)
 
+    def test_catches_raw_request_gameplay_tag(self):
+        self.write_src(
+            "Source/FC/Private/RawTagUser.cpp",
+            """
+            void URawTagUser::Run()
+            {
+                FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName("Data.Damage"));
+            }
+            """,
+        )
+        res = verify_gas.run_gas_verification(self.root / "Source")
+        rules = {v["rule"] for v in res["violations"]}
+        self.assertIn("TAG_RAW_REQUEST_CALL", rules)
+        self.assertEqual(res["status"], "FAIL")
+
+    def test_catches_duplicate_native_and_ini_gameplay_tag(self):
+        self.write_src(
+            "Source/FC/Private/NativeTags.cpp",
+            """
+            UE_DEFINE_GAMEPLAY_TAG_COMMENT(Element_Fire, "Element.Fire", "Fire");
+            UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_LocalOnly, "State.LocalOnly");
+            """,
+        )
+        self.write_src(
+            "Config/DefaultGameplayTags.ini",
+            """
+            [/Script/GameplayTags.GameplayTagsSettings]
+            +GameplayTagList=(Tag="Element.Fire",DevComment="Duplicate")
+            """,
+        )
+        self.write_src(
+            "Config/Tags/Local.ini",
+            """
+            [/Script/GameplayTags.GameplayTagsSettings]
+            +GameplayTagList=(Tag="State.LocalOnly",DevComment="Duplicate in feature ini")
+            """,
+        )
+        res = verify_gas.run_gas_verification(self.root / "Source")
+        dups = [v for v in res["violations"] if v["rule"] == "TAG_DUPLICATE_NATIVE_INI"]
+        self.assertEqual(len(dups), 2, msg=res)
+        self.assertEqual(res["status"], "FAIL")
+
+    def test_passes_split_native_and_feature_ini_tags(self):
+        self.write_src(
+            "Source/FC/Private/NativeTags.cpp",
+            """
+            UE_DEFINE_GAMEPLAY_TAG_STATIC(TAG_LocalOnly, "State.LocalOnly");
+            """,
+        )
+        self.write_src(
+            "Config/Tags/Cards.ini",
+            """
+            [/Script/GameplayTags.GameplayTagsSettings]
+            ; +GameplayTagList=(Tag="State.LocalOnly",DevComment="Commented out")
+            +GameplayTagList=(Tag="Card.Visual.Foil",DevComment="Data-only tag")
+            """,
+        )
+        res = verify_gas.run_gas_verification(self.root / "Source")
+        self.assertEqual(res["status"], "PASS", msg=res)
+        self.assertEqual(res["error_count"], 0)
+
 
 class TestAuditBandwidth(TempSourceTestCase):
     def test_catches_replicated_tarray_with_nested_meta_parens(self):
