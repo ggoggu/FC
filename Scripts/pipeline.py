@@ -355,7 +355,7 @@ def execute_auto_commit(commit_msg: str | None = None) -> bool:
             return True
 
         stage_targets = [
-            p for p in ["Source/", "Config/", "Scripts/", "AGENTS.md", ".agents/", ".antigravity/", "Content/Python/"]
+            p for p in ["Source/", "Config/", "Scripts/", "AGENTS.md", ".agents/", "Content/Python/"]
             if (PROJECT_ROOT / p).exists()
         ]
         subprocess.run(["git", "add", *stage_targets], cwd=str(PROJECT_ROOT), check=True)

@@ -53,7 +53,7 @@ There are no optional execution modes. Mechanical gates enforce every code or as
 
 ---
 
-## 5. Skills (`.agents/skills/`) & On-Demand Domain References (`.antigravity/rules/`)
+## 5. Skills (`.agents/skills/`) & On-Demand Domain References (`.agents/rules/`)
 - **Auto-Discovered Skills**: `interrogate` (Proof-Carrying Adversarial Audit), `ue-asset-inspector` (`wildcard-mcp` & offline `.uasset` schema inspection).
 - **On-Demand Rules** *(read only when editing that domain)*:
   - `01-ue58-coding-standards.md` : C++20, `TObjectPtr`, `UPROPERTY` order, IWYU, Footgun & Comment bans

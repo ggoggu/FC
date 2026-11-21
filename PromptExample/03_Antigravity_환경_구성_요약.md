@@ -31,7 +31,7 @@
                  v                                                 v
 +----------------------------------------+     +-------------------------------------+
 |   On-Demand Domain Rules               |     |  Deterministic Pipeline & Sensors   |
-|   (.antigravity/rules/01~08.md)        |     |  (Scripts/ + .git/hooks/pre-commit) |
+|   (.agents/rules/01~08.md)             |     |  (Scripts/ + .git/hooks/pre-commit) |
 +----------------------------------------+     +-------------------------------------+
 | 01-ue58-coding-standards.md            |     | pipeline.py (Unified Runner + CB)   |
 | 02-multiplayer-conventions.md          |     | verify_replication.py (+ baseline)  |

@@ -303,7 +303,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message=f"Escape-hatch comment detected ('{line.strip()}').",
                     fix="Implement the complete logic or remove the TODO/FIXME/HACK/Workaround/For now comment.",
-                    ref=".antigravity/rules/01-ue58-coding-standards.md#7",
+                    ref=".agents/rules/01-ue58-coding-standards.md#7",
                 )
 
         # Check 1: Forbidden UI Headers in Actor/Gameplay Headers & GameMode in UI/VM Headers
@@ -331,7 +331,7 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message=f"Client-only UI/ViewModel header includes server GameMode header: '{line.strip()}'.",
                         fix="Observe replicated GameState/PlayerState or ViewModel FieldNotify instead of including GameMode.",
-                        ref=".antigravity/rules/06-umg-mvvm-standards.md#1",
+                        ref=".agents/rules/06-umg-mvvm-standards.md#1",
                     )
 
         if is_actor_or_gameplay_header:
@@ -346,7 +346,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Forbidden UI/Widget header included in gameplay actor header: '{line.strip()}'.",
                             fix="Remove UI includes from gameplay headers; bind UI reactively on the client via OnRep_* or FieldNotify.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#4",
+                            ref=".agents/rules/02-multiplayer-conventions.md#4",
                         )
 
         # Check 2 & 3: Balanced Class Body Inspection (RPCs, UPROPERTY, MVVM, Replication)
@@ -385,7 +385,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Server RPC '{class_name}::{func_name}' declared without 'WithValidation'.",
                             fix=f"Add WithValidation to UFUNCTION(Server, ..., WithValidation) and implement {func_name}_Validate().",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#2",
+                            ref=".agents/rules/02-multiplayer-conventions.md#2",
                         )
 
                     if not is_connection_owned:
@@ -399,7 +399,7 @@ class ReplicationVerifier:
                                 "Clients can ONLY invoke Server RPCs on connection-owned actors."
                             ),
                             fix="Move the Server RPC to APlayerController, APlayerState, possessed APawn/ACharacter, or their UActorComponent.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#2",
+                            ref=".agents/rules/02-multiplayer-conventions.md#2",
                         )
 
                     self.server_rpcs_by_class.setdefault(class_name, []).append(
@@ -421,7 +421,7 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message=f"NetMulticast RPC '{class_name}::{func_name}' is marked 'Reliable'.",
                         fix="Change Reliable -> Unreliable for transient cosmetics, or use ReplicatedUsing = OnRep_* for persistent state.",
-                        ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                        ref=".agents/rules/02-multiplayer-conventions.md#6",
                     )
 
                 if re.search(r"\bBlueprintAuthorityOnly\b", specifiers, re.IGNORECASE):
@@ -442,7 +442,7 @@ class ReplicationVerifier:
                                     severity="ERROR",
                                     message=f"Inline BlueprintAuthorityOnly method '{class_name}::{func_name}' lacks an internal HasAuthority() guard.",
                                     fix="Add `if (!HasAuthority()) { return; }` inside the C++ body.",
-                                    ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                                    ref=".agents/rules/02-multiplayer-conventions.md#6",
                                 )
                         else:
                             self.authority_only_methods_by_class.setdefault(class_name, []).append(
@@ -478,7 +478,7 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message=f"Raw UObject pointer '{prop_type} {var_name}' in UPROPERTY.",
                         fix=f"Replace '{prop_type}' with 'TObjectPtr<{inner_type}>'.",
-                        ref=".antigravity/rules/01-ue58-coding-standards.md#2",
+                        ref=".agents/rules/01-ue58-coding-standards.md#2",
                     )
 
                 is_replicated = bool(re.search(r"\bReplicated\b", prop_specs, re.IGNORECASE))
@@ -493,7 +493,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"ViewModel '{class_name}' property '{var_name}' is marked Replicated.",
                             fix="Remove Replicated/ReplicatedUsing; push replicated model changes into ViewModel on the client via FieldNotify.",
-                            ref=".antigravity/rules/06-umg-mvvm-standards.md#1",
+                            ref=".agents/rules/06-umg-mvvm-standards.md#1",
                         )
                     if re.search(r"\bTObjectPtr\s*<\s*UTexture2D\s*>|\bUTexture2D\s*\*", prop_type):
                         self.add_violation(
@@ -503,7 +503,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"ViewModel '{class_name}' property '{var_name}' uses hard texture reference '{prop_type}'.",
                             fix="Replace with 'TSoftObjectPtr<UTexture2D>'.",
-                            ref=".antigravity/rules/06-umg-mvvm-standards.md#5",
+                            ref=".agents/rules/06-umg-mvvm-standards.md#5",
                         )
 
                 if is_replicated or rep_using_match:
@@ -526,7 +526,7 @@ class ReplicationVerifier:
                                 severity="ERROR",
                                 message=f"Replicated property '{var_name}' is 'BlueprintReadWrite' without 'BlueprintSetter = {setter_name}'.",
                                 fix=f"Add `BlueprintSetter = {setter_name}` to UPROPERTY or switch to `BlueprintReadOnly`.",
-                                ref=".antigravity/rules/03-loop-engineering.md#4",
+                                ref=".agents/rules/03-loop-engineering.md#4",
                             )
 
                 if rep_using_match:
@@ -548,7 +548,7 @@ class ReplicationVerifier:
                             severity="WARNING",
                             message=f"Replication callback '{func_name}' for '{var_name}' does not match 'OnRep_{clean_var}' or is missing declaration.",
                             fix=f"Rename callback to OnRep_{clean_var} and declare `UFUNCTION() void OnRep_{clean_var}();`.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#1",
+                            ref=".agents/rules/02-multiplayer-conventions.md#1",
                         )
 
             if has_replicated_props and not re.search(r"\bGetLifetimeReplicatedProps\b", class_body):
@@ -559,7 +559,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message=f"Class '{class_name}' defines replicated properties without declaring GetLifetimeReplicatedProps.",
                     fix="Add `virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;`.",
-                    ref=".antigravity/rules/02-multiplayer-conventions.md#1",
+                    ref=".agents/rules/02-multiplayer-conventions.md#1",
                 )
 
     def verify_cpp_file(self, cpp_file: Path):
@@ -584,7 +584,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message="Source file uses DOREPLIFETIME / GetLifetimeReplicatedProps without '#include \"Net/UnrealNetwork.h\"'.",
                     fix='Add `#include "Net/UnrealNetwork.h"` near the top of the .cpp file.',
-                    ref=".antigravity/rules/02-multiplayer-conventions.md#1",
+                    ref=".agents/rules/02-multiplayer-conventions.md#1",
                 )
 
         # Check 5: Super::GetLifetimeReplicatedProps using balanced brace block
@@ -599,7 +599,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message="GetLifetimeReplicatedProps does not call Super::GetLifetimeReplicatedProps(OutLifetimeProps).",
                     fix="Add `Super::GetLifetimeReplicatedProps(OutLifetimeProps);` as the first line.",
-                    ref=".antigravity/rules/02-multiplayer-conventions.md#1",
+                    ref=".agents/rules/02-multiplayer-conventions.md#1",
                 )
 
         # Check 6: Actor / Component Constructor bReplicates Check (balanced brace block)
@@ -618,7 +618,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Actor constructor '{class_name}::{class_name}' replicates properties without setting bReplicates = true.",
                             fix="Add `bReplicates = true;` inside the constructor.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#3",
+                            ref=".agents/rules/02-multiplayer-conventions.md#3",
                         )
                 elif class_name.startswith("U") and class_name.endswith("Component"):
                     if not re.search(r"SetIsReplicatedByDefault\s*\(\s*true\s*\)|bReplicates\s*=\s*true", ctor_body):
@@ -629,7 +629,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Component constructor '{class_name}::{class_name}' replicates properties without SetIsReplicatedByDefault(true).",
                             fix="Add `SetIsReplicatedByDefault(true);` inside the constructor.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#3",
+                            ref=".agents/rules/02-multiplayer-conventions.md#3",
                         )
 
         # Check 7: OpenLevel in GameMode
@@ -643,7 +643,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message="UGameplayStatics::OpenLevel called in GameMode (disconnects remote clients).",
                     fix="Use `GetWorld()->ServerTravel(MapURL, false)` instead.",
-                    ref=".antigravity/rules/02-multiplayer-conventions.md#5",
+                    ref=".agents/rules/02-multiplayer-conventions.md#5",
                 )
 
         # Check 8: Multi-line Loose CSV file reads
@@ -676,7 +676,7 @@ class ReplicationVerifier:
                 severity="ERROR",
                 message=f"Banned ConstructorHelpers::{m.group('kind')} ('{sym}') in C++ constructor.",
                 fix="Configure asset references via TSoftObjectPtr, UPrimaryDataAsset, or Blueprint Class Defaults (BP_*).",
-                ref=".antigravity/rules/01-ue58-coding-standards.md#8",
+                ref=".agents/rules/01-ue58-coding-standards.md#8",
             )
 
         # Check 9a: Escape-Hatch Comments in .cpp (Hard ERROR)
@@ -689,7 +689,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message=f"Escape-hatch comment detected ('{line.strip()}').",
                     fix="Implement the complete logic or remove the TODO/FIXME/HACK/Workaround/For now comment.",
-                    ref=".antigravity/rules/01-ue58-coding-standards.md#7",
+                    ref=".agents/rules/01-ue58-coding-standards.md#7",
                 )
 
         # Check 9b: Multi-line Banned Footgun APIs (Index-0 Player getters & Raw 'this' AddLambda/BindLambda)
@@ -706,7 +706,7 @@ class ReplicationVerifier:
                 severity="ERROR",
                 message=f"Banned single-player index-0 API (UGameplayStatics::{m.group(1)}(..., 0)).",
                 fix="Resolve ownership explicitly via GetController(), GetOwningPlayer(), or Server RPC caller context.",
-                ref=".antigravity/rules/01-ue58-coding-standards.md#8",
+                ref=".agents/rules/01-ue58-coding-standards.md#8",
             )
 
         for m in re.finditer(r"\.(AddLambda|BindLambda)\s*\(\s*\[[^\]]*\bthis\b", clean_content, re.DOTALL):
@@ -719,7 +719,7 @@ class ReplicationVerifier:
                 severity="ERROR",
                 message=f"Unsafe '.{m.group(1)}([this, ...])' delegate binding detected (dangling UObject crash risk).",
                 fix=f"Replace with '.{safe_api}(this, [...])' so Unreal automatically guards UObject lifetime.",
-                ref=".antigravity/rules/01-ue58-coding-standards.md#8",
+                ref=".agents/rules/01-ue58-coding-standards.md#8",
             )
 
         # Check 9c: Server/Gameplay .cpp UI header leaks & UI/VM .cpp GameMode leaks
@@ -739,7 +739,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Forbidden UI/ViewModel header included in server/gameplay source file: '{line.strip()}'.",
                             fix="Decouple UI presentation from server/GAS code; emit replicated state or delegates instead.",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#4",
+                            ref=".agents/rules/02-multiplayer-conventions.md#4",
                         )
             if is_ui_or_vm_cpp and re.search(r'#include\s*["<][^">]*GameMode[^">]*[">]', clean_line):
                 self.add_violation(
@@ -749,7 +749,7 @@ class ReplicationVerifier:
                     severity="ERROR",
                     message=f"Client-only UI/ViewModel source file includes server GameMode header: '{line.strip()}'.",
                     fix="Read state from GameState/PlayerState/ViewModel rather than server-only GameMode.",
-                    ref=".antigravity/rules/06-umg-mvvm-standards.md#1",
+                    ref=".agents/rules/06-umg-mvvm-standards.md#1",
                 )
 
         # Check 10: Trivial Server RPC _Validate (Hard Constraint -> ERROR)
@@ -768,7 +768,7 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message=f"Server RPC '{val_match.group('cls')}::{val_match.group('func')}_Validate' accepts client parameters but unconditionally returns 'true'.",
                         fix="Validate bounds, NaN/Inf (!ContainsNaN()/FMath::IsFinite()), enum ranges, or container max size.",
-                        ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                        ref=".agents/rules/02-multiplayer-conventions.md#6",
                     )
 
         # Check 11 & 12: Server RPC float/vector NaN sanitization & container bounds checks
@@ -805,7 +805,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Server RPC '{cls_name}::{rpc_name}' accepts floating-point/vector payload without NaN/Inf sanitization.",
                             fix="Check `!Param.ContainsNaN()` or `FMath::IsFinite(Param)` inside _Validate() / _Implementation().",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                            ref=".agents/rules/02-multiplayer-conventions.md#6",
                         )
 
                 has_container_param = bool(container_type_pat.search(rpc_params))
@@ -823,7 +823,7 @@ class ReplicationVerifier:
                             severity="ERROR",
                             message=f"Server RPC '{cls_name}::{rpc_name}' accepts dynamic container/FString without size/length bounds check.",
                             fix="Validate `Param.Num() <= MaxAllowed` or `Param.Len() <= MaxAllowed` inside _Validate().",
-                            ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                            ref=".agents/rules/02-multiplayer-conventions.md#6",
                         )
 
         # Check 13: BlueprintAuthorityOnly non-const methods missing C++ HasAuthority() guard
@@ -848,7 +848,7 @@ class ReplicationVerifier:
                         severity="ERROR",
                         message=f"BlueprintAuthorityOnly method '{cls_name}::{m_name}' lacks a C++ HasAuthority() guard.",
                         fix="Add `if (!HasAuthority()) { return; }` (or owner/GameMode authority check) at the start of the function.",
-                        ref=".antigravity/rules/02-multiplayer-conventions.md#6",
+                        ref=".agents/rules/02-multiplayer-conventions.md#6",
                     )
 
 

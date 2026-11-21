@@ -46,7 +46,7 @@ This skill invokes an independent, read-only subagent (`adversarial-auditor`) to
 5. State the explicit feature intent in 1-2 paragraphs (what the code is supposed to do and why).
 
 ### Step 2: Invoke the Adversarial Auditor Subagent
-If `adversarial-auditor` is not yet registered in the current conversation, define it first using `define_subagent` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and a read-only system prompt referencing `.antigravity/rules/07-adversarial-audit-standards.md`.
+If `adversarial-auditor` is not yet registered in the current conversation, define it first using `define_subagent` with `EnableWriteTools: false`, `EnableMCPTools: false`, `EnableSubagentTools: false`, and a read-only system prompt referencing `.agents/rules/07-adversarial-audit-standards.md`.
 
 Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
 - **TypeName**: `adversarial-auditor`
@@ -65,7 +65,7 @@ Invoke the defined `adversarial-auditor` subagent using `invoke_subagent`:
   ## Code Changes (Git Diff / Targeted Files)
   <Git diff or file contents>
   
-  Audit the code strictly against the 5 dimensions in `.antigravity/rules/07-adversarial-audit-standards.md`:
+  Audit the code strictly against the 5 dimensions in `.agents/rules/07-adversarial-audit-standards.md`:
   1. Code Conciseness
   2. Architecture & Existing Code Reuse
   3. Scoped Extensibility

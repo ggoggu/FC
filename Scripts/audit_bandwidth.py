@@ -57,7 +57,7 @@ class BandwidthAuditor:
         severity: str,
         description: str,
         recommendation: str,
-        ref: str = ".antigravity/rules/05-combat-and-inventory-networking.md",
+        ref: str = ".agents/rules/05-combat-and-inventory-networking.md",
     ):
         try:
             rel_path = (
@@ -188,7 +188,7 @@ class BandwidthAuditor:
                         severity="ERROR",
                         description=f"Raw dynamic array '{prop_type} {var_name}' is marked Replicated (resends entire array on every mutation).",
                         recommendation="Wrap the array in a struct inheriting from FFastArraySerializer / FFastArraySerializerItem with NetDeltaSerialize.",
-                        ref=".antigravity/rules/05-combat-and-inventory-networking.md#1",
+                        ref=".agents/rules/05-combat-and-inventory-networking.md#1",
                     )
 
                 for heavy_pat in HEAVY_UNREPLICATED_TYPES:
@@ -200,7 +200,7 @@ class BandwidthAuditor:
                             severity="WARN",
                             description=f"Heavy type '{prop_type} {var_name}' marked for network replication.",
                             recommendation="Prefer FName/uint8 identifiers, GameplayTags, or FastArraySerializer over replicated FString/TMap/TSet.",
-                            ref=".antigravity/rules/05-combat-and-inventory-networking.md#1",
+                            ref=".agents/rules/05-combat-and-inventory-networking.md#1",
                         )
 
     def audit_cpp(self, cpp_file: Path):
@@ -223,7 +223,7 @@ class BandwidthAuditor:
                 severity="ERROR",
                 description=f"Unconditional 'DOREPLIFETIME({class_name}, {prop_name})' used without explicit replication condition.",
                 recommendation=f"Use DOREPLIFETIME_CONDITION({class_name}, {prop_name}, COND_OwnerOnly/COND_SimulatedOnly/COND_InitialOnly/COND_None).",
-                ref=".antigravity/rules/02-multiplayer-conventions.md#1",
+                ref=".agents/rules/02-multiplayer-conventions.md#1",
             )
 
 

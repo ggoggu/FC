@@ -67,7 +67,7 @@ class GASVerifier:
         severity: str,
         detail: str,
         fix: str = "",
-        ref: str = ".antigravity/rules/04-gameplay-ability-system.md",
+        ref: str = ".agents/rules/04-gameplay-ability-system.md",
     ):
         try:
             rel_path = (
