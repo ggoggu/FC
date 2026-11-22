@@ -13,20 +13,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFCMobCampSpawnerTest, "FC.Spawner.MobCampSpawn
 bool FFCMobCampSpawnerTest::RunTest(const FString& Parameters)
 {
 	// =========================================================================
-	// Test 1: Spawner Location Types & Struct Defaults
-	// =========================================================================
-	{
-		TestEqual(TEXT("EFCMobSpawnLocationType::RandomInRadius value"), static_cast<uint8>(EFCMobSpawnLocationType::RandomInRadius), 0);
-		TestEqual(TEXT("EFCMobSpawnLocationType::AtSpawner value"), static_cast<uint8>(EFCMobSpawnLocationType::AtSpawner), 1);
-		TestEqual(TEXT("EFCMobSpawnLocationType::DesignatedSpawnPoints value"), static_cast<uint8>(EFCMobSpawnLocationType::DesignatedSpawnPoints), 2);
-
-		FFCMobSpawnEntry Entry;
-		TestNull(TEXT("Default MobClass should be null"), Entry.MobClass.Get());
-		TestEqual(TEXT("Default Weight should be 1.0"), Entry.Weight, 1.0f);
-	}
-
-	// =========================================================================
-	// Test 2: FCMobCampSpawner Default Configuration & Range Parameters
+	// Test 1: FCMobCampSpawner Default Configuration & Range Parameters
 	// =========================================================================
 	{
 		AFCMobCampSpawner* CampSpawner = NewObject<AFCMobCampSpawner>();

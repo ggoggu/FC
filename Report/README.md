@@ -58,6 +58,7 @@ Report/
 
 | 파일명 | 분량 | 핵심 내용 |
 | :--- | :---: | :--- |
+| [FC_Network_Safety_and_Replication_Security_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/02_Gameplay_Systems/Combat_and_Networking/FC_Network_Safety_and_Replication_Security_Report.pdf) | 6p | 서버 권한 격리, Server RPC 치트 방지, 안티-ESP 정보 은닉, 대역폭 최적화 및 18대 복제 정적 검증 체계 종합 분석 |
 | [FC_NetMulticast_Optimization_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/02_Gameplay_Systems/Combat_and_Networking/FC_NetMulticast_Optimization_Report.pdf) | 7p | 무분별한 `NetMulticast`를 지양하고 Server Authority + Replicated State + OnRep Presentation 패턴으로 전면 개편하여 대역폭 절감 및 신뢰성 확보 |
 | [Chest_Object_Pooling_Analysis_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/02_Gameplay_Systems/Combat_and_Networking/Chest_Object_Pooling_Analysis_Report.pdf) | 7p | 상자(`AFCChestActor`) 오브젝트 풀링 타당성, 액터 수명 주기, GAS 어빌리티 상태 무결성 및 복제 채널 영향 분석 |
 | [Mob_Object_Pooling_Analysis_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/02_Gameplay_Systems/Combat_and_Networking/Mob_Object_Pooling_Analysis_Report.pdf) | 4p | 몬스터(Mob) 액터의 오브젝트 풀링 아키텍처 타당성 검토 및 AI Controller 분리/재연결 시 생명주기 안전성 평가 |
@@ -86,6 +87,7 @@ Google Antigravity 플랫폼 활용, 서브에이전트 거버넌스 및 개발 
 | [FC_Adversarial_Subagent_Code_Audit_Architecture_Report.md](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/03_AI_and_Antigravity/FC_Adversarial_Subagent_Code_Audit_Architecture_Report.md) | MD | - | 적대적 코드 심사 아키텍처 마크다운 원본 문서 |
 | [FC_SubAgent_Addition_Rules_Skills_Impact_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/03_AI_and_Antigravity/FC_SubAgent_Addition_Rules_Skills_Impact_Report.pdf) | PDF | 3p | 서브에이전트 추가에 따른 프로젝트 5대 계층(Rule, AGENTS.md, Skill, Runner, Pipeline) 연쇄 영향도 분석 |
 | [FC_Python_Remote_Execution_Speed_Benchmark_Report.pdf](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/03_AI_and_Antigravity/FC_Python_Remote_Execution_Speed_Benchmark_Report.pdf) | PDF | 3p | Python Remote Execution(라이브 에디터 소켓) vs UnrealEditor-Cmdlet 실측 속도(0.04s vs 8.5s) 및 생산성 벤치마크 |
+| [FC_GameplayTag_SSOT_and_Harness_Report.md](file:///C:/Users/oogg/Documents/Unreal%20Projects/FC/Report/03_AI_and_Antigravity/FC_GameplayTag_SSOT_and_Harness_Report.md) | MD | - | GameplayTag Native/INI 이중 정의 제거, `Config/Tags/*.ini` 분산 SSOT 정립 및 `verify_gas.py` 정적 린터·회귀 테스트 보충 보고서 |
 
 ---
 

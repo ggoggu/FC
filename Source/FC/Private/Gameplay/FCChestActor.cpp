@@ -53,7 +53,7 @@ AFCChestActor::AFCChestActor()
 	bAllowNeutralCards = false;
 	AllowedOtherClasses.Empty();
 	bAllowAllOtherClasses = false;
-	FallbackClass = EFCCharacterClass::Mage;
+	FallbackClass = FCGameplayTags::Class_Mage;
 
 	RewardCardIds.Add(FName("Card_Fireball"));
 	RewardCardIds.Add(FName("Card_AttackBuff"));
@@ -99,7 +99,7 @@ float AFCChestActor::TakeDamage(float DamageAmount, FDamageEvent const& DamageEv
 	return ActualDamage;
 }
 
-EFCCharacterClass AFCChestActor::GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const
+FGameplayTag AFCChestActor::GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const
 {
 	// 1. Try resolving from InstigatorController
 	if (InstigatorController)
@@ -129,10 +129,10 @@ EFCCharacterClass AFCChestActor::GetOpenerClass(AController* InstigatorControlle
 		}
 	}
 
-	return FallbackClass;
+	return FallbackClass.IsValid() ? FallbackClass : FCGameplayTags::Class_Mage.GetTag();
 }
 
-bool AFCChestActor::IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
+bool AFCChestActor::IsCardAllowedToDrop(FName CardId, FGameplayTag OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
 {
 	const UFCCardSubsystem* CardSubsystem = InCardSubsystem ? InCardSubsystem : UFCCardSubsystem::GetCardSubsystem(this);
 	if (!CardSubsystem)
@@ -140,22 +140,24 @@ bool AFCChestActor::IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerCl
 		return true; // Fallback if no subsystem
 	}
 
-	UFCCardDataAsset* CardAsset = CardSubsystem->GetCardDataAsset(CardId);
-	if (!CardAsset)
+	const FFCCardTableRow* CardRow = CardSubsystem->FindCardRowPtr(CardId);
+	if (!CardRow)
 	{
 		return true;
 	}
 
-	const EFCCharacterClass CardClass = CardAsset->GameplayData.RequiredClass;
+	const FGameplayTag CardClassTag = CardRow->GameplayData.RequiredClassTag.IsValid()
+		? CardRow->GameplayData.RequiredClassTag
+		: FCGameplayTags::Class_Neutral.GetTag();
 
 	// 1. Neutral cards
-	if (CardClass == EFCCharacterClass::Neutral)
+	if (CardClassTag == FCGameplayTags::Class_Neutral)
 	{
 		return bAllowNeutralCards;
 	}
 
 	// 2. Opener's class cards
-	if (CardClass == OpenerClass)
+	if (CardClassTag == OpenerClass)
 	{
 		return bAllowOpenerClass;
 	}
@@ -166,10 +168,10 @@ bool AFCChestActor::IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerCl
 		return true;
 	}
 
-	return AllowedOtherClasses.Contains(CardClass);
+	return AllowedOtherClasses.Contains(CardClassTag);
 }
 
-TArray<FName> AFCChestActor::GetFilteredRewardCardIds(EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
+TArray<FName> AFCChestActor::GetFilteredRewardCardIds(FGameplayTag OpenerClass, const UFCCardSubsystem* InCardSubsystem) const
 {
 	TArray<FName> FilteredCards;
 
@@ -230,7 +232,7 @@ void AFCChestActor::DestroyAndSpawnDrops(AController* InstigatorController, AAct
 
 	HideAndDisableChest();
 
-	const EFCCharacterClass OpenerClass = GetOpenerClass(InstigatorController, DamageCauser);
+	const FGameplayTag OpenerClass = GetOpenerClass(InstigatorController, DamageCauser);
 	const TArray<FName> DropsToSpawn = GetFilteredRewardCardIds(OpenerClass);
 
 	UWorld* World = GetWorld();

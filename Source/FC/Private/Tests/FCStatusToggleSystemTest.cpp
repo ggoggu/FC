@@ -3,7 +3,15 @@
 #include "UI/ViewModel/FCStatusToggleItemViewModel.h"
 #include "UI/ViewModel/FCStatusToggleContainerViewModel.h"
 #include "UI/ViewModel/FCHUDViewModel.h"
+#include "UI/Presenter/FCStatusPresenterComponent.h"
 #include "UI/Data/FCStatusToggleTypes.h"
+#include "AbilitySystem/FCAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/Player/FCPlayerCharacter.h"
+#include "Data/FCGameplayTags.h"
+#include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -117,6 +125,125 @@ bool FFCStatusToggleSystemTest::RunTest(const FString& Parameters)
 			TestNotNull(TEXT("StatusVM should be lazily created"), StatusVM);
 			TestTrue(TEXT("Subsequent calls should return same StatusVM instance"), StatusVM == HUDVM->GetOrCreateStatusContainerViewModel());
 			TestTrue(TEXT("StatusVM Outer should be HUDVM"), StatusVM->GetOuter() == HUDVM);
+
+			// Pure ViewModel checks
+			HUDVM->SetCurrentShield(20);
+			TestEqual(TEXT("Shield value should match"), HUDVM->CurrentShield, 20);
+			TestTrue(TEXT("HasShield should be true"), HUDVM->HasShield());
+
+			HUDVM->SetCurrentShield(0);
+			TestEqual(TEXT("Shield value should be 0"), HUDVM->CurrentShield, 0);
+			TestFalse(TEXT("HasShield should be false"), HUDVM->HasShield());
+		}
+	}
+
+	// =========================================================================
+	// Test 4: UFCStatusPresenterComponent Integration, Single Shield & Tag Auto-Subscription
+	// =========================================================================
+	if (GEngine)
+	{
+		UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+		TestNotNull(TEXT("TestWorld should be created"), TestWorld);
+
+		if (TestWorld)
+		{
+			FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+			WorldContext.SetCurrentWorld(TestWorld);
+			TestWorld->InitializeActorsForPlay(FURL());
+			TestWorld->BeginPlay();
+
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			AFCPlayerCharacter* TestChar = TestWorld->SpawnActor<AFCPlayerCharacter>(AFCPlayerCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			TestNotNull(TEXT("TestChar should spawn in TestWorld"), TestChar);
+
+			if (TestChar)
+			{
+				UAbilitySystemComponent* ASC = TestChar->GetAbilitySystemComponent();
+				UFCAttributeSet* AttrSet = TestChar->GetAttributeSet();
+				UFCStatusPresenterComponent* Presenter = NewObject<UFCStatusPresenterComponent>(TestChar);
+				UFCStatusToggleContainerViewModel* StatusVM = NewObject<UFCStatusToggleContainerViewModel>(TestChar);
+
+				TestNotNull(TEXT("ASC should exist"), ASC);
+				TestNotNull(TEXT("AttrSet should exist"), AttrSet);
+				TestNotNull(TEXT("Presenter should exist"), Presenter);
+				TestNotNull(TEXT("StatusVM should exist"), StatusVM);
+
+				if (ASC && AttrSet && Presenter && StatusVM)
+				{
+					TestChar->AddInstanceComponent(Presenter);
+					Presenter->RegisterComponent();
+
+					// Author a transient DT_StatusToggleCatalog with both attribute-based and GameplayTag-driven statuses
+					UDataTable* TransientCatalog = NewObject<UDataTable>(TestChar);
+					TransientCatalog->RowStruct = FFCStatusToggleDefinitionRow::StaticStruct();
+
+					FFCStatusToggleDefinitionRow ShieldRow;
+					ShieldRow.StatusId = FName(TEXT("Status_MagicShield"));
+					ShieldRow.DisplayName = FText::FromString(TEXT("매직 실드"));
+					TransientCatalog->AddRow(ShieldRow.StatusId, ShieldRow);
+
+					FFCStatusToggleDefinitionRow AtkBuffRow;
+					AtkBuffRow.StatusId = FName(TEXT("Status_AttackBuff"));
+					AtkBuffRow.DisplayName = FText::FromString(TEXT("공격력 강화"));
+					TransientCatalog->AddRow(AtkBuffRow.StatusId, AtkBuffRow);
+
+					FFCStatusToggleDefinitionRow TagDrivenRow;
+					TagDrivenRow.StatusId = FName(TEXT("Status_TagDrivenBurn"));
+					TagDrivenRow.StatusTag = FCGameplayTags::Status_Debuff_AttackReduction;
+					TagDrivenRow.DisplayName = FText::FromString(TEXT("약화"));
+					TransientCatalog->AddRow(TagDrivenRow.StatusId, TagDrivenRow);
+
+					Presenter->SetCatalogDataTable(TransientCatalog);
+
+					AttrSet->InitShield(0.0f);
+					AttrSet->InitMaxShield(100.0f);
+					AttrSet->InitAttackPower(0.0f);
+
+					Presenter->BindToAbilitySystem(ASC, StatusVM);
+					TestEqual(TEXT("Initial status count should be 0"), StatusVM->GetStatusCount(), 0);
+
+					// 1. Shield applied (> 0) -> Presenter automatically creates single Status_MagicShield toggle
+					AttrSet->SetShield(20.0f);
+					TestEqual(TEXT("Shield > 0 must add exactly 1 shield toggle"), StatusVM->GetStatusCount(), 1);
+					UFCStatusToggleItemViewModel* ShieldItem = StatusVM->FindStatusById(FName(TEXT("Status_MagicShield")));
+					TestNotNull(TEXT("Status_MagicShield item must exist"), ShieldItem);
+					if (ShieldItem)
+					{
+						TestEqual(TEXT("Shield stack must be 1"), ShieldItem->StackCount, 1);
+						TestTrue(TEXT("Shield must be active"), ShieldItem->bIsActive);
+					}
+
+					// 2. Shield reinforced -> Still maintains single toggle
+					AttrSet->SetShield(40.0f);
+					TestEqual(TEXT("Shield reinforced must still have exactly 1 toggle"), StatusVM->GetStatusCount(), 1);
+
+					// 3. Shield depleted (<= 0) -> Presenter automatically removes shield toggle
+					AttrSet->SetShield(0.0f);
+					TestEqual(TEXT("Shield depleted must remove shield toggle"), StatusVM->GetStatusCount(), 0);
+					TestNull(TEXT("Status_MagicShield should be null after removal"), StatusVM->FindStatusById(FName(TEXT("Status_MagicShield"))));
+
+					// 4. AttackPower buff (> 0) -> Presenter creates AttackBuff toggle
+					AttrSet->SetAttackPower(2.0f);
+					TestEqual(TEXT("AttackPower > 0 adds buff toggle"), StatusVM->GetStatusCount(), 1);
+					TestNotNull(TEXT("Status_AttackBuff should exist"), StatusVM->FindStatusById(FName(TEXT("Status_AttackBuff"))));
+					AttrSet->SetAttackPower(0.0f);
+					TestEqual(TEXT("AttackPower reset removes buff toggle"), StatusVM->GetStatusCount(), 0);
+
+					// 5. DataTable StatusTag auto-subscription (OCP: zero C++ edits for new tag statuses)
+					ASC->AddLooseGameplayTag(FCGameplayTags::Status_Debuff_AttackReduction);
+					TestEqual(TEXT("Adding cataloged StatusTag must auto-add toggle"), StatusVM->GetStatusCount(), 1);
+					TestNotNull(TEXT("Status_TagDrivenBurn must be found by StatusId"), StatusVM->FindStatusById(FName(TEXT("Status_TagDrivenBurn"))));
+
+					ASC->RemoveLooseGameplayTag(FCGameplayTags::Status_Debuff_AttackReduction);
+					TestEqual(TEXT("Removing cataloged StatusTag must auto-remove toggle"), StatusVM->GetStatusCount(), 0);
+
+					Presenter->UnbindFromAbilitySystem();
+				}
+			}
+
+			TestWorld->DestroyWorld(false);
+			GEngine->DestroyWorldContext(TestWorld);
 		}
 	}
 

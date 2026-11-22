@@ -5,11 +5,14 @@
 #include "AbilitySystemInterface.h"
 #include "GameplayCueInterface.h"
 #include "GameplayTagContainer.h"
+#include "Combat/Interfaces/FCCombatTargetInterface.h"
 #include "FCCharacterBase.generated.h"
 
 class UAbilitySystemComponent;
 class UFCAttributeSet;
 class UFCElementComponent;
+class UAnimSequence;
+class UAnimMontage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnCharacterDeathSignature, AActor*, DeadActor, AActor*, Killer);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FFCOnCharacterDamageTakenSignature, AActor*, DamagedActor, float, DamageAmount, AActor*, DamageCauser, const FHitResult&, HitResult);
@@ -25,12 +28,18 @@ enum class EFCDeathDirection : uint8
 };
 
 UCLASS()
-class FC_API AFCCharacterBase : public ACharacter, public IAbilitySystemInterface, public IGameplayCueInterface
+class FC_API AFCCharacterBase : public ACharacter, public IAbilitySystemInterface, public IGameplayCueInterface, public IFCCombatTargetInterface
 {
 	GENERATED_BODY()
 
 public:
 	AFCCharacterBase();
+
+	// --- IFCCombatTargetInterface ---
+	virtual FGameplayTag GetCombatTeamTag() const override;
+	virtual bool IsCombatTargetAlive() const override { return !bIsDead; }
+	virtual bool CanBeTargetedBy(const AActor* SourceActor) const override;
+	virtual FVector GetCombatAimLocation() const override;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -92,13 +101,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	virtual void RotateTowardsTarget(const FVector& InTargetLocation);
 
-	/** Directional death animation trigger (virtual so subclasses specialize animation sequences) */
+	/** Directional death animation trigger (shared across Player and Mob subclasses) */
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	virtual void PlayDeathAnimation(EFCDeathDirection Direction);
 
-	/** Directional hit reaction animation trigger (virtual so subclasses specialize animation sequences) */
+	UFUNCTION(BlueprintPure, Category = "FC|Combat")
+	UAnimSequence* GetDeathAnimationForDirection(EFCDeathDirection Direction) const;
+
+	/** Directional hit reaction animation trigger (shared across Player and Mob subclasses) */
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat")
 	virtual void PlayHitAnimation(EFCDeathDirection Direction);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Combat")
+	UAnimSequence* GetHitAnimationForDirection(EFCDeathDirection Direction) const;
 
 	/** IGameplayCueInterface override to handle GameplayCue events (e.g. HitReaction) */
 	virtual void HandleGameplayCue(UObject* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters) override;
@@ -134,5 +149,47 @@ protected:
 	/** World location for aiming when no specific actor is targeted */
 	UPROPERTY(Transient)
 	FVector TargetAimLocation = FVector::ZeroVector;
+
+	// --- Shared Directional Death & Hit Reaction Animations (Hoisted SSOT) ---
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Front;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Front_02;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Front_03;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Back;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Left;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> DeathAnim_Right;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimMontage> HitMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Front;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Back;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Left;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation")
+	TObjectPtr<UAnimSequence> HitAnim_Right;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Animation", meta = (ClampMin = "0.1"))
+	float HitPlayRate = 1.5f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Combat", meta = (ClampMin = "0.0"))
+	float HitReactionCooldown = 0.25f;
+
+	float LastHitReactTime = -100.0f;
 };
 

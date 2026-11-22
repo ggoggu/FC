@@ -1,9 +1,9 @@
 #include "Combat/FCCombatUtils.h"
 #include "Combat/Element/FCElementComponent.h"
+#include "Combat/Interfaces/FCCombatTargetInterface.h"
+#include "Data/Class/FCClassSubsystem.h"
+#include "Data/FCGameplayTags.h"
 #include "Character/FCCharacterBase.h"
-
-#include "Character/Player/FCPlayerCharacter.h"
-#include "Gameplay/FCChestActor.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
@@ -18,52 +18,50 @@ UFCElementComponent* UFCCombatUtils::GetElementComponent(AActor* TargetActor)
 		return nullptr;
 	}
 
-	// 1. Fast check if actor is AFCCharacterBase
 	if (const AFCCharacterBase* Character = Cast<AFCCharacterBase>(TargetActor))
 	{
 		return Character->GetElementComponent();
 	}
 
-	// 2. Generic component search fallback (e.g. for destructibles, non-character pawns)
 	return TargetActor->FindComponentByClass<UFCElementComponent>();
 }
 
 void UFCCombatUtils::ApplyAttackCardHitTraits(
 	AActor* SourceActor,
 	AActor* TargetActor,
-	EFCCharacterClass CharacterClass,
-	EFCCardType CardType,
-	const TArray<EFCElement>& Elements)
+	FGameplayTag ClassTag,
+	FGameplayTag CardTypeTag,
+	const TArray<FGameplayTag>& ElementTags)
 {
-	if (!TargetActor || CardType != EFCCardType::Attack)
+	if (!TargetActor || !TargetActor->HasAuthority() || !ClassTag.IsValid())
 	{
 		return;
 	}
 
-	// Server-Authoritative hit trait application
-	if (!TargetActor->HasAuthority())
+	const UFCClassSubsystem* ClassSubsystem = UFCClassSubsystem::GetClassSubsystem(TargetActor);
+	const FFCCharacterClassData* ClassRow = ClassSubsystem
+		? ClassSubsystem->FindClassRowPtr(ClassTag)
+		: UFCClassSubsystem::FindBuiltinClassDefault(ClassTag);
+
+	if (!ClassRow)
 	{
 		return;
 	}
 
-	// 1. Mage Class Trait: Apply element stacks to target
-	if (CharacterClass == EFCCharacterClass::Mage && Elements.Num() > 0)
+	if (const FFCClassTraitBehaviorBase* TraitBehavior = ClassRow->TraitBehavior.GetPtr())
 	{
-		if (UFCElementComponent* ElementComp = GetElementComponent(TargetActor))
+		FGameplayTagContainer AttackTags;
+		if (CardTypeTag.IsValid())
 		{
-			ElementComp->AddElementStacks(Elements);
+			AttackTags.AddTag(CardTypeTag);
 		}
+		TraitBehavior->OnAttackHit(SourceActor, TargetActor, AttackTags, ElementTags);
 	}
-
-	// 2. Future Class Extension Hooks:
-	// - Warrior: Apply Stance interactions / Wound / Bleed stacks
-	// - Rogue: Combo point progression / Poison stacks
-	// - Priest: Divinity / Holy brand stacks
 }
 
-bool UFCCombatUtils::TryConsumeTargetElements(AActor* TargetActor, const TArray<EFCElement>& RequiredElements)
+bool UFCCombatUtils::TryConsumeTargetElements(AActor* TargetActor, const TArray<FGameplayTag>& RequiredElementTags)
 {
-	if (!TargetActor || RequiredElements.Num() == 0)
+	if (!TargetActor || RequiredElementTags.Num() == 0)
 	{
 		return false;
 	}
@@ -75,24 +73,24 @@ bool UFCCombatUtils::TryConsumeTargetElements(AActor* TargetActor, const TArray<
 
 	if (UFCElementComponent* ElementComp = GetElementComponent(TargetActor))
 	{
-		return ElementComp->ConsumeElementStacks(RequiredElements);
+		return ElementComp->ConsumeElementStacks(RequiredElementTags);
 	}
 
 	return false;
 }
 
-TArray<AActor*> UFCCombatUtils::FilterAndConsumeElements(const TArray<AActor*>& TargetActors, const TArray<EFCElement>& RequiredElements)
+TArray<AActor*> UFCCombatUtils::FilterAndConsumeElements(const TArray<AActor*>& TargetActors, const TArray<FGameplayTag>& RequiredElementTags)
 {
 	TArray<AActor*> SatisfiedTargets;
 
-	if (RequiredElements.Num() == 0)
+	if (RequiredElementTags.Num() == 0)
 	{
 		return SatisfiedTargets;
 	}
 
 	for (AActor* Target : TargetActors)
 	{
-		if (Target && TryConsumeTargetElements(Target, RequiredElements))
+		if (Target && TryConsumeTargetElements(Target, RequiredElementTags))
 		{
 			SatisfiedTargets.Add(Target);
 		}
@@ -101,11 +99,11 @@ TArray<AActor*> UFCCombatUtils::FilterAndConsumeElements(const TArray<AActor*>& 
 	return SatisfiedTargets;
 }
 
-int32 UFCCombatUtils::GetTargetElementCount(AActor* TargetActor, EFCElement Element)
+int32 UFCCombatUtils::GetTargetElementCount(AActor* TargetActor, FGameplayTag ElementTag)
 {
 	if (UFCElementComponent* ElementComp = GetElementComponent(TargetActor))
 	{
-		return ElementComp->GetElementCount(Element);
+		return ElementComp->GetElementCount(ElementTag);
 	}
 	return 0;
 }
@@ -126,30 +124,13 @@ bool UFCCombatUtils::IsAttackableTarget(const AActor* SourceActor, const AActor*
 		return false;
 	}
 
-	// 1. If candidate is a Character
-	if (const AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetCandidate))
+	// 1. Polymorphic OCP contract (characters, chests, destructible walls, custom combat targets)
+	if (const IFCCombatTargetInterface* CombatTarget = Cast<IFCCombatTargetInterface>(TargetCandidate))
 	{
-		if (Char->IsDead())
-		{
-			return false;
-		}
-
-		// Prevent player friendly fire: if source is player character, other player characters are not attackable
-		if (TargetCandidate->IsA<AFCPlayerCharacter>() && SourceActor && SourceActor->IsA<AFCPlayerCharacter>())
-		{
-			return false;
-		}
-
-		return true;
+		return CombatTarget->IsCombatTargetAlive() && CombatTarget->CanBeTargetedBy(SourceActor);
 	}
 
-	// 2. If candidate is a Chest/Box
-	if (const AFCChestActor* Chest = Cast<AFCChestActor>(TargetCandidate))
-	{
-		return !Chest->IsOpened();
-	}
-
-	// 3. Generic AbilitySystemInterface / AttributeSet check (damageable target)
+	// 2. Generic AbilitySystemInterface / AttributeSet fallback (non-interface damageable target)
 	if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(TargetCandidate))
 	{
 		if (UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent())

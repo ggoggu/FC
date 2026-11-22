@@ -36,9 +36,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Card|Pickup")
 	FName GetDropCardId() const { return DropCardId; }
 
+	UFUNCTION(BlueprintPure, Category = "Card|Pickup")
+	EFCCardZone GetDefaultDestination() const { return DefaultDestination; }
+
 	/** Authoritative server execution to claim this card pickup into player's deck */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Card|Pickup")
-	bool ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
+	bool ClaimPickup(APawn* ClaimerPawn, EFCCardZone Destination = EFCCardZone::DiscardPile);
 
 	/** Dismisses and closes the Card Reward Widget for the local player */
 	UFUNCTION(BlueprintCallable, Category = "Card|UI")
@@ -76,9 +79,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|UI")
 	TSubclassOf<UFCCardRewardWidget> RewardWidgetClass;
 
-	/** Default destination when added to deck */
+	/** Default destination zone when added to deck */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Pickup")
-	EFCCardAddDestination DefaultDestination = EFCCardAddDestination::DiscardPile;
+	EFCCardZone DefaultDestination = EFCCardZone::DiscardPile;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Card|Cosmetics")
 	TObjectPtr<USoundBase> PickupSound;

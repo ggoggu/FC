@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagContainer.h"
 #include "Map/FCDungeonTypes.h"
 #include "FCDungeonManager.generated.h"
 
@@ -28,6 +29,8 @@ public:
 	void ClearDungeon();
 
 	const TArray<TObjectPtr<AFCRoomBase>>& GetSpawnedRooms() const { return SpawnedRooms; }
+
+	const TArray<TObjectPtr<AFCDoorBase>>& GetSpawnedSharedDoors() const { return SpawnedSharedDoors; }
 
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
 	AFCRoomBase* GetRoomAt(const FIntPoint& Coord) const;
@@ -112,6 +115,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
 	TSubclassOf<AFCDoorBase> ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const;
 
+	/** Resolves room actor class for an open-ended Dungeon.Room.* GameplayTag */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	TSubclassOf<AFCRoomBase> GetRoomClassForTag(FGameplayTag RoomTag) const;
+
+	/** Resolves special door actor class for an open-ended Dungeon.Room.* GameplayTag */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon|Doors")
+	TSubclassOf<AFCDoorBase> GetDoorClassForTag(FGameplayTag RoomTag) const;
+
+	/** Maps EFCRoomType to its canonical Dungeon.Room.* GameplayTag */
+	UFUNCTION(BlueprintPure, Category = "FC|Dungeon")
+	static FGameplayTag GetRoomTypeTag(EFCRoomType Type);
+
 	/** Teleport all existing player pawns into the Start Room */
 	UFUNCTION(BlueprintCallable, Category = "FC|Dungeon")
 	void TeleportPlayersToStartRoom();
@@ -153,7 +168,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FC|Dungeon|Config", meta = (ClampMin = "500.0"))
 	float CellSize = 6300.0f;
 
-	/** Spacing / passage width allocated for door actors between adjacent rooms in cm. Sockets are separated by DoorWidth. Defaults to 300 cm. */
+	/** Longitudinal passage gap allocated between adjacent room boundaries in cm (sockets are separated by this gap; each room's outer wall thickness is half of this gap). Defaults to 300 cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Dungeon|Config", meta = (ClampMin = "0.0"))
 	float DoorWidth = 300.0f;
 
@@ -162,6 +177,10 @@ protected:
 	bool bAutoSyncDoorOffsetToCellSize = true;
 
 	// Modular Room Classes
+	/** Open-ended tag-to-room class map (Dungeon.Room.*) for parallel room archetype additions without C++ switches */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Classes")
+	TMap<FGameplayTag, TSubclassOf<AFCRoomBase>> RoomTagClassMap;
+
 	/** Weighted list of room classes for default/normal rooms. One is randomly selected per room spawn based on weight. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Classes", meta = (DisplayName = "Default Rooms"))
 	TArray<FFCDungeonRoomWeight> DefaultRooms;
@@ -185,6 +204,9 @@ protected:
 	TSubclassOf<AFCDestructibleWall> SecretWallClass;
 
 	// Modular Door Classes & Pools
+	/** Open-ended tag-to-special-door map (Dungeon.Room.*) for custom room doorway overrides */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|SpecialDoors")
+	TMap<FGameplayTag, TSubclassOf<AFCDoorBase>> DoorTagClassMap;
 	/** Weighted list of door classes for default/normal room connections. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Dungeon|Doors", meta = (DisplayName = "Default Doors"))
 	TArray<FFCDungeonDoorWeight> DefaultDoorPool;

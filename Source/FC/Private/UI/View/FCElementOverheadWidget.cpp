@@ -158,7 +158,8 @@ void UFCElementOverheadWidget::RefreshStackWidgets()
 		InitializeWidgetPool();
 	}
 
-	const TArray<EFCElement>& CurrentStacks = ViewModel ? ViewModel->GetCurrentStacks() : TArray<EFCElement>();
+	static const TArray<FGameplayTag> EmptyStacks;
+	const TArray<FGameplayTag>& CurrentStacks = ViewModel ? ViewModel->GetCurrentStacks() : EmptyStacks;
 	const int32 ActiveCount = CurrentStacks.Num();
 
 	for (int32 Index = 0; Index < PooledStackWidgets.Num(); ++Index)

@@ -22,12 +22,14 @@ public class FC : ModuleRules
 			"Niagara",
 			"NetCore",
 			"AIModule",
-			"NavigationSystem"
+			"NavigationSystem",
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { 
 			"Slate", 
-			"SlateCore" 
+			"SlateCore",
+			"CoreOnline"
 		});
 		
 		// Uncomment if you are using online features

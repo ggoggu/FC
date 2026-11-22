@@ -4,6 +4,8 @@ Unreal Engine 5.8 Asset Metadata Dumper (Scripts/dump_asset_metadata.py)
 Extracts structured JSON metadata from BP, WBP, Animation, and other .uasset files.
 
 Features:
+  - mtime-Validated Schema Cache Memory (0ms): Caches verified Ground Truth schemas in
+    Saved/AssetCache/asset_schema_cache.json keyed by relative path, mtime_ns, file size, and mode.
   - Fast Standalone Mode (~0.005s): Parses .uasset binary package headers, name tables,
     imports, exports, and categorizes widgets, notifies, components, and bindings without launching UE.
   - Deep Engine Mode (--deep): Launches headless UnrealEditor-Cmd to inspect exact CDO properties,
@@ -15,6 +17,7 @@ Usage:
   python Scripts/dump_asset_metadata.py --asset Content/Character/Mannequins/Anims/Unarmed/Attack/MM_Attack_01.uasset
   python Scripts/dump_asset_metadata.py --asset /Game/Character/Enermy/BP/BP_FixedMobSpawner
   python Scripts/dump_asset_metadata.py --asset Content/UI/BP/WBP_HUD.uasset --deep
+  python Scripts/dump_asset_metadata.py --asset Content/UI/BP/WBP_HUD.uasset --no-cache
 """
 
 import sys
@@ -28,6 +31,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTENT_DIR = PROJECT_ROOT / "Content"
 UPROJECT_FILE = PROJECT_ROOT / "FC.uproject"
+ASSET_CACHE_FILE = PROJECT_ROOT / "Saved" / "AssetCache" / "asset_schema_cache.json"
 
 # Check if running inside Unreal Engine Python
 try:
@@ -36,6 +40,52 @@ try:
 except ImportError:
     unreal = None
     IN_ENGINE = False
+
+def load_schema_cache(file_path: Path | None, deep: bool) -> dict | None:
+    """Loads cached asset metadata if the .uasset file mtime_ns and size match."""
+    if not file_path or not file_path.exists() or not ASSET_CACHE_FILE.exists():
+        return None
+    try:
+        stat = file_path.stat()
+        rel_key = file_path.relative_to(PROJECT_ROOT).as_posix()
+        mode_key = "deep" if deep else "fast"
+        cache_data = json.loads(ASSET_CACHE_FILE.read_text(encoding="utf-8"))
+        entry = cache_data.get(f"{rel_key}::{mode_key}")
+        if entry and entry.get("mtime_ns") == stat.st_mtime_ns and entry.get("size") == stat.st_size:
+            cached_payload = dict(entry.get("payload", {}))
+            base_mode = cached_payload.get("inspection_mode", mode_key)
+            if not base_mode.endswith("(cached)"):
+                cached_payload["inspection_mode"] = f"{base_mode} (cached)"
+            cached_payload["cache_hit"] = True
+            return cached_payload
+    except Exception:
+        pass
+    return None
+
+def save_schema_cache(file_path: Path | None, deep: bool, payload: dict) -> None:
+    """Persists verified asset metadata into the mtime-validated schema cache."""
+    if not file_path or not file_path.exists() or "error" in payload or payload.get("status") == "ERROR":
+        return
+    try:
+        stat = file_path.stat()
+        rel_key = file_path.relative_to(PROJECT_ROOT).as_posix()
+        mode_key = "deep" if deep else "fast"
+        ASSET_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        cache_data = {}
+        if ASSET_CACHE_FILE.exists():
+            try:
+                cache_data = json.loads(ASSET_CACHE_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                cache_data = {}
+        clean_payload = {k: v for k, v in payload.items() if k != "cache_hit"}
+        cache_data[f"{rel_key}::{mode_key}"] = {
+            "mtime_ns": stat.st_mtime_ns,
+            "size": stat.st_size,
+            "payload": clean_payload
+        }
+        ASSET_CACHE_FILE.write_text(json.dumps(cache_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 def resolve_asset_paths(asset_arg: str) -> tuple[Path | None, str | None]:
     """Resolves a file path and corresponding /Game/ package path."""
@@ -295,6 +345,7 @@ def main():
     parser.add_argument("--asset", "-a", type=str, required=True, help="Path to asset (e.g. Content/UI/BP/WBP_HUD.uasset or /Game/UI/BP/WBP_HUD)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON strictly")
     parser.add_argument("--deep", action="store_true", help="Perform deep engine reflection inspection via UnrealEditor-Cmd")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass mtime schema cache and force fresh extraction")
     args = parser.parse_args()
 
     file_path, game_path = resolve_asset_paths(args.asset)
@@ -302,6 +353,13 @@ def main():
         err = {"status": "ERROR", "message": f"Asset not found: {args.asset}"}
         print(json.dumps(err, indent=2))
         sys.exit(1)
+
+    # Check mtime-validated schema cache first (when not running inside engine subprocess)
+    if not IN_ENGINE and not args.no_cache:
+        cached = load_schema_cache(file_path, args.deep)
+        if cached:
+            print(json.dumps(cached, indent=2, ensure_ascii=False))
+            sys.exit(0)
 
     # In-engine execution
     if IN_ENGINE and game_path:
@@ -313,9 +371,13 @@ def main():
             # Fallback to fast scan
             result = parse_uasset_binary_fast(file_path, game_path)
             result["deep_fallback_reason"] = "Engine process could not be launched, fell back to fast binary scan."
+            save_schema_cache(file_path, False, result)
+        else:
+            save_schema_cache(file_path, True, result)
     else:
         # Fast standalone scan (~0.005s)
         result = parse_uasset_binary_fast(file_path, game_path)
+        save_schema_cache(file_path, False, result)
 
     # Output
     print(json.dumps(result, indent=2, ensure_ascii=False))

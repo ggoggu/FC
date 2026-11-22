@@ -1,5 +1,6 @@
 #include "Game/FCPlayerState.h"
 #include "Card/FCCardDeckComponent.h"
+#include "Data/FCGameplayTags.h"
 #include "Net/UnrealNetwork.h"
 
 AFCPlayerState::AFCPlayerState()
@@ -7,6 +8,7 @@ AFCPlayerState::AFCPlayerState()
 	bReplicates = true;
 	SetNetUpdateFrequency(30.0f);
 
+	CharacterClass = FCGameplayTags::Class_Mage;
 	CardDeckComponent = CreateDefaultSubobject<UFCCardDeckComponent>(TEXT("CardDeckComponent"));
 }
 
@@ -33,16 +35,17 @@ void AFCPlayerState::CopyProperties(APlayerState* NewPlayerState)
 	}
 }
 
-void AFCPlayerState::SetCharacterClass(EFCCharacterClass NewClass)
+void AFCPlayerState::SetCharacterClass(FGameplayTag NewClassTag)
 {
 	if (!HasAuthority())
 	{
 		return;
 	}
 
-	if (CharacterClass != NewClass)
+	const FGameplayTag EffectiveTag = NewClassTag.IsValid() ? NewClassTag : FCGameplayTags::Class_Mage.GetTag();
+	if (CharacterClass != EffectiveTag)
 	{
-		CharacterClass = NewClass;
+		CharacterClass = EffectiveTag;
 		OnPlayerClassChanged.Broadcast(this, CharacterClass);
 	}
 }

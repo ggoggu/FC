@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Net/Serialization/FastArraySerializer.h"
-#include "Data/Class/FCClassTypes.h"
 #include "FCElementStackContainer.generated.h"
 
 struct FFCElementStackContainer;
@@ -10,30 +10,26 @@ class UFCElementComponent;
 
 /**
  * FFCElementStackItem
- * 
- * Replicated runtime instance of a single element stack token on a character.
- * Uses Fast Array Serialization for optimal network delta bandwidth.
+ *
+ * Replicated runtime instance of a single element stack token on an actor.
+ * Uses FGameplayTag (compact NetIndex bit-packed) + FastArray delta serialization.
  */
 USTRUCT(BlueprintType)
 struct FC_API FFCElementStackItem : public FFastArraySerializerItem
 {
 	GENERATED_BODY()
 
-	FFCElementStackItem()
-		: Element(EFCElement::None)
+	FFCElementStackItem() = default;
+
+	explicit FFCElementStackItem(FGameplayTag InElementTag)
+		: ElementTag(InElementTag)
 	{
 	}
 
-	FFCElementStackItem(EFCElement InElement)
-		: Element(InElement)
-	{
-	}
-
-	/** Element type of this stack */
+	/** Element GameplayTag of this stack (e.g. Element.Fire, Element.Earth) */
 	UPROPERTY(BlueprintReadOnly, Category = "Element")
-	EFCElement Element = EFCElement::None;
+	FGameplayTag ElementTag;
 
-	// Fast Array replication lifecycle callbacks
 	void PostReplicatedAdd(const FFCElementStackContainer& InArraySerializer);
 	void PostReplicatedChange(const FFCElementStackContainer& InArraySerializer);
 	void PreReplicatedRemove(const FFCElementStackContainer& InArraySerializer);
@@ -41,8 +37,8 @@ struct FC_API FFCElementStackItem : public FFastArraySerializerItem
 
 /**
  * FFCElementStackContainer
- * 
- * Fast Array Serializer container holding active element stacks up to 7 items.
+ *
+ * Fast Array Serializer container holding active element stack tags up to MaxTotalStacks.
  */
 USTRUCT(BlueprintType)
 struct FC_API FFCElementStackContainer : public FFastArraySerializer

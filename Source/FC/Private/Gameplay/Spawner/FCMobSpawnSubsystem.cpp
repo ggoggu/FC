@@ -118,6 +118,11 @@ int32 UFCMobSpawnSubsystem::GetActiveMobCountByTag(FName Tag) const
 
 void UFCMobSpawnSubsystem::ActivateAllSpawners()
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -129,6 +134,11 @@ void UFCMobSpawnSubsystem::ActivateAllSpawners()
 
 void UFCMobSpawnSubsystem::DeactivateAllSpawners()
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -140,6 +150,11 @@ void UFCMobSpawnSubsystem::DeactivateAllSpawners()
 
 void UFCMobSpawnSubsystem::ResetAllSpawners(bool bDestroyActiveMobs)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -151,6 +166,11 @@ void UFCMobSpawnSubsystem::ResetAllSpawners(bool bDestroyActiveMobs)
 
 void UFCMobSpawnSubsystem::ActivateSpawnersByTag(FName Tag)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -165,6 +185,11 @@ void UFCMobSpawnSubsystem::ActivateSpawnersByTag(FName Tag)
 
 void UFCMobSpawnSubsystem::DeactivateSpawnersByTag(FName Tag)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -179,6 +204,11 @@ void UFCMobSpawnSubsystem::DeactivateSpawnersByTag(FName Tag)
 
 void UFCMobSpawnSubsystem::ResetSpawnersByTag(FName Tag, bool bDestroyActiveMobs)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())
@@ -193,6 +223,11 @@ void UFCMobSpawnSubsystem::ResetSpawnersByTag(FName Tag, bool bDestroyActiveMobs
 
 void UFCMobSpawnSubsystem::DespawnAllWorldMobs()
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	for (const TWeakObjectPtr<AFCMobSpawnerBase>& Entry : RegisteredSpawners)
 	{
 		if (AFCMobSpawnerBase* Spawner = Entry.Get())

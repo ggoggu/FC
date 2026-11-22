@@ -2,10 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "Data/Card/FCCardTypes.h"
 #include "FCHUDViewModel.generated.h"
 
 class UFCHandViewModel;
 class UFCStatusToggleContainerViewModel;
+class UFCCardPileViewModel;
 
 /**
  * UFCHUDViewModel
@@ -65,9 +67,22 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Status")
 	TObjectPtr<UFCStatusToggleContainerViewModel> StatusContainerViewModel;
 
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|HUD|Pile")
+	TObjectPtr<UFCCardPileViewModel> PileViewerViewModel;
+
 public:
 	UFCHandViewModel* GetOrCreateHandViewModel();
 	UFCStatusToggleContainerViewModel* GetOrCreateStatusContainerViewModel();
+	UFCCardPileViewModel* GetOrCreatePileViewerViewModel();
+
+	UFUNCTION(BlueprintCallable, Category = "FC|HUD|Pile")
+	void TogglePileViewer(EFCCardZone InZone);
+
+	UFUNCTION(BlueprintCallable, Category = "FC|HUD|Pile")
+	void ClosePileViewer();
+
+	UFUNCTION(BlueprintPure, Category = "FC|HUD|Pile")
+	bool IsPileViewerOpen() const;
 
 	// Setters utilizing UE_MVVM_SET_PROPERTY_VALUE
 	void SetCurrentHealth(int32 InHealth);

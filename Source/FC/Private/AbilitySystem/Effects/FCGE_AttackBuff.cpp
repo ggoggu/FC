@@ -1,5 +1,6 @@
 #include "AbilitySystem/Effects/FCGE_AttackBuff.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "Data/FCGameplayTags.h"
 
 UFCGE_AttackBuff::UFCGE_AttackBuff()
 {
@@ -10,9 +11,9 @@ UFCGE_AttackBuff::UFCGE_AttackBuff()
 	ModInfo.Attribute = UFCAttributeSet::GetAttackPowerAttribute();
 	ModInfo.ModifierOp = EGameplayModOp::Additive;
 
-	FScalableFloat ScalableMagnitude;
-	ScalableMagnitude.SetValue(1.0f);
-	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(ScalableMagnitude);
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataTag = FCGameplayTags::Data_Magnitude;
+	ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 
 	Modifiers.Add(ModInfo);
 }

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "MVVMViewModelBase.h"
+#include "GameplayTagContainer.h"
 #include "Data/Class/FCClassTypes.h"
 #include "Components/SlateWrapperTypes.h"
 #include "FCElementOverheadViewModel.generated.h"
@@ -14,7 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnElementOverheadStacksUpdatedSigna
  * UFCElementOverheadViewModel
  * 
  * Presentation ViewModel managing the elemental stack display above an enemy's head.
- * Observes UFCElementComponent on client instances and drives UMG via zero-tick FieldNotify bindings.
+ * Uses open-ended FGameplayTag storage and map counts (zero hardcoded per-element properties).
  */
 UCLASS(BlueprintType)
 class FC_API UFCElementOverheadViewModel : public UMVVMViewModelBase
@@ -36,37 +37,22 @@ public:
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element")
 	bool bHasAnyStack = false;
 
-	/** Ordered collection of active element stacks (Zero UObject allocation) */
+	/** Ordered collection of active element GameplayTag stacks (Zero UObject allocation) */
 	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element")
-	TArray<EFCElement> CurrentStacks;
+	TArray<FGameplayTag> CurrentStacks;
+
+	/** Dynamic breakdown map of element tag -> stack count (open-ended for any DT_ElementCatalog tag) */
+	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
+	TMap<FGameplayTag, int32> ElementCounts;
 
 	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	const TArray<EFCElement>& GetCurrentStacks() const { return CurrentStacks; }
+	const TArray<FGameplayTag>& GetCurrentStacks() const { return CurrentStacks; }
 
 	UFUNCTION(BlueprintPure, Category = "FC|Element")
-	EFCElement GetStackAt(int32 Index) const { return CurrentStacks.IsValidIndex(Index) ? CurrentStacks[Index] : EFCElement::None; }
+	FGameplayTag GetStackAt(int32 Index) const { return CurrentStacks.IsValidIndex(Index) ? CurrentStacks[Index] : FGameplayTag::EmptyTag; }
 
-	// --- Element Count Breakdowns ---
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 FireCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 EarthCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 WaterCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 WindCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 LightningCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 HolyCount = 0;
-
-	UPROPERTY(BlueprintReadWrite, FieldNotify, Category = "FC|Element|Counts")
-	int32 DarkCount = 0;
+	UFUNCTION(BlueprintPure, Category = "FC|Element|Counts")
+	int32 GetElementCount(FGameplayTag ElementTag) const;
 
 public:
 	// --- Component Binding & Lifecycle ---
@@ -79,22 +65,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Element")
 	void RefreshFromComponent();
 
-	/** Applies an array of element stacks directly to the ViewModel */
+	/** Applies an array of element GameplayTag stacks directly to the ViewModel */
 	UFUNCTION(BlueprintCallable, Category = "FC|Element")
-	void UpdateFromStacks(const TArray<EFCElement>& InStacks);
+	void UpdateFromStacks(const TArray<FGameplayTag>& InStacks);
 
 	// --- Setters utilizing UE_MVVM_SET_PROPERTY_VALUE ---
 	void SetTotalStacks(int32 InTotal);
 	void SetMaxStacks(int32 InMax);
 	void SetHasAnyStack(bool bInHasAny) { UE_MVVM_SET_PROPERTY_VALUE(bHasAnyStack, bInHasAny); }
-
-	void SetFireCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(FireCount, InCount); }
-	void SetEarthCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(EarthCount, InCount); }
-	void SetWaterCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(WaterCount, InCount); }
-	void SetWindCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(WindCount, InCount); }
-	void SetLightningCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(LightningCount, InCount); }
-	void SetHolyCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(HolyCount, InCount); }
-	void SetDarkCount(int32 InCount) { UE_MVVM_SET_PROPERTY_VALUE(DarkCount, InCount); }
 
 	// --- Computed FieldNotify Getters ---
 	UFUNCTION(BlueprintPure, FieldNotify)
@@ -111,7 +89,7 @@ public:
 
 protected:
 	UFUNCTION()
-	void HandleStacksChanged(const TArray<EFCElement>& InStacks);
+	void HandleStacksChanged(const TArray<FGameplayTag>& InStacks);
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UFCElementComponent> BoundElementComponent;

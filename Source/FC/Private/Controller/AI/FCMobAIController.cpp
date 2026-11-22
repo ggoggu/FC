@@ -51,6 +51,14 @@ void AFCMobAIController::OnPossess(APawn* InPawn)
 		return;
 	}
 
+	if (MobPerceptionComponent && SightConfig)
+	{
+		SightConfig->SightRadius = SightRadius;
+		SightConfig->LoseSightRadius = LoseSightRadius;
+		SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
+		MobPerceptionComponent->ConfigureSense(*SightConfig);
+	}
+
 	UBlackboardComponent* BlackboardComp = Blackboard;
 
 	// Resolve Blackboard asset

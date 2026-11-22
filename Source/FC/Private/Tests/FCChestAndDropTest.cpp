@@ -6,6 +6,7 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "UI/ViewModel/FCCardRewardViewModel.h"
 #include "UI/ViewModel/FCCardViewModel.h"
 #include "Engine/GameInstance.h"
@@ -90,23 +91,23 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 				// Ensure catalog is populated
 				UFCCardDataAsset* FireballCard = NewObject<UFCCardDataAsset>(Subsystem);
 				FireballCard->GameplayData.CardId = FName("Card_Fireball");
-				FireballCard->GameplayData.RequiredClass = EFCCharacterClass::Mage;
+				FireballCard->GameplayData.RequiredClassTag = FCGameplayTags::Class_Mage;
 				Subsystem->RegisterCardDataAsset(FireballCard);
 
 				UFCCardDataAsset* BuffCard = NewObject<UFCCardDataAsset>(Subsystem);
 				BuffCard->GameplayData.CardId = FName("Card_AttackBuff");
-				BuffCard->GameplayData.RequiredClass = EFCCharacterClass::Neutral;
+				BuffCard->GameplayData.RequiredClassTag = FCGameplayTags::Class_Neutral;
 				Subsystem->RegisterCardDataAsset(BuffCard);
 
 				// Register dummy Warrior and Rogue cards for per-class testing
 				UFCCardDataAsset* WarriorCard = NewObject<UFCCardDataAsset>(Subsystem);
 				WarriorCard->GameplayData.CardId = FName("Card_WarriorSlash");
-				WarriorCard->GameplayData.RequiredClass = EFCCharacterClass::Warrior;
+				WarriorCard->GameplayData.RequiredClassTag = FCGameplayTags::Class_Warrior;
 				Subsystem->RegisterCardDataAsset(WarriorCard);
 
 				UFCCardDataAsset* RogueCard = NewObject<UFCCardDataAsset>(Subsystem);
 				RogueCard->GameplayData.CardId = FName("Card_RogueStab");
-				RogueCard->GameplayData.RequiredClass = EFCCharacterClass::Rogue;
+				RogueCard->GameplayData.RequiredClassTag = FCGameplayTags::Class_Rogue;
 				Subsystem->RegisterCardDataAsset(RogueCard);
 
 				AFCChestActor* TestChest = NewObject<AFCChestActor>(GI);
@@ -127,7 +128,7 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 					TestChest->AllowedOtherClasses.Empty();
 					TestChest->bAllowAllOtherClasses = false;
 
-					TArray<FName> MageOnlyDrops = TestChest->GetFilteredRewardCardIds(EFCCharacterClass::Mage, Subsystem);
+					TArray<FName> MageOnlyDrops = TestChest->GetFilteredRewardCardIds(FCGameplayTags::Class_Mage, Subsystem);
 					TestEqual(TEXT("Mage default drop count should be 1"), MageOnlyDrops.Num(), 1);
 					TestTrue(TEXT("Mage default drop contains Fireball"), MageOnlyDrops.Contains(FName("Card_Fireball")));
 					TestFalse(TEXT("Mage default drop does not contain AttackBuff"), MageOnlyDrops.Contains(FName("Card_AttackBuff")));
@@ -135,16 +136,16 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 
 					// Case 4.2: Allow Neutral Cards
 					TestChest->bAllowNeutralCards = true;
-					TArray<FName> MageAndNeutralDrops = TestChest->GetFilteredRewardCardIds(EFCCharacterClass::Mage, Subsystem);
+					TArray<FName> MageAndNeutralDrops = TestChest->GetFilteredRewardCardIds(FCGameplayTags::Class_Mage, Subsystem);
 					TestEqual(TEXT("Mage with neutral drop count should be 2"), MageAndNeutralDrops.Num(), 2);
 					TestTrue(TEXT("Contains Fireball"), MageAndNeutralDrops.Contains(FName("Card_Fireball")));
 					TestTrue(TEXT("Contains AttackBuff"), MageAndNeutralDrops.Contains(FName("Card_AttackBuff")));
 
 					// Case 4.3: Per-Class Granular Control (Allow Warrior only)
 					TestChest->bAllowNeutralCards = false;
-					TestChest->AllowedOtherClasses.Add(EFCCharacterClass::Warrior);
+					TestChest->AllowedOtherClasses.Add(FCGameplayTags::Class_Warrior);
 
-					TArray<FName> MageAndWarriorDrops = TestChest->GetFilteredRewardCardIds(EFCCharacterClass::Mage, Subsystem);
+					TArray<FName> MageAndWarriorDrops = TestChest->GetFilteredRewardCardIds(FCGameplayTags::Class_Mage, Subsystem);
 					TestEqual(TEXT("Mage + Warrior drop count should be 2"), MageAndWarriorDrops.Num(), 2);
 					TestTrue(TEXT("Contains Fireball"), MageAndWarriorDrops.Contains(FName("Card_Fireball")));
 					TestTrue(TEXT("Contains WarriorSlash"), MageAndWarriorDrops.Contains(FName("Card_WarriorSlash")));
@@ -152,7 +153,7 @@ bool FFCChestAndDropTest::RunTest(const FString& Parameters)
 
 					// Case 4.4: Allow All Other Classes
 					TestChest->bAllowAllOtherClasses = true;
-					TArray<FName> AllClassDrops = TestChest->GetFilteredRewardCardIds(EFCCharacterClass::Mage, Subsystem);
+					TArray<FName> AllClassDrops = TestChest->GetFilteredRewardCardIds(FCGameplayTags::Class_Mage, Subsystem);
 					TestEqual(TEXT("All classes drop count (excluding neutral) should be 3"), AllClassDrops.Num(), 3);
 					TestTrue(TEXT("Contains RogueStab"), AllClassDrops.Contains(FName("Card_RogueStab")));
 				}

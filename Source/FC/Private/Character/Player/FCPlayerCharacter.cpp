@@ -1,4 +1,6 @@
 #include "Character/Player/FCPlayerCharacter.h"
+#include "Camera/FCCameraComponent.h"
+#include "Camera/FCCameraModeDataAsset.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -41,6 +43,9 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComponent"));
 	CameraComponent->SetupAttachment(SpringArmComponent, USpringArmComponent::SocketName);
 	CameraComponent->bUsePawnControlRotation = false; 
+
+	// Create camera mode manager
+	CameraModeComponent = CreateDefaultSubobject<UFCCameraComponent>(TEXT("CameraModeComponent")); 
 
 	// GAS is typically mixed mode for player
 	if (AbilitySystemComponent)
@@ -93,7 +98,7 @@ AFCPlayerCharacter::AFCPlayerCharacter()
 
 	// Default jump input action
 	static ConstructorHelpers::FObjectFinder<UInputAction> JumpActionFinder(
-		TEXT("/Game/Input/Actions/IA_Jump.IA_Jump"));
+		TEXT("/Game/Character/Player/Input/Action/IA_Jump.IA_Jump"));
 	if (JumpActionFinder.Succeeded())
 	{
 		JumpAction = JumpActionFinder.Object;
@@ -122,6 +127,11 @@ void AFCPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (CameraModeComponent && SpringArmComponent && CameraComponent)
+	{
+		CameraModeComponent->InitializeCamera(SpringArmComponent, CameraComponent);
+	}
+
 	if (HasAuthority() && Controller != nullptr)
 	{
 		StartHealthDrain();
@@ -149,6 +159,33 @@ void AFCPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputC
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AFCPlayerCharacter::Jump);
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFCPlayerCharacter::StopJumping);
 		}
+
+		if (ToggleCameraAction)
+		{
+			EnhancedInputComponent->BindAction(ToggleCameraAction, ETriggerEvent::Started, this, &AFCPlayerCharacter::ToggleCameraView);
+		}
+	}
+
+	// Always bind default keyboard V key for immediate seamless testing without requiring IMC rebuild
+	if (PlayerInputComponent)
+	{
+		PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &AFCPlayerCharacter::ToggleCameraView);
+	}
+}
+
+void AFCPlayerCharacter::ToggleCameraView()
+{
+	if (CameraModeComponent)
+	{
+		CameraModeComponent->ToggleCameraMode();
+	}
+}
+
+void AFCPlayerCharacter::SetCameraMode(UFCCameraModeDataAsset* NewMode)
+{
+	if (CameraModeComponent)
+	{
+		CameraModeComponent->SetCameraMode(NewMode);
 	}
 }
 
@@ -275,142 +312,6 @@ void AFCPlayerCharacter::Die(AActor* Killer)
 	StopHealthDrain();
 }
 
-void AFCPlayerCharacter::PlayDeathAnimation(EFCDeathDirection Direction)
-{
-	UAnimSequence* AnimToPlay = GetDeathAnimationForDirection(Direction);
-	if (!AnimToPlay)
-	{
-		return;
-	}
-
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
-	{
-		MeshComp->Stop();
-		MeshComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-		MeshComp->PlayAnimation(AnimToPlay, /*bLooping=*/false);
-	}
-}
-
-UAnimSequence* AFCPlayerCharacter::GetDeathAnimationForDirection(EFCDeathDirection Direction) const
-{
-	switch (Direction)
-	{
-	case EFCDeathDirection::Front:
-	{
-		TArray<UAnimSequence*, TInlineAllocator<3>> FrontAnims;
-		if (DeathAnim_Front)
-		{
-			FrontAnims.Add(DeathAnim_Front);
-		}
-		if (DeathAnim_Front_02)
-		{
-			FrontAnims.Add(DeathAnim_Front_02);
-		}
-		if (DeathAnim_Front_03)
-		{
-			FrontAnims.Add(DeathAnim_Front_03);
-		}
-
-		if (FrontAnims.Num() > 0)
-		{
-			const int32 RandIndex = FMath::RandRange(0, FrontAnims.Num() - 1);
-			return FrontAnims[RandIndex];
-		}
-		return DeathAnim_Front;
-	}
-	case EFCDeathDirection::Back:
-		return DeathAnim_Back;
-	case EFCDeathDirection::Left:
-		return DeathAnim_Left;
-	case EFCDeathDirection::Right:
-		return DeathAnim_Right;
-	default:
-		return DeathAnim_Front;
-	}
-}
-
-void AFCPlayerCharacter::HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult)
-{
-	Super::HandleDamageTaken(DamageAmount, DamageCauser, HitResult);
-
-	if (bIsDead)
-	{
-		return;
-	}
-
-	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
-	if (HitReactionCooldown > 0.0f && (CurrentTime - LastHitReactTime < HitReactionCooldown))
-	{
-		return;
-	}
-	LastHitReactTime = CurrentTime;
-
-	const EFCDeathDirection HitDir = CalculateHitDirection(DamageCauser);
-	const FGameplayTag HitReactionTag = FGameplayTag::RequestGameplayTag(FName("GameplayCue.Combat.HitReaction"), false);
-	if (AbilitySystemComponent && AbilitySystemComponent->AbilityActorInfo.IsValid() && HitReactionTag.IsValid())
-	{
-		FGameplayCueParameters CueParams;
-		CueParams.Location = DamageCauser ? DamageCauser->GetActorLocation() : GetActorLocation();
-		CueParams.RawMagnitude = static_cast<float>(HitDir);
-		AbilitySystemComponent->ExecuteGameplayCue(HitReactionTag, CueParams);
-	}
-	else
-	{
-		PlayHitAnimation(HitDir);
-	}
-}
-
-void AFCPlayerCharacter::PlayHitAnimation(EFCDeathDirection Direction)
-{
-	if (bIsDead)
-	{
-		return;
-	}
-
-	if (HitMontage)
-	{
-		PlayAnimMontage(HitMontage, HitPlayRate);
-		return;
-	}
-
-	UAnimSequence* AnimToPlay = GetHitAnimationForDirection(Direction);
-	if (!AnimToPlay)
-	{
-		return;
-	}
-
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
-	{
-		if (UAnimInstance* AnimInstance = MeshComp->GetAnimInstance())
-		{
-			AnimInstance->PlaySlotAnimationAsDynamicMontage(
-				AnimToPlay,
-				FName(TEXT("DefaultSlot")),
-				/*BlendInTime=*/0.05f,
-				/*BlendOutTime=*/0.15f,
-				HitPlayRate
-			);
-		}
-	}
-}
-
-UAnimSequence* AFCPlayerCharacter::GetHitAnimationForDirection(EFCDeathDirection Direction) const
-{
-	switch (Direction)
-	{
-	case EFCDeathDirection::Front:
-		return HitAnim_Front ? HitAnim_Front.Get() : DeathAnim_Front.Get();
-	case EFCDeathDirection::Back:
-		return HitAnim_Back ? HitAnim_Back.Get() : DeathAnim_Back.Get();
-	case EFCDeathDirection::Left:
-		return HitAnim_Left ? HitAnim_Left.Get() : DeathAnim_Left.Get();
-	case EFCDeathDirection::Right:
-		return HitAnim_Right ? HitAnim_Right.Get() : DeathAnim_Right.Get();
-	default:
-		return HitAnim_Front ? HitAnim_Front.Get() : DeathAnim_Front.Get();
-	}
-}
-
 void AFCPlayerCharacter::StartHealthDrain()
 {
 	if (!HasAuthority() || bIsDead || !bEnableHealthDrain)
@@ -446,8 +347,13 @@ void AFCPlayerCharacter::StopHealthDrain()
 
 void AFCPlayerCharacter::ResetHealthDrain()
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	CurrentDrainInterval = InitialDrainInterval;
-	if (HasAuthority() && !bIsDead && bEnableHealthDrain)
+	if (!bIsDead && bEnableHealthDrain)
 	{
 		StartHealthDrain();
 	}

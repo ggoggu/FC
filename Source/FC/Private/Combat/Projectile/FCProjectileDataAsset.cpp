@@ -1,5 +1,6 @@
 #include "Combat/Projectile/FCProjectileDataAsset.h"
 #include "AbilitySystem/Effects/FCGE_Damage.h"
+#include "Data/FCGameplayTags.h"
 
 UFCProjectileDataAsset::UFCProjectileDataAsset()
 {
@@ -8,9 +9,9 @@ UFCProjectileDataAsset::UFCProjectileDataAsset()
 	ExplosionRadius = 0.0f;
 	bPiercing = false;
 	MaxPierceCount = 0;
-	ProjectileElements = { EFCElement::Fire };
-	SourceClass = EFCCharacterClass::Mage;
-	SourceCardType = EFCCardType::Attack;
+	ProjectileElementTags = { FCGameplayTags::Element_Fire };
+	SourceClassTag = FCGameplayTags::Class_Mage;
+	SourceCardTypeTag = FCGameplayTags::Card_Type_Attack;
 
 	LaunchSpeed = 2500.0f;
 	MaxSpeed = 2500.0f;

@@ -1,5 +1,8 @@
 #include "Combat/Projectile/FCProjectileBase.h"
 #include "Combat/Projectile/FCProjectileDataAsset.h"
+#include "Combat/Projectile/Behaviors/FCProjectileBehaviors.h"
+#include "Combat/Interfaces/FCCombatTargetInterface.h"
+#include "Data/FCGameplayTags.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -13,7 +16,6 @@
 #include "Combat/FCCombatUtils.h"
 #include "Map/FCRoomBase.h"
 #include "Map/FCBombDamageable.h"
-#include "Engine/OverlapResult.h"
 #include "Net/UnrealNetwork.h"
 
 AFCProjectileBase::AFCProjectileBase()
@@ -21,6 +23,11 @@ AFCProjectileBase::AFCProjectileBase()
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
 	SetReplicateMovement(true);
+
+	DamageEffectClass = UFCGE_Damage::StaticClass();
+	SourceClassTag = FCGameplayTags::Class_Mage;
+	SourceCardTypeTag = FCGameplayTags::Card_Type_Attack;
+	AttackTags.AddTag(FCGameplayTags::Combat_Attack_Projectile);
 
 	// Root Collision Sphere
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
@@ -57,6 +64,63 @@ AFCProjectileBase::AFCProjectileBase()
 	InitialLifeSpan = 5.0f;
 }
 
+void AFCProjectileBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(AFCProjectileBase, ProjectileDataAsset, COND_InitialOnly);
+}
+
+FGameplayTagContainer AFCProjectileBase::GetAttackTags() const
+{
+	return AttackTags;
+}
+
+bool AFCProjectileBase::CanBeInterceptedBy(const AActor* InterceptorActor) const
+{
+	if (!InterceptorActor || InterceptorActor == this)
+	{
+		return false;
+	}
+
+	if (AttackTags.HasTag(FCGameplayTags::Combat_Attack_Unblockable))
+	{
+		return false;
+	}
+
+	// Friendly fire protection: do not intercept own or caster's projectiles
+	if (GetInstigator() && (InterceptorActor == GetInstigator() || InterceptorActor->GetInstigator() == GetInstigator()))
+	{
+		return false;
+	}
+
+	if (GetOwner() && (InterceptorActor == GetOwner() || InterceptorActor->GetOwner() == GetOwner()))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void AFCProjectileBase::OnInterceptedBy(AActor* InterceptorActor, const FVector& ImpactLocation)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	PlayImpactCosmetics(ImpactLocation);
+	Destroy();
+}
+
+void AFCProjectileBase::OnRep_ProjectileDataAsset()
+{
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
+	{
+		InitializeFromDataAsset(ProjectileDataAsset);
+	}
+}
+
 void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset)
 {
 	if (!InDataAsset)
@@ -65,19 +129,29 @@ void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* In
 	}
 
 	ProjectileDataAsset = InDataAsset;
+	bInitializedFromDataAsset = true;
+	bBehaviorsNormalized = false;
 
 	// Combat configuration
 	Damage = InDataAsset->Damage;
+	AttackPowerScale = InDataAsset->AttackPowerScale;
 	DamageEffectClass = InDataAsset->DamageEffectClass ? InDataAsset->DamageEffectClass : TSubclassOf<UGameplayEffect>(UFCGE_Damage::StaticClass());
 	ExplosionRadius = InDataAsset->ExplosionRadius;
 	bPiercing = InDataAsset->bPiercing;
 	MaxPierceCount = InDataAsset->MaxPierceCount;
 	SpawnActorOnImpact = InDataAsset->SpawnActorOnImpact;
-	ProjectileElements = InDataAsset->ProjectileElements;
-	SourceClass = InDataAsset->SourceClass;
-	SourceCardType = InDataAsset->SourceCardType;
+	ProjectileElementTags = InDataAsset->ProjectileElementTags;
+	SourceClassTag = InDataAsset->SourceClassTag.IsValid() ? InDataAsset->SourceClassTag : FCGameplayTags::Class_Mage.GetTag();
+	SourceCardTypeTag = InDataAsset->SourceCardTypeTag.IsValid() ? InDataAsset->SourceCardTypeTag : FCGameplayTags::Card_Type_Attack.GetTag();
+	Behaviors = InDataAsset->Behaviors;
 
-	// Movement Component (Speed, Trajectory, Gravity)
+	if (!InDataAsset->AttackTags.IsEmpty())
+	{
+		AttackTags = InDataAsset->AttackTags;
+	}
+	AttackTags.AddTag(FCGameplayTags::Combat_Attack_Projectile);
+
+	// Movement Component
 	if (ProjectileMovement)
 	{
 		ProjectileMovement->InitialSpeed = InDataAsset->LaunchSpeed;
@@ -89,7 +163,6 @@ void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* In
 
 	SetLifeSpan(InDataAsset->LifeSpan);
 
-	// Presentation: Optional Impact Overrides (if null, BP template defaults are preserved)
 	if (UNiagaraSystem* LoadedImpactVFX = InDataAsset->ImpactVFX.LoadSynchronous())
 	{
 		ImpactVFX = LoadedImpactVFX;
@@ -99,15 +172,72 @@ void AFCProjectileBase::InitializeFromDataAsset(const UFCProjectileDataAsset* In
 	{
 		ImpactSound = LoadedImpactSound;
 	}
+
+	EnsureNormalizedBehaviors();
+}
+
+void AFCProjectileBase::EnsureNormalizedBehaviors()
+{
+	if (bBehaviorsNormalized)
+	{
+		return;
+	}
+	bBehaviorsNormalized = true;
+
+	auto HasBehaviorOfType = [this](const UScriptStruct* StructType) -> bool
+	{
+		for (const TInstancedStruct<FFCProjectileBehaviorBase>& Entry : Behaviors)
+		{
+			if (Entry.GetScriptStruct() && Entry.GetScriptStruct()->IsChildOf(StructType))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
+	if (ExplosionRadius > 0.0f && !HasBehaviorOfType(FFCProjectileBehavior_RadialExplosion::StaticStruct()))
+	{
+		FFCProjectileBehavior_RadialExplosion Radial;
+		Radial.ExplosionRadius = ExplosionRadius;
+		Behaviors.Add(TInstancedStruct<FFCProjectileBehaviorBase>::Make<FFCProjectileBehavior_RadialExplosion>(Radial));
+	}
+
+	if (SpawnActorOnImpact && !HasBehaviorOfType(FFCProjectileBehavior_SpawnActorOnImpact::StaticStruct()))
+	{
+		FFCProjectileBehavior_SpawnActorOnImpact SpawnBehavior;
+		SpawnBehavior.ActorClass = SpawnActorOnImpact;
+		Behaviors.Add(TInstancedStruct<FFCProjectileBehaviorBase>::Make<FFCProjectileBehavior_SpawnActorOnImpact>(SpawnBehavior));
+	}
+
+	if (bPiercing && MaxPierceCount > 0 && !HasBehaviorOfType(FFCProjectileBehavior_Pierce::StaticStruct()))
+	{
+		FFCProjectileBehavior_Pierce PierceBehavior;
+		PierceBehavior.MaxPierceCount = MaxPierceCount;
+		Behaviors.Add(TInstancedStruct<FFCProjectileBehaviorBase>::Make<FFCProjectileBehavior_Pierce>(PierceBehavior));
+	}
 }
 
 void AFCProjectileBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (ProjectileDataAsset)
+	if (ProjectileDataAsset && !bInitializedFromDataAsset)
 	{
 		InitializeFromDataAsset(ProjectileDataAsset);
+	}
+
+	EnsureNormalizedBehaviors();
+
+	if (HasAuthority())
+	{
+		for (const TInstancedStruct<FFCProjectileBehaviorBase>& Entry : Behaviors)
+		{
+			if (const FFCProjectileBehaviorBase* Behavior = Entry.GetPtr())
+			{
+				Behavior->OnProjectileSpawned(this);
+			}
+		}
 	}
 
 	if (CollisionComponent)
@@ -132,7 +262,6 @@ void AFCProjectileBase::OnProjectileHit(UPrimitiveComponent* HitComp, AActor* Ot
 		return;
 	}
 
-	// Never impact Room container actors or WorldSettings
 	if (OtherActor->IsA<AFCRoomBase>() || OtherActor->IsA<AWorldSettings>())
 	{
 		return;
@@ -148,45 +277,27 @@ void AFCProjectileBase::OnProjectileOverlap(UPrimitiveComponent* OverlappedComp,
 		return;
 	}
 
-	// Never impact Room container actors or WorldSettings
 	if (OtherActor->IsA<AFCRoomBase>() || OtherActor->IsA<AWorldSettings>())
 	{
 		return;
 	}
 
-	// Filter out non-combat triggers (e.g. RoomBoundsTrigger, InteractionTrigger, etc.)
+	const bool bValidCombatTarget = UFCCombatUtils::IsAttackableTarget(GetInstigator(), OtherActor)
+		|| OtherActor->Implements<UFCCombatTargetInterface>()
+		|| OtherActor->Implements<UFCBombDamageable>()
+		|| Cast<IAbilitySystemInterface>(OtherActor) != nullptr;
+
 	if (OtherComp)
 	{
 		const FName ProfileName = OtherComp->GetCollisionProfileName();
-		const FString CompName = OtherComp->GetName();
-		if (ProfileName == FName("Trigger") || 
-			ProfileName == FName("OverlapAll") || 
-			ProfileName == FName("OverlapAllDynamic") ||
-			CompName.Contains(TEXT("Trigger"), ESearchCase::IgnoreCase) ||
-			CompName.Contains(TEXT("Bounds"), ESearchCase::IgnoreCase))
+		if ((ProfileName == FName("Trigger") || ProfileName == FName("OverlapAll") || ProfileName == FName("OverlapAllDynamic")) && !bValidCombatTarget)
 		{
-			// Check if the actor itself is a valid damageable combat target (e.g. enemy pawn).
-			const bool bIsCombatTarget = UFCCombatUtils::IsAttackableTarget(GetInstigator(), OtherActor) ||
-				OtherActor->FindComponentByClass<UAbilitySystemComponent>() != nullptr ||
-				Cast<IAbilitySystemInterface>(OtherActor) != nullptr;
-
-			if (!bIsCombatTarget)
-			{
-				return;
-			}
+			return;
 		}
 	}
 
-	// Only process overlap as an impact if the target is an attackable/damageable entity,
-	// or if the component actually blocks this projectile's collision channel
-	const bool bValidDamageable = UFCCombatUtils::IsAttackableTarget(GetInstigator(), OtherActor) ||
-		OtherActor->FindComponentByClass<UAbilitySystemComponent>() != nullptr ||
-		Cast<IAbilitySystemInterface>(OtherActor) != nullptr ||
-		OtherActor->Implements<UFCBombDamageable>();
-
 	const bool bBlockingComp = OtherComp && (OtherComp->GetCollisionResponseToChannel(CollisionComponent->GetCollisionObjectType()) == ECR_Block);
-
-	if (!bValidDamageable && !bBlockingComp)
+	if (!bValidCombatTarget && !bBlockingComp)
 	{
 		return;
 	}
@@ -214,71 +325,47 @@ void AFCProjectileBase::ProcessImpact(AActor* OtherActor, const FHitResult& HitR
 
 	const FVector ImpactLocation = HitResult.ImpactPoint.IsZero() ? GetActorLocation() : FVector(HitResult.ImpactPoint);
 
-	UE_LOG(LogTemp, Log, TEXT("[AFCProjectileBase] ProcessImpact: %s impacted %s at %s"), 
-		*GetName(), *GetNameSafe(OtherActor), *ImpactLocation.ToString());
-
-	// Server-Authoritative Combat Resolution
 	if (HasAuthority())
 	{
-		if (ExplosionRadius > 0.0f)
+		EnsureNormalizedBehaviors();
+
+		bool bHasRadialBehavior = false;
+		for (const TInstancedStruct<FFCProjectileBehaviorBase>& Entry : Behaviors)
 		{
-			// Radial Damage & Impacts
-			TArray<FOverlapResult> OverlapResults;
-			FCollisionShape SphereShape = FCollisionShape::MakeSphere(ExplosionRadius);
-			FCollisionQueryParams QueryParams;
-			QueryParams.AddIgnoredActor(this);
-			QueryParams.AddIgnoredActor(GetInstigator());
-
-			if (GetWorld()->OverlapMultiByChannel(OverlapResults, ImpactLocation, FQuat::Identity, ECC_Pawn, SphereShape, QueryParams))
+			if (Entry.GetScriptStruct() && Entry.GetScriptStruct()->IsChildOf(FFCProjectileBehavior_RadialExplosion::StaticStruct()))
 			{
-				for (const FOverlapResult& Overlap : OverlapResults)
-				{
-					if (AActor* Target = Overlap.GetActor())
-					{
-						ApplyDamageToActor(Target, HitResult);
-					}
-				}
-			}
-
-			// If directly impacted actor is valid and not a Pawn (e.g. wall, chest), apply damage directly
-			if (OtherActor && !OtherActor->IsA<APawn>())
-			{
-				ApplyDamageToActor(OtherActor, HitResult);
+				bHasRadialBehavior = true;
+				break;
 			}
 		}
-		else
+
+		// Direct hit damage when no radial explosion behavior replaces single-target damage
+		if (!bHasRadialBehavior)
 		{
-			// Single-Target Damage
 			ApplyDamageToActor(OtherActor, HitResult);
 		}
 
-		// Optional Spawn Actor On Impact (e.g. summon minions, traps, fields)
-		if (SpawnActorOnImpact)
+		bool bContinueFlight = false;
+		for (const TInstancedStruct<FFCProjectileBehaviorBase>& Entry : Behaviors)
 		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.Owner = GetOwner();
-			SpawnParams.Instigator = GetInstigator();
-			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			GetWorld()->SpawnActor<AActor>(SpawnActorOnImpact, ImpactLocation, GetActorRotation(), SpawnParams);
+			if (const FFCProjectileBehaviorBase* Behavior = Entry.GetPtr())
+			{
+				Behavior->OnProjectileImpact(this, OtherActor, HitResult, bContinueFlight);
+			}
 		}
 
-		// Handle Piercing or Destruction
-		if (bPiercing && CurrentPierceCount < MaxPierceCount)
+		if (bContinueFlight)
 		{
-			CurrentPierceCount++;
 			Multicast_PlayImpactCosmetics(ImpactLocation);
 		}
 		else
 		{
-			// Terminal impact: play locally on listen-server/standalone and destroy actor.
-			// Replicated client proxies will safely execute PlayImpactCosmetics via Destroyed() (0-RPC).
 			PlayImpactCosmetics(ImpactLocation);
 			Destroy();
 		}
 	}
 	else
 	{
-		// Autonomous predicted client visual feedback
 		PlayImpactCosmetics(ImpactLocation);
 	}
 }
@@ -290,51 +377,78 @@ void AFCProjectileBase::ApplyDamageToActor(AActor* TargetActor, const FHitResult
 		return;
 	}
 
-	// Resolve Target Ability System Component
-	UAbilitySystemComponent* TargetASC = nullptr;
-	if (const IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(TargetActor))
+	const bool bIsBombDamageable = TargetActor->Implements<UFCBombDamageable>();
+	if (!bIsBombDamageable && !UFCCombatUtils::IsAttackableTarget(GetInstigator(), TargetActor))
 	{
-		TargetASC = ASI->GetAbilitySystemComponent();
+		return;
 	}
 
-	if (TargetASC)
+	UAbilitySystemComponent* TargetASC = nullptr;
+	if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetActor))
 	{
-		if (DamageEffectClass)
-		{
-			FGameplayEffectContextHandle Context = TargetASC->MakeEffectContext();
-			Context.AddInstigator(GetInstigator(), this);
-			Context.AddHitResult(HitResult);
+		TargetASC = TargetASI->GetAbilitySystemComponent();
+	}
 
-			if (FGameplayEffectSpecHandle SpecHandle = TargetASC->MakeOutgoingSpec(DamageEffectClass, 1.0f, Context); SpecHandle.IsValid())
-			{
-				TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-			}
-		}
-		else
+	UAbilitySystemComponent* SourceASC = nullptr;
+	if (const IAbilitySystemInterface* SourceASI = Cast<IAbilitySystemInterface>(GetInstigator()))
+	{
+		SourceASC = SourceASI->GetAbilitySystemComponent();
+	}
+
+	TSubclassOf<UGameplayEffect> EffectiveDamageGE = DamageEffectClass ? DamageEffectClass : TSubclassOf<UGameplayEffect>(UFCGE_Damage::StaticClass());
+	if (TargetASC && EffectiveDamageGE)
+	{
+		UAbilitySystemComponent* SpecCreatorASC = SourceASC ? SourceASC : TargetASC;
+		FGameplayEffectContextHandle Context = SpecCreatorASC->MakeEffectContext();
+		Context.AddInstigator(GetInstigator(), this);
+		Context.AddHitResult(HitResult);
+
+		if (FGameplayEffectSpecHandle SpecHandle = SpecCreatorASC->MakeOutgoingSpec(EffectiveDamageGE, 1.0f, Context); SpecHandle.IsValid())
 		{
-			// Direct Attribute Set deduction fallback
-			if (const UFCAttributeSet* AttributeSet = TargetASC->GetSet<UFCAttributeSet>())
+			SpecHandle.Data->SetSetByCallerMagnitude(FCGameplayTags::Data_Damage, Damage);
+			if (AttackPowerScale > 0.0f)
 			{
-				float CurrentHealth = AttributeSet->GetHealth();
-				const_cast<UFCAttributeSet*>(AttributeSet)->SetHealth(FMath::Clamp(CurrentHealth - Damage, 0.0f, AttributeSet->GetMaxHealth()));
+				SpecHandle.Data->SetSetByCallerMagnitude(FCGameplayTags::Data_Magnitude, AttackPowerScale);
 			}
+			TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+	}
+	else if (TargetASC)
+	{
+		if (const UFCAttributeSet* AttributeSet = TargetASC->GetSet<UFCAttributeSet>())
+		{
+			const_cast<UFCAttributeSet*>(AttributeSet)->ApplyIncomingDamageValue(Damage, GetInstigator(), this, &HitResult);
 		}
 	}
 	else
 	{
-		// Generic Actor Damage fallback
 		UGameplayStatics::ApplyPointDamage(TargetActor, Damage, GetVelocity().GetSafeNormal(), HitResult, GetInstigatorController(), this, nullptr);
 
-		if (TargetActor->Implements<UFCBombDamageable>())
+		if (bIsBombDamageable)
 		{
 			IFCBombDamageable::Execute_ReceiveBombDamage(TargetActor, Damage, HitResult.ImpactPoint, GetInstigator());
 		}
 	}
 
-	// Apply on-hit combat traits (e.g. Mage attack card applies element stacks)
-	if (SourceCardType == EFCCardType::Attack && ProjectileElements.Num() > 0)
+	// Execute per-target hit behaviors (e.g. explicit ApplyElementTags)
+	bool bHasExplicitElementBehavior = false;
+	for (const TInstancedStruct<FFCProjectileBehaviorBase>& Entry : Behaviors)
 	{
-		UFCCombatUtils::ApplyAttackCardHitTraits(this, TargetActor, SourceClass, SourceCardType, ProjectileElements);
+		if (Entry.GetScriptStruct() && Entry.GetScriptStruct()->IsChildOf(FFCProjectileBehavior_ApplyElementTags::StaticStruct()))
+		{
+			bHasExplicitElementBehavior = true;
+		}
+		if (const FFCProjectileBehaviorBase* Behavior = Entry.GetPtr())
+		{
+			Behavior->OnProjectileHitActor(this, TargetActor, HitResult);
+		}
+	}
+
+	// Dispatch class on-hit traits polymorphically via ClassData->TraitBehavior when no explicit element behavior overrode it
+	if (!bHasExplicitElementBehavior && ProjectileElementTags.Num() > 0)
+	{
+		AActor* SourceActor = GetInstigator() ? Cast<AActor>(GetInstigator()) : Cast<AActor>(this);
+		UFCCombatUtils::ApplyAttackCardHitTraits(SourceActor, TargetActor, SourceClassTag, SourceCardTypeTag, ProjectileElementTags);
 	}
 }
 

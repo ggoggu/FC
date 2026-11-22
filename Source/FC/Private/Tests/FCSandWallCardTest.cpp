@@ -1,12 +1,13 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Combat/Wall/FCSandWall.h"
-#include "Combat/Projectile/FCFireballProjectile.h"
+#include "Combat/Projectile/FCProjectileBase.h"
 #include "AbilitySystem/Abilities/FCGA_SandWall.h"
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Class/FCClassTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "Character/Player/FCPlayerCharacter.h"
 #include "Character/Mob/FCMobCharacter.h"
 #include "Components/BoxComponent.h"
@@ -44,13 +45,13 @@ bool FFCSandWallCardTest::RunTest(const FString& Parameters)
 				TestEqual(TEXT("SandWall Card Name should match '센드 워'"), SandWallAsset->DisplayData.CardName.ToString(), FString(TEXT("센드 워")));
 
 				// Class & Earth element affinity
-				TestEqual(TEXT("SandWall RequiredClass must be Mage"), (uint8)SandWallAsset->GameplayData.RequiredClass, (uint8)EFCCharacterClass::Mage);
-				TestTrue(TEXT("SandWall must have Earth element affinity"), SandWallAsset->GameplayData.HasElement(EFCElement::Earth));
-				TestTrue(TEXT("SandWall must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(SandWallAsset->GameplayData.RequiredClass, EFCCharacterClass::Mage));
+				TestTrue(TEXT("SandWall RequiredClassTag must be Mage"), SandWallAsset->GameplayData.RequiredClassTag == FCGameplayTags::Class_Mage);
+				TestTrue(TEXT("SandWall must have Earth element affinity"), SandWallAsset->GameplayData.HasElementTag(FCGameplayTags::Element_Earth));
+				TestTrue(TEXT("SandWall must be usable by Mage"), FCClassTraitUtils::CanCardBeUsedByClass(SandWallAsset->GameplayData.RequiredClassTag, FCGameplayTags::Class_Mage));
 			}
 
 			// Verify Korean alias Card_센드워 also resolves properly
-			UFCCardDataAsset* SandWallAlias = Subsystem->GetCardDataAsset(FName("Card_센드워"));
+			UFCCardDataAsset* SandWallAlias = Subsystem->GetCardDataAsset(FName(TEXT("Card_센드워")));
 			TestNotNull(TEXT("Card_센드워 alias should resolve from catalog"), SandWallAlias);
 		}
 	}
@@ -93,10 +94,10 @@ bool FFCSandWallCardTest::RunTest(const FString& Parameters)
 		AFCMobCharacter* EnemyMob = NewObject<AFCMobCharacter>();
 		TestNotNull(TEXT("EnemyMob must be instantiable"), EnemyMob);
 
-		AFCFireballProjectile* HostileProjectile = NewObject<AFCFireballProjectile>();
+		AFCProjectileBase* HostileProjectile = NewObject<AFCProjectileBase>();
 		TestNotNull(TEXT("HostileProjectile must be instantiable"), HostileProjectile);
 
-		AFCFireballProjectile* FriendlyProjectile = NewObject<AFCFireballProjectile>();
+		AFCProjectileBase* FriendlyProjectile = NewObject<AFCProjectileBase>();
 		TestNotNull(TEXT("FriendlyProjectile must be instantiable"), FriendlyProjectile);
 
 		if (TestWall && CasterPlayer && EnemyMob && HostileProjectile && FriendlyProjectile)

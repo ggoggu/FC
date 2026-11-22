@@ -3,7 +3,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Engine/NetSerialization.h"
+#include "GameplayTagContainer.h"
+#include "StructUtils/InstancedStruct.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Combat/Interfaces/FCInterceptableAttack.h"
+#include "Combat/Projectile/Behaviors/FCProjectileBehaviorBase.h"
 #include "FCProjectileBase.generated.h"
 
 class USphereComponent;
@@ -17,23 +21,26 @@ class UFCProjectileDataAsset;
 
 /**
  * AFCProjectileBase
- * 
- * Extensible, server-authoritative projectile base actor supporting:
- * - Configurable projectile motion (speed, gravity scale, homing, bouncing)
- * - Configurable visual mesh (sphere, arrow, knife, bomb, etc.) and Niagara flight trail
- * - Configurable impact behaviors (direct damage, radial AoE explosion, piercing, spawn actor on impact)
- * - Soft/hard references for impact audio cues and particle effects
- * - Data-driven dynamic parameter initialization from UFCProjectileDataAsset
+ *
+ * Extensible, server-authoritative projectile base actor implementing IFCInterceptableAttack
+ * and composing polymorphic TInstancedStruct projectile behaviors (Explosion, Pierce, SpawnActor, Elements).
  */
 UCLASS()
-class FC_API AFCProjectileBase : public AActor
+class FC_API AFCProjectileBase : public AActor, public IFCInterceptableAttack
 {
 	GENERATED_BODY()
 
 public:
 	AFCProjectileBase();
 
-	/** Initializes all motion, combat, collision, and presentation parameters from a data asset */
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// --- IFCInterceptableAttack ---
+	virtual FGameplayTagContainer GetAttackTags() const override;
+	virtual bool CanBeInterceptedBy(const AActor* InterceptorActor) const override;
+	virtual void OnInterceptedBy(AActor* InterceptorActor, const FVector& ImpactLocation) override;
+
+	/** Initializes all motion, combat, behaviors, and presentation parameters from a data asset */
 	UFUNCTION(BlueprintCallable, Category = "Projectile|Data")
 	virtual void InitializeFromDataAsset(const UFCProjectileDataAsset* InDataAsset);
 
@@ -48,19 +55,31 @@ public:
 	float GetDamage() const { return Damage; }
 	void SetDamage(float InDamage) { Damage = InDamage; }
 
+	float GetAttackPowerScale() const { return AttackPowerScale; }
+	void SetAttackPowerScale(float InScale) { AttackPowerScale = FMath::Max(0.0f, InScale); }
+
 	float GetExplosionRadius() const { return ExplosionRadius; }
 	void SetExplosionRadius(float InRadius) { ExplosionRadius = InRadius; }
 
 	void SetDamageEffectClass(TSubclassOf<UGameplayEffect> InClass) { DamageEffectClass = InClass; }
 
-	const TArray<EFCElement>& GetProjectileElements() const { return ProjectileElements; }
-	void SetProjectileElements(const TArray<EFCElement>& InElements) { ProjectileElements = InElements; }
+	const TArray<FGameplayTag>& GetProjectileElementTags() const { return ProjectileElementTags; }
+	void SetProjectileElementTags(const TArray<FGameplayTag>& InTags) { ProjectileElementTags = InTags; }
 
-	EFCCharacterClass GetSourceClass() const { return SourceClass; }
-	void SetSourceClass(EFCCharacterClass InClass) { SourceClass = InClass; }
+	FGameplayTag GetSourceClassTag() const { return SourceClassTag; }
+	void SetSourceClassTag(FGameplayTag InClassTag) { SourceClassTag = InClassTag; }
 
-	EFCCardType GetSourceCardType() const { return SourceCardType; }
-	void SetSourceCardType(EFCCardType InType) { SourceCardType = InType; }
+	FGameplayTag GetSourceCardTypeTag() const { return SourceCardTypeTag; }
+	void SetSourceCardTypeTag(FGameplayTag InTypeTag) { SourceCardTypeTag = InTypeTag; }
+
+	void AddProjectileBehavior(const TInstancedStruct<FFCProjectileBehaviorBase>& InBehavior) { Behaviors.Add(InBehavior); }
+	void SetAttackTags(const FGameplayTagContainer& InTags) { AttackTags = InTags; }
+
+	int32 GetCurrentPierceCount() const { return CurrentPierceCount; }
+	void IncrementPierceCount() { CurrentPierceCount++; }
+
+	/** Applies authoritative damage via GAS ExecCalc_Damage -> IncomingDamage and triggers hit behaviors */
+	virtual void ApplyDamageToActor(AActor* TargetActor, const FHitResult& HitResult);
 
 protected:
 	virtual void BeginPlay() override;
@@ -79,12 +98,18 @@ protected:
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
 
 	// --- Data-Driven Configuration ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|Data")
+	UPROPERTY(ReplicatedUsing = OnRep_ProjectileDataAsset, EditAnywhere, BlueprintReadWrite, Category = "Projectile|Data")
 	TObjectPtr<const UFCProjectileDataAsset> ProjectileDataAsset;
+
+	UFUNCTION()
+	void OnRep_ProjectileDataAsset();
 
 	// --- Gameplay & Impact Configuration ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay", meta = (ClampMin = "0.0"))
 	float Damage = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay", meta = (ClampMin = "0.0"))
+	float AttackPowerScale = 1.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
 	TSubclassOf<UGameplayEffect> DamageEffectClass;
@@ -101,17 +126,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
 	TSubclassOf<AActor> SpawnActorOnImpact;
 
-	/** Elemental affinities carried by this projectile to apply on hit */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
-	TArray<EFCElement> ProjectileElements;
+	TArray<FGameplayTag> ProjectileElementTags;
 
-	/** Character class associated with this projectile */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
-	EFCCharacterClass SourceClass = EFCCharacterClass::Mage;
+	FGameplayTag SourceClassTag;
 
-	/** Source card functional type */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
-	EFCCardType SourceCardType = EFCCardType::Attack;
+	FGameplayTag SourceCardTypeTag;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Gameplay")
+	FGameplayTagContainer AttackTags;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Behaviors", meta = (ExcludeBaseStruct))
+	TArray<TInstancedStruct<FFCProjectileBehaviorBase>> Behaviors;
 
 	// --- Presentation (Audio & Visuals) ---
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile|Presentation")
@@ -132,11 +160,8 @@ protected:
 
 	virtual void Destroyed() override;
 
-	/** Authoritative impact processor */
+	/** Authoritative impact processor executing composable TInstancedStruct Behaviors */
 	virtual void ProcessImpact(AActor* OtherActor, const FHitResult& HitResult);
-
-	/** Applies authoritative damage to target actor */
-	virtual void ApplyDamageToActor(AActor* TargetActor, const FHitResult& HitResult);
 
 	/** Plays cosmetic impact effects locally and multicasts to simulated proxies */
 	virtual void PlayImpactCosmetics(const FVector& Location);
@@ -145,7 +170,11 @@ protected:
 	void Multicast_PlayImpactCosmetics(const FVector_NetQuantize& Location);
 
 private:
+	void EnsureNormalizedBehaviors();
+
 	int32 CurrentPierceCount = 0;
 	bool bHasPlayedCosmetics = false;
+	bool bInitializedFromDataAsset = false;
+	bool bBehaviorsNormalized = false;
 	TSet<TWeakObjectPtr<AActor>> HitActors;
 };

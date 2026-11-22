@@ -6,12 +6,15 @@
 #include "FCClassSubsystem.generated.h"
 
 class UFCClassDataAsset;
+class UDataTable;
 
 /**
  * UFCClassSubsystem
- * 
- * GameInstance Subsystem managing character class catalog lookup, caching, and fallback resolution.
- * Runs on both Server and Client to resolve class configurations and starter decks.
+ *
+ * Unified DataTable-backed GameInstanceSubsystem serving as the single SSOT for:
+ * - Character Classes (DT_ClassCatalog -> FFCCharacterClassData + TInstancedStruct TraitBehavior)
+ * - Elements (DT_ElementCatalog -> FFCElementDefinitionRow)
+ * - Elemental Reactions (DT_ElementReactions -> FFCElementReactionRow)
  */
 UCLASS()
 class FC_API UFCClassSubsystem : public UGameInstanceSubsystem
@@ -22,32 +25,87 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
-	/** Static helper to get the class subsystem from any world context object */
 	UFUNCTION(BlueprintPure, Category = "Class|Subsystem", meta = (WorldContext = "WorldContextObject"))
 	static UFCClassSubsystem* GetClassSubsystem(const UObject* WorldContextObject);
 
-	/** Finds a Class Data Asset by its class enum */
+	// --- Class Catalog APIs (FGameplayTag) ---
 	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
-	UFCClassDataAsset* GetClassDataAsset(EFCCharacterClass ClassType) const;
+	UFCClassDataAsset* GetClassDataAsset(FGameplayTag ClassTag) const;
 
-	/** Retrieves default starter deck for a given class */
+	const FFCCharacterClassData* FindClassRowPtr(FGameplayTag ClassTag) const;
+
 	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
-	TArray<FName> GetStartingDeckForClass(EFCCharacterClass ClassType) const;
+	TArray<FName> GetStartingDeckForClass(FGameplayTag ClassTag) const;
 
-	/** Retrieves affinity elements for a given class */
 	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
-	TArray<EFCElement> GetAffinityElementsForClass(EFCCharacterClass ClassType) const;
+	TArray<FGameplayTag> GetAffinityElementsForClass(FGameplayTag ClassTag) const;
 
-	/** Manually registers or overrides a Class Data Asset in the runtime catalog */
+	UFUNCTION(BlueprintPure, Category = "Class|Subsystem")
+	TArray<FGameplayTag> GetPlayableClassTags() const;
+
 	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
 	void RegisterClassDataAsset(UFCClassDataAsset* DataAsset);
 
-	/** Scans Asset Manager for all PrimaryDataAssets of type CharacterClass */
+	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
+	void RegisterClassRow(const FFCCharacterClassData& InClassRow);
+
+	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
+	void AddClassDataTable(UDataTable* InTable);
+
+	// --- Element Catalog APIs (FGameplayTag) ---
+	const FFCElementDefinitionRow* FindElementRowPtr(FGameplayTag ElementTag) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Element|Subsystem")
+	void RegisterElementRow(const FFCElementDefinitionRow& InElementRow);
+
+	UFUNCTION(BlueprintCallable, Category = "Element|Subsystem")
+	void AddElementDataTable(UDataTable* InTable);
+
+	// --- Element Reaction Registry APIs ---
+	const TArray<FFCElementReactionRow>& GetElementReactionRules() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Element|Reaction")
+	void RegisterElementReactionRow(const FFCElementReactionRow& InReactionRow);
+
+	UFUNCTION(BlueprintCallable, Category = "Element|Reaction")
+	void AddElementReactionDataTable(UDataTable* InTable);
+
 	UFUNCTION(BlueprintCallable, Category = "Class|Subsystem")
 	void LoadClassCatalog();
 
+	// --- Built-in Default Accessors (used when subsystem has not yet initialized in pure static contexts) ---
+	static const FFCCharacterClassData* FindBuiltinClassDefault(FGameplayTag ClassTag);
+	static const FFCElementDefinitionRow* FindBuiltinElementDefault(FGameplayTag ElementTag);
+
 protected:
-	/** Map from ClassType to loaded PrimaryDataAsset */
 	UPROPERTY(Transient)
-	TMap<EFCCharacterClass, TObjectPtr<UFCClassDataAsset>> ClassCatalog;
+	bool bCatalogLoaded = false;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UDataTable>> ClassDataTables;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UDataTable>> ElementDataTables;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UDataTable>> ElementReactionTables;
+
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, FFCCharacterClassData> CachedClassRows;
+
+	UPROPERTY(Transient)
+	TMap<FGameplayTag, FFCElementDefinitionRow> CachedElementRows;
+
+	UPROPERTY(Transient)
+	TArray<FFCElementReactionRow> CachedReactionRules;
+
+	UPROPERTY(Transient)
+	mutable TMap<FGameplayTag, TObjectPtr<UFCClassDataAsset>> ClassCatalog;
+
+private:
+	void RegisterBuiltinDefaults();
+	void IngestClassDataTable(UDataTable* Table);
+	void IngestElementDataTable(UDataTable* Table);
+	void IngestReactionDataTable(UDataTable* Table);
+	void SortReactionRules();
 };

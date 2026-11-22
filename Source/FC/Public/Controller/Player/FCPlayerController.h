@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
-#include "AttributeSet.h"
 #include "Data/Card/FCCardTypes.h"
 #include "FCPlayerController.generated.h"
 
@@ -11,13 +10,19 @@ class UFCHUDWidget;
 class UFCHUDViewModel;
 class UFCCardDataAsset;
 class AFCCardPickupActor;
+class UFCStatusPresenterComponent;
+class UFCHUDPresenterComponent;
+class UFCCardTargetingComponent;
 struct FFCCardTargetInfo;
 
 /**
  * AFCPlayerController
  * 
- * Manages player-specific input context mappings, UI interaction states,
- * automated HUD widget lifecycle, and card gameplay requests.
+ * Thin autonomous client controller orchestrating input contexts, server RPC dispatch,
+ * and delegating specialized domains to modular components:
+ * - UFCHUDPresenterComponent (HUD & GAS attribute/deck ViewModel bindings)
+ * - UFCCardTargetingComponent (screen/raycast targeting via TInstancedStruct policies)
+ * - UFCStatusPresenterComponent (DataTable-driven status toggles)
  */
 UCLASS()
 class FC_API AFCPlayerController : public APlayerController
@@ -41,7 +46,7 @@ public:
 
 	/** Authoritative Server RPC to claim a card pickup actor in the world */
 	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category = "Card|Pickup")
-	void Server_ClaimCardPickup(AFCCardPickupActor* PickupActor, EFCCardAddDestination Destination = EFCCardAddDestination::DiscardPile);
+	void Server_ClaimCardPickup(AFCCardPickupActor* PickupActor, EFCCardZone Destination = EFCCardZone::DiscardPile);
 
 	/** Resolves targeting info (target actor, target 3D world location) under the current mouse cursor */
 	UFUNCTION(BlueprintCallable, Category = "Card|Targeting")
@@ -69,11 +74,23 @@ public:
 
 	/** Returns the spawned active HUD widget */
 	UFUNCTION(BlueprintPure, Category = "UI")
-	UFCHUDWidget* GetHUDWidget() const { return HUDWidget; }
+	UFCHUDWidget* GetHUDWidget() const;
 
 	/** Returns the active top-level HUD presentation ViewModel */
 	UFUNCTION(BlueprintPure, Category = "UI")
-	UFCHUDViewModel* GetHUDViewModel() const { return HUDViewModel; }
+	UFCHUDViewModel* GetHUDViewModel() const;
+
+	/** Returns the status toggle presentation adapter component */
+	UFUNCTION(BlueprintPure, Category = "UI|Status")
+	UFCStatusPresenterComponent* GetStatusPresenterComponent() const { return StatusPresenterComponent; }
+
+	/** Returns the modular HUD presenter component */
+	UFUNCTION(BlueprintPure, Category = "UI")
+	UFCHUDPresenterComponent* GetHUDPresenterComponent() const { return HUDPresenterComponent; }
+
+	/** Returns the modular card targeting component */
+	UFUNCTION(BlueprintPure, Category = "Card|Targeting")
+	UFCCardTargetingComponent* GetCardTargetingComponent() const { return CardTargetingComponent; }
 
 	/** Adds or updates a circular status toggle in the HUD */
 	UFUNCTION(BlueprintCallable, Category = "UI|Status")
@@ -100,19 +117,30 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
 	bool bAutoEnableCardCombatInputMode = true;
 
-	/** Active HUD widget instance */
+	/** Active HUD widget instance (mirrored from HUDPresenterComponent for BP access) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UFCHUDWidget> HUDWidget;
 
-	/** Active top-level HUD presentation ViewModel instance */
+	/** Active top-level HUD presentation ViewModel instance (mirrored from HUDPresenterComponent) */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UFCHUDViewModel> HUDViewModel;
+
+	/** Presentation component translating ASC attributes and tags to status toggles */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Status", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCStatusPresenterComponent> StatusPresenterComponent;
+
+	/** Presentation component managing HUD lifecycle, Deck events, and GAS attribute bindings */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCHUDPresenterComponent> HUDPresenterComponent;
+
+	/** Modular client targeting component evaluating card TargetPolicies */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Card|Targeting", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCCardTargetingComponent> CardTargetingComponent;
 
 	/** Default Input Mapping Context (e.g. Exploration / Base Movement) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 
-	/** Priority for the default mapping context */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	int32 DefaultMappingPriority = 0;
 
@@ -120,48 +148,27 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|CardCombat", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputMappingContext> CardCombatMappingContext;
 
-	/** Priority for the card combat mapping context */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|CardCombat", meta = (AllowPrivateAccess = "true"))
 	int32 CardCombatMappingPriority = 1;
 
-	/** Whether to automatically search for and lock onto attackable targets (mobs, chests) for projectile cards */
+	/** Targeting tuning parameters forwarded to CardTargetingComponent */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting")
 	bool bAutoTargetAttackablesOnProjectileCards = true;
 
-	/** Maximum search range for projectile card auto-targeting */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "100.0"))
 	float ProjectileTargetMaxRange = 3000.0f;
 
-	/** Half-angle in degrees of the frontal targeting cone for projectile cards */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "5.0", ClampMax = "89.0"))
 	float ProjectileTargetHalfAngleDegrees = 30.0f;
 
-	/** Proximity radius around cursor drop location to search for attackable objects */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Card|Targeting", meta = (ClampMin = "50.0"))
 	float ProjectileTargetProximityRadius = 350.0f;
 
-	UFUNCTION()
-	void SyncHandToViewModel();
-
-	UFUNCTION()
-	void OnDeckPileCountsChanged(int32 DrawCount, int32 DiscardCount, int32 ExhaustCount);
-
-	UFUNCTION()
-	void OnDeckCycleTriggered();
-
-	UFUNCTION()
-	void OnDeckCycleSettingsChanged(float NewInterval, int32 NewDrawCount);
-
 private:
 	void InitializeDefaultMappingContext();
-	void BindDeckComponentEvents();
-	void BindAttributeListeners();
-	void UnbindAttributeListeners();
 
-	UPROPERTY(Transient)
-	TWeakObjectPtr<class UAbilitySystemComponent> BoundASC;
-
-	TArray<TTuple<struct FGameplayAttribute, FDelegateHandle>> BoundAttributeHandles;
+	/** Server-side timestamp for pickup RPC rate-limiting */
+	double LastClaimPickupServerTime = -1000.0;
 
 	void OnNumberKey1Pressed() { HandleNumberKeyInput(0); }
 	void OnNumberKey2Pressed() { HandleNumberKeyInput(1); }

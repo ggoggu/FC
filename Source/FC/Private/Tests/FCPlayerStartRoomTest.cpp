@@ -2,11 +2,18 @@
 #include "Misc/AutomationTest.h"
 #include "Map/FCRoomBase.h"
 #include "Map/FCDoorBase.h"
+#include "Map/FCWallBase.h"
+#include "Map/FCDestructibleWall.h"
 #include "Map/FCDungeonManager.h"
 #include "Map/FCDungeonTypes.h"
 #include "Game/FCGameMode.h"
 #include "GameFramework/PlayerStart.h"
+#include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -275,6 +282,329 @@ bool FFCPlayerStartRoomTest::RunTest(const FString& Parameters)
 		FFCDungeonEdgeKey KeyB(FIntPoint(0, 1), FIntPoint(0, 0));
 		TestTrue(TEXT("Edge keys constructed in reverse should be identical"), KeyA == KeyB);
 		TestEqual(TEXT("Edge keys hash should match"), GetTypeHash(KeyA), GetTypeHash(KeyB));
+	}
+
+	// =========================================================================
+	// Test 9: Shared Door Multi-Room Lock Reference Counting & Axis Sizing
+	// =========================================================================
+	{
+		AFCDoorBase* SharedDoor = NewObject<AFCDoorBase>();
+		AFCRoomBase* RoomA = NewObject<AFCRoomBase>();
+		AFCRoomBase* RoomB = NewObject<AFCRoomBase>();
+
+		if (SharedDoor && RoomA && RoomB)
+		{
+			SharedDoor->SetDoorWidth(400.0f);
+			SharedDoor->SetPassageDepth(300.0f);
+
+			if (UStaticMeshComponent* FloorComp = SharedDoor->GetPassageFloorMeshComponent())
+			{
+				TestEqual(TEXT("PassageFloorMesh scale X must match PassageDepth/100"), FloorComp->GetRelativeScale3D().X, 3.0);
+				TestEqual(TEXT("PassageFloorMesh scale Y must match DoorWidth/100"), FloorComp->GetRelativeScale3D().Y, 4.0);
+				TestEqual(TEXT("PassageFloorMesh scale Z must match FloorThickness/100"), FloorComp->GetRelativeScale3D().Z, 1.0);
+				TestEqual(TEXT("PassageFloorMesh rel Z must align top to Z=100"), FloorComp->GetRelativeLocation().Z, 50.0);
+			}
+
+			if (UStaticMeshComponent* DoorMeshComp = SharedDoor->GetDoorMeshComponent())
+			{
+				TestEqual(TEXT("DoorMesh scale Y must match DoorWidth/100"), DoorMeshComp->GetRelativeScale3D().Y, 4.0);
+				TestEqual(TEXT("DoorMesh scale Z must match DoorHeight/100"), DoorMeshComp->GetRelativeScale3D().Z, 5.0);
+				TestEqual(TEXT("DoorMesh rel Z must rest on top of floor Z=100"), DoorMeshComp->GetRelativeLocation().Z, 350.0);
+			}
+
+			// Multi-room lock source ref-counting
+			SharedDoor->SetDoorLockedBySource(RoomA, true);
+			TestTrue(TEXT("Shared door must lock when RoomA enters combat"), SharedDoor->IsDoorLocked());
+			TestFalse(TEXT("Shared door must close when locked"), SharedDoor->IsDoorOpen());
+			TestEqual(TEXT("ActiveLockCount must be 1"), SharedDoor->GetActiveLockCount(), 1);
+
+			// RoomB clears/unlocks while RoomA is still active -> MUST remain locked!
+			SharedDoor->SetDoorLockedBySource(RoomB, false);
+			TestTrue(TEXT("RoomB unlocking must NOT unlock door still held by RoomA"), SharedDoor->IsDoorLocked());
+			TestEqual(TEXT("ActiveLockCount must remain 1"), SharedDoor->GetActiveLockCount(), 1);
+
+			// Both rooms lock -> count 2
+			SharedDoor->SetDoorLockedBySource(RoomB, true);
+			TestEqual(TEXT("ActiveLockCount must be 2"), SharedDoor->GetActiveLockCount(), 2);
+
+			// RoomA clears -> still locked by RoomB
+			SharedDoor->SetDoorLockedBySource(RoomA, false);
+			TestTrue(TEXT("Door must remain locked while RoomB still holds lock"), SharedDoor->IsDoorLocked());
+			TestEqual(TEXT("ActiveLockCount must be 1"), SharedDoor->GetActiveLockCount(), 1);
+
+			// RoomB clears -> now unlocked and open
+			SharedDoor->SetDoorLockedBySource(RoomB, false);
+			TestFalse(TEXT("Door must unlock once all rooms release lock"), SharedDoor->IsDoorLocked());
+			TestTrue(TEXT("Door must open once unlocked"), SharedDoor->IsDoorOpen());
+			TestEqual(TEXT("ActiveLockCount must be 0"), SharedDoor->GetActiveLockCount(), 0);
+		}
+	}
+
+	// =========================================================================
+	// Test 10: Wall & DestructibleWall Sizing + Post-Destruction Floor Bridge
+	// =========================================================================
+	{
+		AFCWallBase* Wall = NewObject<AFCWallBase>();
+		if (Wall)
+		{
+			Wall->SetWallDimensions(FVector(150.0f, 6000.0f, 2300.0f), 0.0f);
+			if (UStaticMeshComponent* MeshComp = Wall->GetWallMeshComponent())
+			{
+				TestEqual(TEXT("WallMesh scale X must be 1.5"), MeshComp->GetRelativeScale3D().X, 1.5);
+				TestEqual(TEXT("WallMesh scale Y must be 60.0"), MeshComp->GetRelativeScale3D().Y, 60.0);
+				TestEqual(TEXT("WallMesh scale Z must be 23.0"), MeshComp->GetRelativeScale3D().Z, 23.0);
+				TestEqual(TEXT("WallMesh rel Z must place bottom at Z=0"), MeshComp->GetRelativeLocation().Z, 1150.0);
+			}
+		}
+
+		AFCDestructibleWall* SecretWall = NewObject<AFCDestructibleWall>();
+		if (SecretWall)
+		{
+			SecretWall->SetWallDimensions(FVector(300.0f, 6000.0f, 2300.0f), 100.0f);
+			UStaticMeshComponent* IntactComp = SecretWall->GetIntactWallMeshComponent();
+			UStaticMeshComponent* FloorComp = SecretWall->GetPassageFloorMeshComponent();
+			TestNotNull(TEXT("DestructibleWall must have IntactWallMesh"), IntactComp);
+			TestNotNull(TEXT("DestructibleWall must have PassageFloorMesh"), FloorComp);
+
+			if (IntactComp && FloorComp)
+			{
+				TestEqual(TEXT("Secret PassageFloorMesh scale Z must be 1.0"), FloorComp->GetRelativeScale3D().Z, 1.0);
+				TestEqual(TEXT("Secret PassageFloorMesh rel Z must place floor in [0,100]"), FloorComp->GetRelativeLocation().Z, 50.0);
+				TestEqual(TEXT("Secret IntactWallMesh scale Z must be 22.0"), IntactComp->GetRelativeScale3D().Z, 22.0);
+				TestEqual(TEXT("Secret IntactWallMesh rel Z must place wall in [100,2300]"), IntactComp->GetRelativeLocation().Z, 1200.0);
+
+				const bool bDamaged = SecretWall->ReceiveBombDamage_Implementation(100.0f, FVector::ZeroVector, nullptr);
+				TestTrue(TEXT("Bomb damage must destroy intact secret wall"), bDamaged);
+				TestTrue(TEXT("SecretWall must be marked destroyed"), SecretWall->IsWallDestroyed());
+				TestEqual(TEXT("IntactWallMesh collision must be disabled after destruction"), IntactComp->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+				TestEqual(TEXT("PassageFloorMesh must remain solid after destruction"), FloorComp->GetCollisionEnabled(), ECollisionEnabled::QueryAndPhysics);
+			}
+		}
+	}
+
+	// =========================================================================
+	// Test 11: RoomBoundsTrigger Inset & Idempotent InitializeRoom
+	// =========================================================================
+	{
+		AFCRoomBase* Room = NewObject<AFCRoomBase>();
+		if (Room && Room->GetRoomBoundsTrigger())
+		{
+			FFCRoomData Data;
+			Data.Coordinates = FIntPoint(1, 0);
+			Data.RoomType = EFCRoomType::Normal;
+			Data.DoorMask = EFCDungeonDoor::West;
+
+			Room->InitializeRoom(Data);
+			TestEqual(TEXT("DoorOffset must stay 3000 after first InitializeRoom"), Room->GetDoorOffset(), 3000.0f);
+			TestEqual(TEXT("RoomBoundsTrigger X extent must be inset by TriggerBoundaryInset (2850)"), Room->GetRoomBoundsTrigger()->GetUnscaledBoxExtent().X, 2850.0);
+
+			// Re-initializing must NOT double-shrink DoorOffset or Trigger
+			Room->InitializeRoom(Data);
+			TestEqual(TEXT("DoorOffset must stay 3000 after second InitializeRoom"), Room->GetDoorOffset(), 3000.0f);
+			TestEqual(TEXT("RoomBoundsTrigger X extent must remain 2850 after second InitializeRoom"), Room->GetRoomBoundsTrigger()->GetUnscaledBoxExtent().X, 2850.0);
+		}
+	}
+
+	// =========================================================================
+	// Test 12: Live Dungeon Generation 3D Pairwise Zero-Overlap AABB Proof
+	// =========================================================================
+	if (GEngine)
+	{
+		UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+		if (TestWorld)
+		{
+			FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+			WorldContext.SetCurrentWorld(TestWorld);
+			TestWorld->InitializeActorsForPlay(FURL());
+			TestWorld->BeginPlay();
+
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			AFCDungeonManager* DungeonMgr = TestWorld->SpawnActor<AFCDungeonManager>(AFCDungeonManager::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			TestNotNull(TEXT("DungeonManager must spawn in test world"), DungeonMgr);
+
+			if (DungeonMgr)
+			{
+				DungeonMgr->GenerateDungeon();
+
+				const TArray<TObjectPtr<AFCRoomBase>>& Rooms = DungeonMgr->GetSpawnedRooms();
+				const TArray<TObjectPtr<AFCDoorBase>>& Doors = DungeonMgr->GetSpawnedSharedDoors();
+				TestTrue(TEXT("Dungeon must spawn rooms"), Rooms.Num() >= 5);
+				TestTrue(TEXT("Dungeon must spawn shared doors"), Doors.Num() >= 4);
+
+				struct FLabeledBox
+				{
+					FString Label;
+					FBox Box;
+				};
+				TArray<FLabeledBox> GeometryBoxes;
+
+				auto ComputeUnitCubeWorldBox = [](const AActor* Actor, const UStaticMeshComponent* Comp) -> FBox
+				{
+					const FTransform CompWorldTransform = Comp->GetRelativeTransform() * Actor->GetActorTransform();
+					const FBox LocalUnitBox(FVector(-50.0f, -50.0f, -50.0f), FVector(50.0f, 50.0f, 50.0f));
+					return LocalUnitBox.TransformBy(CompWorldTransform);
+				};
+
+				for (const TObjectPtr<AFCRoomBase>& Room : Rooms)
+				{
+					if (!Room)
+					{
+						continue;
+					}
+
+					// Room floor box: [-DoorOffset, +DoorOffset] x [-DoorOffset, +DoorOffset] x [0, FloorThickness]
+					const FVector Center = Room->GetActorLocation();
+					const float HalfW = Room->GetDoorOffset();
+					const float FloorH = Room->GetFloorThickness();
+					GeometryBoxes.Add({
+						FString::Printf(TEXT("RoomFloor(%d,%d)"), Room->GetRoomData().Coordinates.X, Room->GetRoomData().Coordinates.Y),
+						FBox(Center + FVector(-HalfW, -HalfW, 0.0f), Center + FVector(HalfW, HalfW, FloorH))
+					});
+
+					// All spawned walls (pillars, solid walls, flanking walls, lintels)
+					int32 WallIdx = 0;
+					for (const TObjectPtr<AFCWallBase>& Wall : Room->GetSpawnedWalls())
+					{
+						if (Wall && Wall->GetWallMeshComponent())
+						{
+							GeometryBoxes.Add({
+								FString::Printf(TEXT("Room(%d,%d)_Wall%d"), Room->GetRoomData().Coordinates.X, Room->GetRoomData().Coordinates.Y, WallIdx++),
+								ComputeUnitCubeWorldBox(Wall.Get(), Wall->GetWallMeshComponent())
+							});
+						}
+					}
+
+					// All secret walls (both permanent floor slab and intact destructible body)
+					int32 SecretIdx = 0;
+					for (const TObjectPtr<AFCDestructibleWall>& SecretWall : Room->GetSecretWalls())
+					{
+						if (SecretWall)
+						{
+							if (SecretWall->GetPassageFloorMeshComponent())
+							{
+								GeometryBoxes.Add({
+									FString::Printf(TEXT("Room(%d,%d)_SecretFloor%d"), Room->GetRoomData().Coordinates.X, Room->GetRoomData().Coordinates.Y, SecretIdx),
+									ComputeUnitCubeWorldBox(SecretWall.Get(), SecretWall->GetPassageFloorMeshComponent())
+								});
+							}
+							if (SecretWall->GetIntactWallMeshComponent())
+							{
+								GeometryBoxes.Add({
+									FString::Printf(TEXT("Room(%d,%d)_SecretWall%d"), Room->GetRoomData().Coordinates.X, Room->GetRoomData().Coordinates.Y, SecretIdx),
+									ComputeUnitCubeWorldBox(SecretWall.Get(), SecretWall->GetIntactWallMeshComponent())
+								});
+							}
+							SecretIdx++;
+						}
+					}
+				}
+
+				int32 DoorIdx = 0;
+				for (const TObjectPtr<AFCDoorBase>& Door : Doors)
+				{
+					if (Door)
+					{
+						if (Door->GetPassageFloorMeshComponent())
+						{
+							GeometryBoxes.Add({
+								FString::Printf(TEXT("SharedDoor%d_Floor"), DoorIdx),
+								ComputeUnitCubeWorldBox(Door.Get(), Door->GetPassageFloorMeshComponent())
+							});
+						}
+						if (Door->GetDoorMeshComponent())
+						{
+							GeometryBoxes.Add({
+								FString::Printf(TEXT("SharedDoor%d_Gate"), DoorIdx),
+								ComputeUnitCubeWorldBox(Door.Get(), Door->GetDoorMeshComponent())
+							});
+						}
+						DoorIdx++;
+					}
+				}
+
+				// Verify strict interior disjointness across EVERY pair of boxes (tolerance 0.5 cm)
+				constexpr double OverlapTolerance = 0.5;
+				int32 OverlapCount = 0;
+				for (int32 i = 0; i < GeometryBoxes.Num(); ++i)
+				{
+					for (int32 j = i + 1; j < GeometryBoxes.Num(); ++j)
+					{
+						const FBox& A = GeometryBoxes[i].Box;
+						const FBox& B = GeometryBoxes[j].Box;
+						const double OverlapX = FMath::Min(A.Max.X, B.Max.X) - FMath::Max(A.Min.X, B.Min.X);
+						const double OverlapY = FMath::Min(A.Max.Y, B.Max.Y) - FMath::Max(A.Min.Y, B.Min.Y);
+						const double OverlapZ = FMath::Min(A.Max.Z, B.Max.Z) - FMath::Max(A.Min.Z, B.Min.Z);
+
+						if (OverlapX > OverlapTolerance && OverlapY > OverlapTolerance && OverlapZ > OverlapTolerance)
+						{
+							OverlapCount++;
+							AddError(FString::Printf(
+								TEXT("3D Geometry Overlap between [%s] and [%s]: overlap=(%.2f, %.2f, %.2f) cm"),
+								*GeometryBoxes[i].Label, *GeometryBoxes[j].Label, OverlapX, OverlapY, OverlapZ));
+						}
+					}
+				}
+				TestEqual(TEXT("Generated dungeon must have ZERO 3D overlaps between walls, pillars, doors, secret walls, and floors"), OverlapCount, 0);
+
+				// Verify re-initializing an externally managed room does NOT destroy shared doors
+				if (Rooms.Num() > 0 && Doors.Num() > 0)
+				{
+					AFCRoomBase* FirstRoom = Rooms[0].Get();
+					const int32 DoorCountBefore = FirstRoom->GetConnectedDoors().Num();
+					FirstRoom->InitializeRoom(FirstRoom->GetRoomData());
+					TestEqual(TEXT("Re-initializing externally managed room must preserve ConnectedDoors count"), FirstRoom->GetConnectedDoors().Num(), DoorCountBefore);
+					for (const TObjectPtr<AFCDoorBase>& Door : Doors)
+					{
+						TestTrue(TEXT("Shared doors must remain valid after room re-initialization"), IsValid(Door) && !Door->IsActorBeingDestroyed());
+					}
+				}
+
+				// Verify IFCBombDamageable::Execute_ReceiveBombDamage on a live world secret wall
+				for (const TObjectPtr<AFCRoomBase>& Room : Rooms)
+				{
+					if (Room && Room->GetSecretWalls().Num() > 0)
+					{
+						AFCDestructibleWall* LiveSecretWall = Room->GetSecretWalls()[0].Get();
+						if (LiveSecretWall && !LiveSecretWall->IsWallDestroyed())
+						{
+							const bool bLiveDestroyed = IFCBombDamageable::Execute_ReceiveBombDamage(LiveSecretWall, 100.0f, LiveSecretWall->GetActorLocation(), nullptr);
+							TestTrue(TEXT("Live world secret wall must be destroyed via IFCBombDamageable::Execute_ReceiveBombDamage"), bLiveDestroyed);
+							TestTrue(TEXT("Live secret wall must preserve solid PassageFloorMesh after destruction"),
+								LiveSecretWall->GetPassageFloorMeshComponent() &&
+								LiveSecretWall->GetPassageFloorMeshComponent()->GetCollisionEnabled() == ECollisionEnabled::QueryAndPhysics);
+							break;
+						}
+					}
+				}
+
+				// Verify re-generation & ClearDungeon leave zero leaked walls or secret walls
+				DungeonMgr->GenerateDungeon();
+				DungeonMgr->ClearDungeon();
+
+				int32 RemainingWalls = 0;
+				int32 RemainingSecretWalls = 0;
+				int32 RemainingDoors = 0;
+				for (TActorIterator<AFCWallBase> It(TestWorld); It; ++It)
+				{
+					if (IsValid(*It) && !It->IsActorBeingDestroyed()) { ++RemainingWalls; }
+				}
+				for (TActorIterator<AFCDestructibleWall> It(TestWorld); It; ++It)
+				{
+					if (IsValid(*It) && !It->IsActorBeingDestroyed()) { ++RemainingSecretWalls; }
+				}
+				for (TActorIterator<AFCDoorBase> It(TestWorld); It; ++It)
+				{
+					if (IsValid(*It) && !It->IsActorBeingDestroyed()) { ++RemainingDoors; }
+				}
+				TestEqual(TEXT("ClearDungeon must leave 0 leaked walls"), RemainingWalls, 0);
+				TestEqual(TEXT("ClearDungeon must leave 0 leaked secret walls"), RemainingSecretWalls, 0);
+				TestEqual(TEXT("ClearDungeon must leave 0 leaked doors"), RemainingDoors, 0);
+			}
+
+			TestWorld->DestroyWorld(false);
+			GEngine->DestroyWorldContext(TestWorld);
+		}
 	}
 
 	return true;

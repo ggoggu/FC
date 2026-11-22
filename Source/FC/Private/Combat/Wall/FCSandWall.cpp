@@ -1,5 +1,5 @@
 #include "Combat/Wall/FCSandWall.h"
-#include "Combat/Projectile/FCProjectileBase.h"
+#include "Combat/Interfaces/FCInterceptableAttack.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
@@ -60,6 +60,11 @@ AFCSandWall::AFCSandWall()
 
 void AFCSandWall::SetWallDuration(float InDuration)
 {
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	WallDuration = FMath::Max(0.1f, InDuration);
 	SetLifeSpan(WallDuration);
 }
@@ -99,23 +104,17 @@ bool AFCSandWall::CanAbsorbAttackFrom(const AActor* Attacker) const
 		return false;
 	}
 
-	// Cannot absorb attacks from the caster or friendly projectiles
-	if (GetInstigator() && (Attacker == GetInstigator() || Attacker->GetInstigator() == GetInstigator()))
+	if (const IFCInterceptableAttack* Interceptable = Cast<IFCInterceptableAttack>(Attacker))
 	{
-		return false;
+		return Interceptable->CanBeInterceptedBy(this);
 	}
 
-	if (GetOwner() && (Attacker == GetOwner() || Attacker->GetOwner() == GetOwner()))
-	{
-		return false;
-	}
-
-	return true;
+	return false;
 }
 
 void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& ImpactLocation)
 {
-	if (!CanAbsorbAttackFrom(AttackingActor))
+	if (!HasAuthority() || !CanAbsorbAttackFrom(AttackingActor))
 	{
 		return;
 	}
@@ -128,15 +127,11 @@ void AFCSandWall::AbsorbIncomingAttack(AActor* AttackingActor, const FVector& Im
 
 	AbsorbedAttackCount++;
 
-	if (HasAuthority())
-	{
-		Multicast_PlayAbsorbCosmetics(ImpactLocation);
+	Multicast_PlayAbsorbCosmetics(ImpactLocation);
 
-		// Safely destroy hostile projectile to absorb the attack
-		if (IsValid(AttackingActor))
-		{
-			AttackingActor->Destroy();
-		}
+	if (IFCInterceptableAttack* Interceptable = Cast<IFCInterceptableAttack>(AttackingActor))
+	{
+		Interceptable->OnInterceptedBy(this, ImpactLocation);
 	}
 }
 
@@ -165,6 +160,11 @@ void AFCSandWall::OnWallBeginOverlap(
 
 void AFCSandWall::Multicast_PlayAbsorbCosmetics_Implementation(const FVector_NetQuantize& ImpactLocation)
 {
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
 	if (AbsorbSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, AbsorbSound, ImpactLocation);

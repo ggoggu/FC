@@ -1,10 +1,12 @@
 #include "Map/FCDungeonManager.h"
+#include "Data/FCGameplayTags.h"
 #include "Containers/Queue.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
 #include "Game/FCGameMode.h"
 #include "Map/FCDestructibleWall.h"
 #include "Map/FCDoorBase.h"
@@ -122,9 +124,14 @@ void AFCDungeonManager::ClearDungeon()
 
 	for (TObjectPtr<AFCRoomBase>& Room : SpawnedRooms)
 	{
-		if (Room)
+		if (IsValid(Room))
 		{
-			Room->Destroy();
+			Room->OnRoomStateChanged.RemoveAll(this);
+			Room->CleanupSpawnedActors();
+			if (!Room->IsActorBeingDestroyed())
+			{
+				Room->Destroy();
+			}
 		}
 	}
 
@@ -664,10 +671,18 @@ void AFCDungeonManager::AssignRoomRoles()
 		}
 	}
 
-	for (int32 i = 0; i < MaxSecretRooms && SecretCandidates.Num() > 0; ++i)
+	int32 PlacedSecretRooms = 0;
+	while (PlacedSecretRooms < MaxSecretRooms && SecretCandidates.Num() > 0)
 	{
 		const int32 SecretIdx = FMath::RandRange(0, SecretCandidates.Num() - 1);
 		const FIntPoint SecretPos = SecretCandidates[SecretIdx];
+		SecretCandidates.RemoveAt(SecretIdx);
+
+		// Never place two secret rooms adjacent to each other
+		if (HasAdjacentRoomOfType(SecretPos, EFCRoomType::Secret))
+		{
+			continue;
+		}
 
 		FFCRoomData SecretRoom;
 		SecretRoom.Coordinates = SecretPos;
@@ -675,7 +690,7 @@ void AFCDungeonManager::AssignRoomRoles()
 		SecretRoom.DistanceFromStart = 0;
 
 		RoomGrid.Add(SecretPos, SecretRoom);
-		SecretCandidates.RemoveAt(SecretIdx);
+		PlacedSecretRooms++;
 	}
 }
 
@@ -692,11 +707,12 @@ void AFCDungeonManager::CalculateDoorMasks()
 		{
 			if (const FFCRoomData* Neighbor = RoomGrid.Find(NeighborCoord))
 			{
-				if (Neighbor->RoomType == EFCRoomType::Secret || bIsCurrentSecret)
+				const bool bIsNeighborSecret = (Neighbor->RoomType == EFCRoomType::Secret);
+				if (bIsNeighborSecret != bIsCurrentSecret)
 				{
 					SecretMask |= DirectionBit;
 				}
-				else
+				else if (!bIsCurrentSecret && !bIsNeighborSecret)
 				{
 					NormalMask |= DirectionBit;
 				}
@@ -729,11 +745,7 @@ void AFCDungeonManager::SpawnDungeonRooms()
 		const FFCRoomData& Data = Pair.Value;
 
 		const FVector WorldLocation = OriginLocation + FVector(Coord.X * CellSize, Coord.Y * CellSize, 0.0f);
-		const FRotator WorldRotation = FRotator::ZeroRotator;
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const FTransform SpawnTransform(FRotator::ZeroRotator, WorldLocation, FVector::OneVector);
 
 		TSubclassOf<AFCRoomBase> RoomClass = GetRoomClassForType(Data.RoomType);
 		if (!RoomClass)
@@ -741,15 +753,25 @@ void AFCDungeonManager::SpawnDungeonRooms()
 			RoomClass = GetRandomDefaultRoomClass();
 		}
 
-		AFCRoomBase* SpawnedRoom = World->SpawnActor<AFCRoomBase>(RoomClass, WorldLocation, WorldRotation, SpawnParams);
+		AFCRoomBase* SpawnedRoom = World->SpawnActorDeferred<AFCRoomBase>(
+			RoomClass,
+			SpawnTransform,
+			this,
+			nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+		);
 		if (SpawnedRoom)
 		{
 			SpawnedRoom->SetManageDoorsExternally(true);
 
 			if (bAutoSyncDoorOffsetToCellSize)
 			{
-				SpawnedRoom->SetDoorOffset((CellSize - DoorWidth) * 0.5f);
+				const float TargetDoorOffset = (CellSize - DoorWidth) * 0.5f;
+				SpawnedRoom->SetDoorOffset(TargetDoorOffset);
 			}
+
+			const float InterRoomGap = FMath::Max(20.0f, CellSize - SpawnedRoom->GetDoorOffset() * 2.0f);
+			SpawnedRoom->SetWallThickness(InterRoomGap * 0.5f);
 
 			auto ConfigureDirectionDoor = [&](uint8 DirectionBit, const FIntPoint& NeighborCoord)
 			{
@@ -767,6 +789,8 @@ void AFCDungeonManager::SpawnDungeonRooms()
 			ConfigureDirectionDoor(EFCDungeonDoor::South, FIntPoint(Coord.X, Coord.Y - 1));
 			ConfigureDirectionDoor(EFCDungeonDoor::East,  FIntPoint(Coord.X + 1, Coord.Y));
 			ConfigureDirectionDoor(EFCDungeonDoor::West,  FIntPoint(Coord.X - 1, Coord.Y));
+
+			UGameplayStatics::FinishSpawningActor(SpawnedRoom, SpawnTransform);
 
 			SpawnedRoom->UpdateDoorSockets();
 			SpawnedRoom->InitializeRoom(Data);
@@ -857,14 +881,21 @@ void AFCDungeonManager::SpawnSharedDoorways()
 		// Door is placed at the exact midpoint bridging Room A's boundary and Room B's boundary
 		const FVector DoorLocation = (SocketTransformA.GetLocation() + SocketTransformB.GetLocation()) * 0.5f;
 		const FRotator DoorRotation = SocketTransformA.GetRotation().Rotator();
+		const FTransform DoorTransform(DoorRotation, DoorLocation, FVector::OneVector);
+		const float RoomGapDepth = FMath::Max(50.0f, static_cast<float>(FVector::Dist(SocketTransformA.GetLocation(), SocketTransformB.GetLocation())));
 
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		AFCDoorBase* NewDoor = World->SpawnActor<AFCDoorBase>(DoorClass, DoorLocation, DoorRotation, SpawnParams);
+		AFCDoorBase* NewDoor = World->SpawnActorDeferred<AFCDoorBase>(
+			DoorClass,
+			DoorTransform,
+			this,
+			nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+		);
 		if (NewDoor)
 		{
+			NewDoor->SetPassageDepth(RoomGapDepth);
+			UGameplayStatics::FinishSpawningActor(NewDoor, DoorTransform);
+
 			RoomA->RegisterConnectedDoor(NewDoor);
 			RoomB->RegisterConnectedDoor(NewDoor);
 			SpawnedSharedDoors.Add(NewDoor);
@@ -890,9 +921,14 @@ void AFCDungeonManager::SetupSecretPassages()
 		}
 
 		const FIntPoint SecretCoord = Pair.Key;
+		AFCRoomBase* SecretRoom = GetRoomAt(SecretCoord);
+		if (!SecretRoom)
+		{
+			continue;
+		}
 
-		// Check adjacent rooms to place bombable walls on their boundary
-		auto CheckAndSpawnSecretWall = [&](const FIntPoint& NeighborCoord, uint8 SocketDirection)
+		// Place bombable wall + permanent passage floor cleanly at the midpoint bridging Neighbor and Secret room
+		auto CheckAndSpawnSecretWall = [&](const FIntPoint& NeighborCoord, uint8 NeighborToSecretDir, uint8 SecretToNeighborDir)
 		{
 			if (const FFCRoomData* NeighborData = RoomGrid.Find(NeighborCoord))
 			{
@@ -901,26 +937,43 @@ void AFCDungeonManager::SetupSecretPassages()
 					AFCRoomBase* NeighborRoom = GetRoomAt(NeighborCoord);
 					if (NeighborRoom)
 					{
-						const FTransform SocketTransform = NeighborRoom->GetDoorSocketTransform(SocketDirection);
-						FActorSpawnParameters SpawnParams;
-						SpawnParams.Owner = NeighborRoom;
-						SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+						const FTransform NeighborSocket = NeighborRoom->GetDoorSocketTransform(NeighborToSecretDir);
+						const FTransform SecretSocket = SecretRoom->GetDoorSocketTransform(SecretToNeighborDir);
 
-						AFCDestructibleWall* SecretWall = World->SpawnActor<AFCDestructibleWall>(WallClass, SocketTransform.GetLocation(), SocketTransform.GetRotation().Rotator(), SpawnParams);
+						const FVector MidpointLocation = (NeighborSocket.GetLocation() + SecretSocket.GetLocation()) * 0.5f;
+						const FRotator WallRotation = NeighborSocket.GetRotation().Rotator();
+						const FTransform WallTransform(WallRotation, MidpointLocation, FVector::OneVector);
+
+						const float GapDepth = FMath::Max(50.0f, static_cast<float>(FVector::Dist(NeighborSocket.GetLocation(), SecretSocket.GetLocation())));
+						const float SpanLength = NeighborRoom->GetDoorOffset() * 2.0f;
+						const float WallHeight = NeighborRoom->GetWallHeight();
+						const float FloorThick = NeighborRoom->GetFloorThickness();
+
+						AFCDestructibleWall* SecretWall = World->SpawnActorDeferred<AFCDestructibleWall>(
+							WallClass,
+							WallTransform,
+							NeighborRoom,
+							nullptr,
+							ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+						);
 						if (SecretWall)
 						{
 							SecretWall->SetLinkedSecretRoomCoord(SecretCoord);
+							SecretWall->SetWallDimensions(FVector(GapDepth, SpanLength, WallHeight), FloorThick);
+							UGameplayStatics::FinishSpawningActor(SecretWall, WallTransform);
+
 							SecretWall->OnWallDestroyed.AddDynamic(this, &AFCDungeonManager::HandleSecretWallDestroyed);
+							NeighborRoom->RegisterSecretWall(SecretWall);
 						}
 					}
 				}
 			}
 		};
 
-		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X, SecretCoord.Y - 1), EFCDungeonDoor::North); // Secret is North of Neighbor (Neighbor is South)
-		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X, SecretCoord.Y + 1), EFCDungeonDoor::South); // Secret is South of Neighbor (Neighbor is North)
-		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X - 1, SecretCoord.Y), EFCDungeonDoor::East);  // Secret is East of Neighbor (Neighbor is West)
-		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X + 1, SecretCoord.Y), EFCDungeonDoor::West);  // Secret is West of Neighbor (Neighbor is East)
+		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X, SecretCoord.Y - 1), EFCDungeonDoor::North, EFCDungeonDoor::South);
+		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X, SecretCoord.Y + 1), EFCDungeonDoor::South, EFCDungeonDoor::North);
+		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X - 1, SecretCoord.Y), EFCDungeonDoor::East,  EFCDungeonDoor::West);
+		CheckAndSpawnSecretWall(FIntPoint(SecretCoord.X + 1, SecretCoord.Y), EFCDungeonDoor::West,  EFCDungeonDoor::East);
 	}
 }
 
@@ -1038,34 +1091,113 @@ float AFCDungeonManager::GetDoorWidthForEdge(const FIntPoint& RoomA, const FIntP
 	return DoorWidth;
 }
 
+FGameplayTag AFCDungeonManager::GetRoomTypeTag(EFCRoomType Type)
+{
+	static const TMap<EFCRoomType, FGameplayTag> TypeToTagMap = {
+		{ EFCRoomType::Normal,   FCGameplayTags::Dungeon_Room_Normal.GetTag() },
+		{ EFCRoomType::Start,    FCGameplayTags::Dungeon_Room_Start.GetTag() },
+		{ EFCRoomType::Boss,     FCGameplayTags::Dungeon_Room_Boss.GetTag() },
+		{ EFCRoomType::Shop,     FCGameplayTags::Dungeon_Room_Shop.GetTag() },
+		{ EFCRoomType::Treasure, FCGameplayTags::Dungeon_Room_Treasure.GetTag() },
+		{ EFCRoomType::Secret,   FCGameplayTags::Dungeon_Room_Secret.GetTag() }
+	};
+
+	if (const FGameplayTag* FoundTag = TypeToTagMap.Find(Type))
+	{
+		return *FoundTag;
+	}
+	return FCGameplayTags::Dungeon_Room_Normal.GetTag();
+}
+
+TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRoomClassForTag(FGameplayTag RoomTag) const
+{
+	if (const TSubclassOf<AFCRoomBase>* MappedClass = RoomTagClassMap.Find(RoomTag))
+	{
+		if (*MappedClass)
+		{
+			return *MappedClass;
+		}
+	}
+
+	const TMap<FGameplayTag, TSubclassOf<AFCRoomBase>> LegacyRoomMap = {
+		{ FCGameplayTags::Dungeon_Room_Start.GetTag(),    StartRoomClass },
+		{ FCGameplayTags::Dungeon_Room_Boss.GetTag(),     BossRoomClass },
+		{ FCGameplayTags::Dungeon_Room_Shop.GetTag(),     ShopRoomClass },
+		{ FCGameplayTags::Dungeon_Room_Treasure.GetTag(), TreasureRoomClass },
+		{ FCGameplayTags::Dungeon_Room_Secret.GetTag(),   SecretRoomClass }
+	};
+
+	if (const TSubclassOf<AFCRoomBase>* FallbackClass = LegacyRoomMap.Find(RoomTag))
+	{
+		if (*FallbackClass)
+		{
+			return *FallbackClass;
+		}
+	}
+
+	return GetRandomDefaultRoomClass();
+}
+
+TSubclassOf<AFCDoorBase> AFCDungeonManager::GetDoorClassForTag(FGameplayTag RoomTag) const
+{
+	if (const TSubclassOf<AFCDoorBase>* MappedDoor = DoorTagClassMap.Find(RoomTag))
+	{
+		if (*MappedDoor)
+		{
+			return *MappedDoor;
+		}
+	}
+
+	const TMap<FGameplayTag, TSubclassOf<AFCDoorBase>> LegacyDoorMap = {
+		{ FCGameplayTags::Dungeon_Room_Boss.GetTag(),     BossDoorClass },
+		{ FCGameplayTags::Dungeon_Room_Shop.GetTag(),     ShopDoorClass },
+		{ FCGameplayTags::Dungeon_Room_Treasure.GetTag(), TreasureDoorClass }
+	};
+
+	if (const TSubclassOf<AFCDoorBase>* FallbackDoor = LegacyDoorMap.Find(RoomTag))
+	{
+		if (*FallbackDoor)
+		{
+			return *FallbackDoor;
+		}
+	}
+
+	return nullptr;
+}
+
 TSubclassOf<AFCDoorBase> AFCDungeonManager::ResolveDoorClassBetween(const FIntPoint& RoomA, const FIntPoint& RoomB) const
 {
 	const FFCRoomData* DataA = RoomGrid.Find(RoomA);
 	const FFCRoomData* DataB = RoomGrid.Find(RoomB);
 
-	const EFCRoomType TypeA = DataA ? DataA->RoomType : EFCRoomType::Normal;
-	const EFCRoomType TypeB = DataB ? DataB->RoomType : EFCRoomType::Normal;
+	const FGameplayTag TagA = GetRoomTypeTag(DataA ? DataA->RoomType : EFCRoomType::Normal);
+	const FGameplayTag TagB = GetRoomTypeTag(DataB ? DataB->RoomType : EFCRoomType::Normal);
 
-	if (TypeA == EFCRoomType::Boss || TypeB == EFCRoomType::Boss)
+	// Priority order for special doorway overrides (Boss > Shop > Treasure > custom RoomTag)
+	const TArray<FGameplayTag, TInlineAllocator<3>> PriorityTags = {
+		FCGameplayTags::Dungeon_Room_Boss.GetTag(),
+		FCGameplayTags::Dungeon_Room_Shop.GetTag(),
+		FCGameplayTags::Dungeon_Room_Treasure.GetTag()
+	};
+
+	for (const FGameplayTag& PriorityTag : PriorityTags)
 	{
-		if (BossDoorClass)
+		if (TagA == PriorityTag || TagB == PriorityTag)
 		{
-			return BossDoorClass;
+			if (TSubclassOf<AFCDoorBase> SpecialDoor = GetDoorClassForTag(PriorityTag))
+			{
+				return SpecialDoor;
+			}
 		}
 	}
-	else if (TypeA == EFCRoomType::Shop || TypeB == EFCRoomType::Shop)
+
+	if (TSubclassOf<AFCDoorBase> CustomDoorA = GetDoorClassForTag(TagA))
 	{
-		if (ShopDoorClass)
-		{
-			return ShopDoorClass;
-		}
+		return CustomDoorA;
 	}
-	else if (TypeA == EFCRoomType::Treasure || TypeB == EFCRoomType::Treasure)
+	if (TSubclassOf<AFCDoorBase> CustomDoorB = GetDoorClassForTag(TagB))
 	{
-		if (TreasureDoorClass)
-		{
-			return TreasureDoorClass;
-		}
+		return CustomDoorB;
 	}
 
 	return GetRandomDoorFromPool();
@@ -1073,22 +1205,7 @@ TSubclassOf<AFCDoorBase> AFCDungeonManager::ResolveDoorClassBetween(const FIntPo
 
 TSubclassOf<AFCRoomBase> AFCDungeonManager::GetRoomClassForType(EFCRoomType Type) const
 {
-	switch (Type)
-	{
-	case EFCRoomType::Start:
-		return StartRoomClass ? StartRoomClass : GetRandomDefaultRoomClass();
-	case EFCRoomType::Boss:
-		return BossRoomClass ? BossRoomClass : GetRandomDefaultRoomClass();
-	case EFCRoomType::Shop:
-		return ShopRoomClass ? ShopRoomClass : GetRandomDefaultRoomClass();
-	case EFCRoomType::Treasure:
-		return TreasureRoomClass ? TreasureRoomClass : GetRandomDefaultRoomClass();
-	case EFCRoomType::Secret:
-		return SecretRoomClass ? SecretRoomClass : GetRandomDefaultRoomClass();
-	case EFCRoomType::Normal:
-	default:
-		return GetRandomDefaultRoomClass();
-	}
+	return GetRoomClassForTag(GetRoomTypeTag(Type));
 }
 
 TArray<FIntPoint> AFCDungeonManager::GetAdjacentCoordinates(const FIntPoint& Coord) const

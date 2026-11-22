@@ -3,6 +3,9 @@
 #include "GameplayEffectExtension.h"
 #include "Character/FCCharacterBase.h"
 #include "Engine/DamageEvents.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/Controller.h"
+
 UFCAttributeSet::UFCAttributeSet()
 {
 	InitHealth(100.f);
@@ -12,6 +15,8 @@ UFCAttributeSet::UFCAttributeSet()
 	InitAttackPower(0.f);
 	InitShield(0.f);
 	InitMaxShield(100.f);
+	InitIncomingDamage(0.f);
+	InitIncomingHeal(0.f);
 }
 
 FFCPlayerStatSaveData UFCAttributeSet::ExportStatSaveData() const
@@ -34,11 +39,13 @@ void UFCAttributeSet::RestoreFromStatSaveData(const FFCPlayerStatSaveData& InSta
 	InitAttackPower(FMath::Max(InStatData.AttackPower, 0.0f));
 	InitShield(0.0f);
 	InitMaxShield(100.0f);
+	InitIncomingDamage(0.0f);
+	InitIncomingHeal(0.0f);
 }
 
 void UFCAttributeSet::RefreshMana()
 {
-	if (GetOwningAbilitySystemComponent())
+	if (GetOwningAbilitySystemComponent() && GetOwningAbilitySystemComponent()->GetOwnerActor())
 	{
 		SetMana(GetMaxMana());
 	}
@@ -54,8 +61,8 @@ void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Mana, COND_None, REPNOTIFY_Always);
-	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Mana, COND_OwnerOnly, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxMana, COND_OwnerOnly, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, AttackPower, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, Shield, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(UFCAttributeSet, MaxShield, COND_None, REPNOTIFY_Always);
@@ -64,6 +71,12 @@ void UFCAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutL
 void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
 {
 	Super::PreAttributeChange(Attribute, NewValue);
+
+	if (!FMath::IsFinite(NewValue))
+	{
+		NewValue = 0.f;
+		return;
+	}
 
 	if (Attribute == GetHealthAttribute())
 	{
@@ -85,37 +98,30 @@ void UFCAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, fl
 	{
 		NewValue = FMath::Max(NewValue, 0.f);
 	}
+	else if (Attribute == GetIncomingDamageAttribute() || Attribute == GetIncomingHealAttribute())
+	{
+		NewValue = FMath::Max(NewValue, 0.f);
+	}
 }
 
 void UFCAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute, float OldValue, float NewValue)
 {
 	Super::PostAttributeChange(Attribute, OldValue, NewValue);
-
-	if (Attribute == GetHealthAttribute() && NewValue <= 0.0f)
-	{
-		if (UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent())
-		{
-			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetASC->GetAvatarActor()))
-			{
-				if (!Char->IsDead())
-				{
-					Char->Die(nullptr);
-				}
-			}
-		}
-	}
 }
 
-void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
+float UFCAttributeSet::ApplyIncomingDamageValue(float RawDamage, AActor* InstigatorActor, AActor* DamageCauser, const FHitResult* HitResult)
 {
-	Super::PostGameplayEffectExecute(Data);
+	if (!FMath::IsFinite(RawDamage) || RawDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
 
 	UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent();
-	const bool bHasValidOwner = (TargetASC && TargetASC->GetOwnerActor() != nullptr);
+	const bool bHasValidAscOwner = (TargetASC && TargetASC->GetOwnerActor() != nullptr && TargetASC->GetWorld() != nullptr);
 
-	auto SafeSetHealth = [this, bHasValidOwner](float NewVal)
+	auto SafeSetHealth = [this, bHasValidAscOwner](float NewVal)
 	{
-		if (bHasValidOwner)
+		if (bHasValidAscOwner)
 		{
 			SetHealth(NewVal);
 		}
@@ -125,9 +131,9 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 		}
 	};
 
-	auto SafeSetShield = [this, bHasValidOwner](float NewVal)
+	auto SafeSetShield = [this, bHasValidAscOwner](float NewVal)
 	{
-		if (bHasValidOwner)
+		if (bHasValidAscOwner)
 		{
 			SetShield(NewVal);
 		}
@@ -137,38 +143,124 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 		}
 	};
 
-	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	float RemainingDamage = RawDamage;
+	const float CurrentShield = GetShield();
+	if (CurrentShield > 0.0f)
 	{
-		if (Data.EvaluatedData.Magnitude < 0.f)
-		{
-			const float IncomingDamage = -Data.EvaluatedData.Magnitude;
-			const float CurrentShield = GetShield();
+		const float Absorbed = FMath::Min(CurrentShield, RemainingDamage);
+		SafeSetShield(FMath::Clamp(CurrentShield - Absorbed, 0.0f, GetMaxShield()));
+		RemainingDamage -= Absorbed;
+	}
 
-			if (CurrentShield > 0.f)
+	if (RemainingDamage > 0.0f)
+	{
+		SafeSetHealth(FMath::Clamp(GetHealth() - RemainingDamage, 0.0f, GetMaxHealth()));
+	}
+
+	AActor* TargetActor = (TargetASC && TargetASC->AbilityActorInfo.IsValid())
+		? TargetASC->AbilityActorInfo->AvatarActor.Get()
+		: Cast<AActor>(GetOuter());
+
+	AActor* EffectiveCauser = DamageCauser ? DamageCauser : InstigatorActor;
+	AActor* EffectiveKiller = InstigatorActor ? InstigatorActor : DamageCauser;
+
+	if (GetHealth() <= 0.0f)
+	{
+		if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
+		{
+			if (!Char->IsDead())
 			{
-				if (CurrentShield >= IncomingDamage)
-				{
-					// Shield completely absorbs damage
-					SafeSetShield(CurrentShield - IncomingDamage);
-					SafeSetHealth(FMath::Clamp(GetHealth() + IncomingDamage, 0.f, GetMaxHealth()));
-				}
-				else
-				{
-					// Shield partially absorbs damage
-					const float Absorbed = CurrentShield;
-					SafeSetShield(0.f);
-					SafeSetHealth(FMath::Clamp(GetHealth() + Absorbed, 0.f, GetMaxHealth()));
-				}
+				Char->Die(EffectiveKiller);
 			}
-			else
+		}
+	}
+	else if (TargetActor)
+	{
+		if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
+		{
+			if (!Char->IsDead())
 			{
-				SafeSetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
+				Char->HandleDamageTaken(RawDamage, EffectiveCauser, HitResult ? *HitResult : FHitResult());
 			}
 		}
 		else
 		{
-			SafeSetHealth(FMath::Clamp(GetHealth(), 0.f, GetMaxHealth()));
+			AController* InstigatorController = nullptr;
+			if (APawn* InstigatorPawn = Cast<APawn>(InstigatorActor))
+			{
+				InstigatorController = InstigatorPawn->GetController();
+			}
+			else if (AController* AsController = Cast<AController>(InstigatorActor))
+			{
+				InstigatorController = AsController;
+			}
+			FDamageEvent DamageEvent;
+			TargetActor->TakeDamage(RawDamage, DamageEvent, InstigatorController, EffectiveCauser);
 		}
+	}
+
+	return RawDamage;
+}
+
+void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data)
+{
+	Super::PostGameplayEffectExecute(Data);
+
+	UAbilitySystemComponent* TargetASC = GetOwningAbilitySystemComponent();
+	const bool bHasValidOwner = (TargetASC && TargetASC->GetOwnerActor() != nullptr && TargetASC->GetWorld() != nullptr);
+
+	auto SafeSetFloat = [bHasValidOwner](auto SetFn, auto InitFn, float Val)
+	{
+		if (bHasValidOwner)
+		{
+			SetFn(Val);
+		}
+		else
+		{
+			InitFn(Val);
+		}
+	};
+
+	if (Data.EvaluatedData.Attribute == GetIncomingDamageAttribute())
+	{
+		const float LocalDamage = GetIncomingDamage();
+		SafeSetFloat(
+			[this](float V) { SetIncomingDamage(V); },
+			[this](float V) { InitIncomingDamage(V); },
+			0.0f);
+
+		if (LocalDamage > 0.0f)
+		{
+			AActor* Instigator = Data.EffectSpec.GetEffectContext().GetInstigator();
+			AActor* Causer = Data.EffectSpec.GetEffectContext().GetEffectCauser();
+			const FHitResult* HitResult = Data.EffectSpec.GetEffectContext().GetHitResult();
+			ApplyIncomingDamageValue(LocalDamage, Instigator, Causer, HitResult);
+		}
+	}
+	else if (Data.EvaluatedData.Attribute == GetIncomingHealAttribute())
+	{
+		const float LocalHeal = GetIncomingHeal();
+		SafeSetFloat(
+			[this](float V) { SetIncomingHeal(V); },
+			[this](float V) { InitIncomingHeal(V); },
+			0.0f);
+
+		if (LocalHeal > 0.0f)
+		{
+			const float NewHealth = FMath::Clamp(GetHealth() + LocalHeal, 0.0f, GetMaxHealth());
+			SafeSetFloat(
+				[this](float V) { SetHealth(V); },
+				[this](float V) { InitHealth(V); },
+				NewHealth);
+		}
+	}
+	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
+	{
+		const float ClampedHealth = FMath::Clamp(GetHealth(), 0.f, GetMaxHealth());
+		SafeSetFloat(
+			[this](float V) { SetHealth(V); },
+			[this](float V) { InitHealth(V); },
+			ClampedHealth);
 
 		if (GetHealth() <= 0.0f)
 		{
@@ -184,42 +276,6 @@ void UFCAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectModC
 				{
 					Char->Die(Killer);
 				}
-			}
-		}
-		else if (Data.EvaluatedData.Magnitude < 0.f)
-		{
-			AActor* TargetActor = Data.Target.AbilityActorInfo.IsValid() ? Data.Target.AbilityActorInfo->AvatarActor.Get() : nullptr;
-			AActor* DamageCauser = Data.EffectSpec.GetEffectContext().GetEffectCauser();
-			if (!DamageCauser)
-			{
-				DamageCauser = Data.EffectSpec.GetEffectContext().GetInstigator();
-			}
-			const FHitResult* HitResult = Data.EffectSpec.GetEffectContext().GetHitResult();
-			if (AFCCharacterBase* Char = Cast<AFCCharacterBase>(TargetActor))
-			{
-				if (!Char->IsDead())
-				{
-					const float IncomingDamage = -Data.EvaluatedData.Magnitude;
-					Char->HandleDamageTaken(IncomingDamage, DamageCauser, HitResult ? *HitResult : FHitResult());
-				}
-			}
-			else if (TargetActor)
-			{
-				const float IncomingDamage = -Data.EvaluatedData.Magnitude;
-				AController* InstigatorController = nullptr;
-				if (AActor* InstigatorActor = Data.EffectSpec.GetEffectContext().GetInstigator())
-				{
-					if (APawn* InstigatorPawn = Cast<APawn>(InstigatorActor))
-					{
-						InstigatorController = InstigatorPawn->GetController();
-					}
-					else if (AController* AsController = Cast<AController>(InstigatorActor))
-					{
-						InstigatorController = AsController;
-					}
-				}
-				FDamageEvent DamageEvent;
-				TargetActor->TakeDamage(IncomingDamage, DamageEvent, InstigatorController, DamageCauser);
 			}
 		}
 	}

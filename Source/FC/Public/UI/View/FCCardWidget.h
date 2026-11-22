@@ -102,6 +102,12 @@ public:
 	void SetIsHeldByHotKey(bool bInHeld);
 
 	UFUNCTION(BlueprintPure, Category = "Card|Interaction")
+	bool IsDisplayOnly() const { return bDisplayOnly; }
+
+	UFUNCTION(BlueprintCallable, Category = "Card|Interaction")
+	void SetDisplayOnly(bool bInDisplayOnly);
+
+	UFUNCTION(BlueprintPure, Category = "Card|Interaction")
 	FVector2D GetDragStartScreenPosition() const { return DragStartScreenPos; }
 
 	UFUNCTION(BlueprintPure, Category = "Card|Interaction")
@@ -201,6 +207,10 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Card|Interaction")
 	bool bIsHeldByHotKey = false;
+
+	/** When true, disables drag/play click interactions (used in pile viewer / reward previews) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Card|Interaction")
+	bool bDisplayOnly = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Card|Interaction")
 	bool bHasMovedDuringDrag = false;

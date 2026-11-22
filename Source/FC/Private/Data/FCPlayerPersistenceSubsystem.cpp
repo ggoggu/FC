@@ -7,6 +7,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
 
 void UFCPlayerPersistenceSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -40,16 +41,15 @@ FString UFCPlayerPersistenceSubsystem::GetPlayerKey(const APlayerController* PC)
 
 	if (const APlayerState* PS = PC->GetPlayerState<APlayerState>())
 	{
+		if (PS->GetUniqueId().IsValid())
+		{
+			return FString::Printf(TEXT("NetId_%s"), *PS->GetUniqueId().ToString());
+		}
+
 		const int32 PlayerId = PS->GetPlayerId();
 		if (PlayerId > 0)
 		{
 			return FString::Printf(TEXT("Player_%d"), PlayerId);
-		}
-
-		const FString PlayerName = PS->GetPlayerName();
-		if (!PlayerName.IsEmpty())
-		{
-			return FString::Printf(TEXT("Player_%s"), *PlayerName);
 		}
 	}
 
@@ -73,6 +73,11 @@ bool UFCPlayerPersistenceSubsystem::HasPlayerData(const FString& PlayerKey) cons
 
 void UFCPlayerPersistenceSubsystem::SavePlayerData(const FString& PlayerKey, const FFCCardDeckSaveData& DeckData, const FFCPlayerStatSaveData& StatData)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	if (PlayerKey.IsEmpty())
 	{
 		return;
@@ -102,7 +107,7 @@ bool UFCPlayerPersistenceSubsystem::LoadPlayerData(const FString& PlayerKey, FFC
 
 bool UFCPlayerPersistenceSubsystem::SaveFromPlayer(APlayerController* PC)
 {
-	if (!PC)
+	if (!PC || !PC->HasAuthority())
 	{
 		return false;
 	}
@@ -154,7 +159,7 @@ bool UFCPlayerPersistenceSubsystem::SaveFromPlayer(APlayerController* PC)
 
 bool UFCPlayerPersistenceSubsystem::RestoreToPlayer(APlayerController* PC)
 {
-	if (!PC)
+	if (!PC || !PC->HasAuthority())
 	{
 		return false;
 	}
@@ -193,10 +198,20 @@ bool UFCPlayerPersistenceSubsystem::RestoreToPlayer(APlayerController* PC)
 
 void UFCPlayerPersistenceSubsystem::ClearPlayerData(const FString& PlayerKey)
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	PersistentRecords.Remove(PlayerKey);
 }
 
 void UFCPlayerPersistenceSubsystem::ClearAllPlayerData()
 {
+	if (const UWorld* World = GetWorld(); World && World->IsNetMode(NM_Client))
+	{
+		return;
+	}
+
 	PersistentRecords.Empty();
 }

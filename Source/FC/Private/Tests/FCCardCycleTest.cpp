@@ -4,9 +4,11 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardTypes.h"
+#include "Data/FCGameplayTags.h"
 #include "Character/FCCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/FCAttributeSet.h"
+#include "UI/ViewModel/FCHUDViewModel.h"
 #include "Engine/GameInstance.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -16,19 +18,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFCCardCycleTest, "FC.Card.CycleSystem", EAutom
 bool FFCCardCycleTest::RunTest(const FString& Parameters)
 {
 	// =========================================================================
-	// Test 1: Keyword Helpers (DoesRetain & IsEthereal)
+	// Test 1: Tag-Based Keyword Helpers (DoesRetain & IsEthereal)
 	// =========================================================================
 	{
 		FFCCardGameplayData RetainCardData;
 		RetainCardData.CardId = FName("Card_RetainTest");
-		RetainCardData.Keywords = { EFCCardKeyword::Retain };
+		RetainCardData.CardTags.AddTag(FCGameplayTags::Card_Keyword_Retain);
 
 		TestTrue(TEXT("Retain card must return DoesRetain()=true"), RetainCardData.DoesRetain());
 		TestFalse(TEXT("Retain card must return IsEthereal()=false"), RetainCardData.IsEthereal());
 
 		FFCCardGameplayData EtherealCardData;
 		EtherealCardData.CardId = FName("Card_EtherealTest");
-		EtherealCardData.Keywords = { EFCCardKeyword::Ethereal };
+		EtherealCardData.CardTags.AddTag(FCGameplayTags::Card_Keyword_Ethereal);
 
 		TestTrue(TEXT("Ethereal card must return IsEthereal()=true"), EtherealCardData.IsEthereal());
 		TestFalse(TEXT("Ethereal card must return DoesRetain()=false"), EtherealCardData.DoesRetain());
@@ -38,21 +40,6 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 
 		TestFalse(TEXT("Normal card must return DoesRetain()=false"), NormalCardData.DoesRetain());
 		TestFalse(TEXT("Normal card must return IsEthereal()=false"), NormalCardData.IsEthereal());
-
-		// Tag-based check
-		FFCCardGameplayData TagRetainData;
-		TagRetainData.CardTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Card.Keyword.Retain"), false));
-		if (TagRetainData.CardTags.IsValid())
-		{
-			TestTrue(TEXT("Tag-based card must return DoesRetain()=true"), TagRetainData.DoesRetain());
-		}
-
-		FFCCardGameplayData TagEtherealData;
-		TagEtherealData.CardTags.AddTag(FGameplayTag::RequestGameplayTag(FName("Card.Keyword.Ethereal"), false));
-		if (TagEtherealData.CardTags.IsValid())
-		{
-			TestTrue(TEXT("Tag-based card must return IsEthereal()=true"), TagEtherealData.IsEthereal());
-		}
 	}
 
 	// =========================================================================
@@ -78,7 +65,7 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 			UFCCardDataAsset* RetainAsset = NewObject<UFCCardDataAsset>(Subsystem);
 			RetainAsset->GameplayData.CardId = FName("Card_RetainTest");
 			RetainAsset->GameplayData.BaseManaCost = 1;
-			RetainAsset->GameplayData.Keywords = { EFCCardKeyword::Retain };
+			RetainAsset->GameplayData.CardTags.AddTag(FCGameplayTags::Card_Keyword_Retain);
 			RetainAsset->DisplayData.CardName = FText::FromString(TEXT("보존 카드"));
 			Subsystem->RegisterCardDataAsset(RetainAsset);
 
@@ -86,7 +73,7 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 			UFCCardDataAsset* EtherealAsset = NewObject<UFCCardDataAsset>(Subsystem);
 			EtherealAsset->GameplayData.CardId = FName("Card_EtherealTest");
 			EtherealAsset->GameplayData.BaseManaCost = 1;
-			EtherealAsset->GameplayData.Keywords = { EFCCardKeyword::Ethereal };
+			EtherealAsset->GameplayData.CardTags.AddTag(FCGameplayTags::Card_Keyword_Ethereal);
 			EtherealAsset->DisplayData.CardName = FText::FromString(TEXT("휘발성 카드"));
 			Subsystem->RegisterCardDataAsset(EtherealAsset);
 
@@ -112,9 +99,9 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 				DeckComp->InitializeDeck(DrawDeck);
 
 				// Manually place Normal, Retain, and Ethereal cards into hand
-				DeckComp->AddCardToDeck(FName("Card_NormalTest"), EFCCardAddDestination::Hand);
-				DeckComp->AddCardToDeck(FName("Card_RetainTest"), EFCCardAddDestination::Hand);
-				DeckComp->AddCardToDeck(FName("Card_EtherealTest"), EFCCardAddDestination::Hand);
+				DeckComp->AddCardToDeck(FName("Card_NormalTest"), EFCCardZone::Hand);
+				DeckComp->AddCardToDeck(FName("Card_RetainTest"), EFCCardZone::Hand);
+				DeckComp->AddCardToDeck(FName("Card_EtherealTest"), EFCCardZone::Hand);
 
 				TestEqual(TEXT("Initial Hand size must be 3"), DeckComp->GetHandContainer().Num(), 3);
 				TestEqual(TEXT("Initial Discard count must be 0"), DeckComp->GetDiscardPileCount(), 0);
@@ -211,6 +198,35 @@ bool FFCCardCycleTest::RunTest(const FString& Parameters)
 			// Toggle auto cycle
 			DeckComp->SetAutoCycleEnabled(false);
 			TestFalse(TEXT("AutoCycleEnabled should be false"), DeckComp->IsAutoCycleEnabled());
+
+			// Inactive timer must report 0 remaining and 0 progress (not 100% full)
+			TestEqual(TEXT("Inactive CycleRemainingTime should be 0.0f"), DeckComp->GetCycleRemainingTime(), 0.0f);
+			TestEqual(TEXT("Inactive CycleProgress should be 0.0f"), DeckComp->GetCycleProgress(), 0.0f);
+		}
+	}
+
+	// =========================================================================
+	// Test 5: HUD ViewModel Cycle Remaining Display Text & Progress
+	// =========================================================================
+	{
+		UFCHUDViewModel* HUDVM = NewObject<UFCHUDViewModel>();
+		TestNotNull(TEXT("HUDVM should be created"), HUDVM);
+
+		if (HUDVM)
+		{
+			HUDVM->SetCycleInterval(30.0f);
+			HUDVM->SetCycleRemainingTime(30.0f);
+			HUDVM->SetCycleProgress(0.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 30.0s should be 30s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("30s"));
+			TestEqual(TEXT("CycleProgress at start should be 0.0f"), HUDVM->CycleProgress, 0.0f);
+
+			HUDVM->SetCycleRemainingTime(0.5f);
+			HUDVM->SetCycleProgress(29.5f / 30.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 0.5s should ceil to 1s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("1s"));
+
+			HUDVM->SetCycleRemainingTime(0.0f);
+			HUDVM->SetCycleProgress(0.0f);
+			TestEqual(TEXT("CycleRemainingDisplayText at 0.0s should be 0s"), HUDVM->GetCycleRemainingDisplayText().ToString(), TEXT("0s"));
 		}
 	}
 

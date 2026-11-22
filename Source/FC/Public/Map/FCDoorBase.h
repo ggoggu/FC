@@ -25,6 +25,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Door")
 	void SetDoorLocked(bool bNewLocked);
 
+	/** Source-tracked lock mutation for doors shared between two rooms. Door unlocks only when all lock sources release it. */
+	UFUNCTION(BlueprintCallable, Category = "FC|Door")
+	void SetDoorLockedBySource(AActor* LockSource, bool bLock);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Door")
+	int32 GetActiveLockCount() const;
+
 	UFUNCTION(BlueprintCallable, Category = "FC|Door")
 	void SetDoorOpen(bool bNewOpen);
 
@@ -40,8 +47,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Door")
 	void SetDoorWidth(float NewDoorWidth);
 
+	UFUNCTION(BlueprintPure, Category = "FC|Door")
+	float GetPassageDepth() const { return PassageDepth; }
+
+	UFUNCTION(BlueprintCallable, Category = "FC|Door")
+	void SetPassageDepth(float NewPassageDepth);
+
+	UFUNCTION(BlueprintPure, Category = "FC|Door")
+	float GetDoorHeight() const { return DoorHeight; }
+
 	UFUNCTION(BlueprintCallable, Category = "FC|Door")
 	virtual void UpdateDoorDimensions();
+
+	UStaticMeshComponent* GetDoorMeshComponent() const { return DoorMesh; }
+	UStaticMeshComponent* GetPassageFloorMeshComponent() const { return PassageFloorMesh; }
+	UBoxComponent* GetInteractionTrigger() const { return InteractionTrigger; }
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "FC|Door|Events")
@@ -70,9 +90,25 @@ protected:
 	UFUNCTION()
 	virtual void OnRep_DoorWidth();
 
-	/** Lateral width of the door passage in cm. Adjusts trigger volume extent. Defaults to 300 cm. */
-	UPROPERTY(ReplicatedUsing = OnRep_DoorWidth, EditAnywhere, BlueprintSetter = SetDoorWidth, BlueprintReadWrite, Category = "FC|Door|Config", meta = (ClampMin = "50.0"))
+	/** Lateral opening width of the door passage (local Y axis) in cm. Defaults to 300 cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Door|Config", ReplicatedUsing = OnRep_DoorWidth, BlueprintSetter = SetDoorWidth, meta = (ClampMin = "50.0"))
 	float DoorWidth = 300.0f;
+
+	/** Longitudinal passage depth bridging adjacent room boundaries (local X axis) in cm. Defaults to 300 cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Door|Config", ReplicatedUsing = OnRep_DoorWidth, BlueprintSetter = SetPassageDepth, meta = (ClampMin = "50.0"))
+	float PassageDepth = 300.0f;
+
+	/** Vertical clearance height of the doorway opening above FloorThickness in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Door|Config", meta = (ClampMin = "100.0"))
+	float DoorHeight = 500.0f;
+
+	/** Height of the passage bridge floor slab in cm (Z in [0, FloorThickness]), flush with adjacent room floors. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Door|Config", meta = (ClampMin = "10.0"))
+	float FloorThickness = 100.0f;
+
+	/** Longitudinal thickness of the blocking DoorMesh gate (local X axis) in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "FC|Door|Config", meta = (ClampMin = "10.0"))
+	float DoorGateThickness = 100.0f;
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Components")
@@ -83,6 +119,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Components")
 	TObjectPtr<UStaticMeshComponent> DoorMesh;
+
+	/** Flush walkway floor slab spanning the exact gap between adjacent rooms. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Components")
+	TObjectPtr<UStaticMeshComponent> PassageFloorMesh;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Components")
 	TObjectPtr<UBoxComponent> InteractionTrigger;
@@ -98,9 +138,12 @@ protected:
 	TObjectPtr<USoundBase> UnlockSound;
 
 private:
-	UPROPERTY(ReplicatedUsing = OnRep_IsLocked, BlueprintReadOnly, Category = "FC|Door", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(BlueprintReadOnly, Category = "FC|Door", ReplicatedUsing = OnRep_IsLocked, meta = (AllowPrivateAccess = "true"))
 	bool bIsLocked = false;
 
-	UPROPERTY(ReplicatedUsing = OnRep_IsOpen, BlueprintReadOnly, Category = "FC|Door", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(BlueprintReadOnly, Category = "FC|Door", ReplicatedUsing = OnRep_IsOpen, meta = (AllowPrivateAccess = "true"))
 	bool bIsOpen = true;
+
+	/** Server-authoritative set of actors (rooms) currently holding a combat lock on this shared door. */
+	TSet<TWeakObjectPtr<AActor>> ActiveLockSources;
 };

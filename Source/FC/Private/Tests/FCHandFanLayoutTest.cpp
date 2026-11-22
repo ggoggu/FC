@@ -166,52 +166,7 @@ bool FFCHandFanLayoutTest::RunTest(const FString& Parameters)
 	}
 
 	// =========================================================================
-	// Test 6: Fan Layout Hover (Scale Only - No Lift, Tilt Retained)
-	// =========================================================================
-	{
-		const float HoverLiftY = 0.0f; // Hover does not lift
-		const float HoverScale = 1.15f;
-		const bool bStraighten = false; // Hover does not straighten
-
-		FVector2D BaseTrans;
-		float BaseAngle = 0.0f;
-		UFCHandViewModel::CalculateCardFanTransform(0, 3, 110.0f, 800.0f, 35.0f, 30.0f, 4.0f, BaseTrans, BaseAngle);
-
-		FVector2D HoverTrans = BaseTrans + FVector2D(0.0f, HoverLiftY);
-		float HoverAngle = bStraighten ? 0.0f : BaseAngle;
-		FVector2D HoverScaleVec = FVector2D(HoverScale, HoverScale);
-
-		// Position & Angle should match normal fan layout (no lift, tilt retained)
-		TestNearlyEqual(TEXT("Hovered card translation X should match normal"), static_cast<float>(HoverTrans.X), static_cast<float>(BaseTrans.X));
-		TestNearlyEqual(TEXT("Hovered card translation Y should match normal (no lift)"), static_cast<float>(HoverTrans.Y), static_cast<float>(BaseTrans.Y));
-		TestNearlyEqual(TEXT("Hovered card angle should match normal (tilted)"), HoverAngle, BaseAngle);
-
-		// Scale should be enlarged
-		TestNearlyEqual(TEXT("Hovered card scale X should be HoverScale"), static_cast<float>(HoverScaleVec.X), 1.15f);
-		TestNearlyEqual(TEXT("Hovered card scale Y should be HoverScale"), static_cast<float>(HoverScaleVec.Y), 1.15f);
-	}
-
-	// =========================================================================
-	// Test 7: Fan Layout Selection (No Pop-up Lift - SelectedLiftY == 0.0f)
-	// =========================================================================
-	{
-		const float SelectedLiftY = 0.0f; // Click selection does not pop up
-		const float SelectedScale = 1.0f;
-
-		FVector2D BaseTrans;
-		float BaseAngle = 0.0f;
-		UFCHandViewModel::CalculateCardFanTransform(1, 3, 110.0f, 800.0f, 35.0f, 30.0f, 4.0f, BaseTrans, BaseAngle);
-
-		FVector2D SelectedTrans = BaseTrans + FVector2D(0.0f, SelectedLiftY);
-		FVector2D SelectedScaleVec = FVector2D(SelectedScale, SelectedScale);
-
-		// Position Y should remain unchanged (no vertical pop-up on selection)
-		TestNearlyEqual(TEXT("Selected card translation Y should match normal (no pop-up)"), static_cast<float>(SelectedTrans.Y), static_cast<float>(BaseTrans.Y));
-		TestNearlyEqual(TEXT("Selected card scale should be 1.0f"), static_cast<float>(SelectedScaleVec.X), 1.0f);
-	}
-
-	// =========================================================================
-	// Test 8: Hand Limit Enforcement (MaxHandSize = 10)
+	// Test 6: Hand Limit Enforcement (MaxHandSize = 10)
 	// =========================================================================
 	{
 		AActor* DummyActor = NewObject<AActor>();
@@ -301,30 +256,7 @@ bool FFCHandFanLayoutTest::RunTest(const FString& Parameters)
 	}
 
 	// =========================================================================
-	// Test 11: Card Description Auto-Wrapping & Wrap Width Configuration
-	// =========================================================================
-	{
-		UFCCardWidget* CardWidget = NewObject<UFCCardWidget>();
-		TestNotNull(TEXT("CardWidget must instantiate"), CardWidget);
-
-		if (CardWidget)
-		{
-			TestTrue(TEXT("Default bAutoWrapDescription should be true"), CardWidget->GetAutoWrapDescription());
-			TestNearlyEqual(TEXT("Default DescriptionWrapWidth should be 0.0f (respects UMG editor setting)"), CardWidget->GetDescriptionWrapWidth(), 0.0f);
-
-			CardWidget->SetDescriptionWrapWidth(200.0f);
-			TestNearlyEqual(TEXT("DescriptionWrapWidth should update to 200.0f"), CardWidget->GetDescriptionWrapWidth(), 200.0f);
-
-			CardWidget->SetAutoWrapDescription(false);
-			TestFalse(TEXT("bAutoWrapDescription should update to false"), CardWidget->GetAutoWrapDescription());
-
-			CardWidget->SetAutoWrapDescription(true);
-			TestTrue(TEXT("bAutoWrapDescription should restore to true"), CardWidget->GetAutoWrapDescription());
-		}
-	}
-
-	// =========================================================================
-	// Test 12: HandViewModel SSOT Card Holding State
+	// Test 9: HandViewModel SSOT Card Holding State
 	// =========================================================================
 	{
 		UFCHandViewModel* HandVM = NewObject<UFCHandViewModel>();

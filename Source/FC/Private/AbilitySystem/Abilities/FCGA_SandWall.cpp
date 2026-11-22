@@ -1,5 +1,6 @@
 #include "AbilitySystem/Abilities/FCGA_SandWall.h"
 #include "Combat/Wall/FCSandWall.h"
+#include "Card/FCCardExecutionContext.h"
 #include "Character/FCCharacterBase.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
@@ -74,7 +75,30 @@ void UFCGA_SandWall::ActivateAbility(
 
 		if (Avatar->HasAuthority())
 		{
-			const FTransform SpawnTransform = CalculateSpawnTransform(Avatar);
+			FTransform SpawnTransform = CalculateSpawnTransform(Avatar);
+
+			// Prefer immutable FFCCardAbilityTargetData from TriggerEventData when present
+			if (const FFCCardAbilityTargetData* CardTargetData = TriggerEventData ? FFCCardAbilityTargetData::ExtractFromHandle(TriggerEventData->TargetData) : nullptr)
+			{
+				const FVector BaseLocation = Avatar->GetActorLocation();
+				FVector AimPoint = FVector::ZeroVector;
+				if (CardTargetData->VerifiedTargets.Num() > 0 && CardTargetData->VerifiedTargets[0].IsValid())
+				{
+					AimPoint = CardTargetData->VerifiedTargets[0]->GetActorLocation();
+				}
+				else if (!CardTargetData->AimLocation.IsZero())
+				{
+					AimPoint = CardTargetData->AimLocation;
+				}
+				const FVector AimDir = !AimPoint.IsZero() ? (AimPoint - BaseLocation).GetSafeNormal2D() : FVector::ZeroVector;
+				if (!AimDir.IsNearlyZero())
+				{
+					FRotator SpawnRot = AimDir.Rotation();
+					SpawnRot.Pitch = 0.0f;
+					SpawnRot.Roll = 0.0f;
+					SpawnTransform = FTransform(SpawnRot, BaseLocation + AimDir * SpawnForwardDistance);
+				}
+			}
 
 			FActorSpawnParameters SpawnParams;
 			SpawnParams.Owner = Avatar;

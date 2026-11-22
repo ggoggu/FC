@@ -24,6 +24,16 @@ UFCHandWidget::UFCHandWidget(const FObjectInitializer& ObjectInitializer)
 	SetIsFocusable(true);
 }
 
+void UFCHandWidget::NativeDestruct()
+{
+	if (HandViewModel)
+	{
+		HandViewModel->OnCardsUpdated.RemoveAll(this);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UFCHandWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
@@ -122,24 +132,6 @@ FReply UFCHandWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const
 	}
 
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
-}
-
-FReply UFCHandWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
-{
-	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::One || Key == EKeys::NumPadOne) { SelectAndHoldCardByIndex(0); return FReply::Handled(); }
-	if (Key == EKeys::Two || Key == EKeys::NumPadTwo) { SelectAndHoldCardByIndex(1); return FReply::Handled(); }
-	if (Key == EKeys::Three || Key == EKeys::NumPadThree) { SelectAndHoldCardByIndex(2); return FReply::Handled(); }
-	if (Key == EKeys::Four || Key == EKeys::NumPadFour) { SelectAndHoldCardByIndex(3); return FReply::Handled(); }
-	if (Key == EKeys::Five || Key == EKeys::NumPadFive) { SelectAndHoldCardByIndex(4); return FReply::Handled(); }
-	if (Key == EKeys::Six || Key == EKeys::NumPadSix) { SelectAndHoldCardByIndex(5); return FReply::Handled(); }
-	if (Key == EKeys::Seven || Key == EKeys::NumPadSeven) { SelectAndHoldCardByIndex(6); return FReply::Handled(); }
-	if (Key == EKeys::Eight || Key == EKeys::NumPadEight) { SelectAndHoldCardByIndex(7); return FReply::Handled(); }
-	if (Key == EKeys::Nine || Key == EKeys::NumPadNine) { SelectAndHoldCardByIndex(8); return FReply::Handled(); }
-	if (Key == EKeys::Zero || Key == EKeys::NumPadZero) { SelectAndHoldCardByIndex(9); return FReply::Handled(); }
-	if (Key == EKeys::Escape && HeldCardWidget.IsValid()) { ClearHeldCard(); return FReply::Handled(); }
-
-	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }
 
 void UFCHandWidget::SetHandViewModel(UFCHandViewModel* InViewModel)

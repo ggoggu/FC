@@ -2,6 +2,7 @@
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardHandContainer.h"
 #include "Data/Card/FCCardSubsystem.h"
+#include "Data/FCGameplayTags.h"
 
 void UFCCardViewModel::SetUpgradeLevel(int32 InLevel)
 {
@@ -70,13 +71,13 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 		SetCardType(StaticData->GameplayData.CardType);
 		SetRarity(StaticData->DisplayData.Rarity);
 		SetManaCost(StaticData->GameplayData.BaseManaCost);
-		SetRequiredClass(StaticData->GameplayData.RequiredClass);
-		SetElements(StaticData->GameplayData.Elements);
+		SetRequiredClassTag(StaticData->GameplayData.RequiredClassTag);
+		SetElementTags(StaticData->GameplayData.ElementTags);
 		SetIsNeutral(StaticData->GameplayData.IsNeutral());
-		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(StaticData->GameplayData.RequiredClass));
-		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(StaticData->GameplayData.RequiredClass));
+		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(StaticData->GameplayData.RequiredClassTag, this));
+		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(StaticData->GameplayData.RequiredClassTag, this));
 
-		const FText FormattedTrait = StaticData->GameplayData.GetFormattedTraitText();
+		const FText FormattedTrait = StaticData->GameplayData.GetFormattedTraitText(this);
 		SetClassTraitFormattedText(FormattedTrait);
 		SetHasClassTrait(!FormattedTrait.IsEmpty());
 
@@ -89,11 +90,11 @@ void UFCCardViewModel::InitializeFromCardItem(const FFCCardItem& InItem, const U
 	{
 		SetCardName(FText::FromName(InItem.CardId));
 		SetCardDescription(FText::GetEmpty());
-		SetRequiredClass(EFCCharacterClass::Neutral);
-		SetElements({});
+		SetRequiredClassTag(FCGameplayTags::Class_Neutral);
+		SetElementTags({});
 		SetIsNeutral(true);
-		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(EFCCharacterClass::Neutral));
-		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(EFCCharacterClass::Neutral));
+		SetFormattedClassText(FCClassTraitUtils::GetClassDisplayName(FCGameplayTags::Class_Neutral, this));
+		SetClassTraitTypeName(FCClassTraitUtils::GetTraitCategoryName(FCGameplayTags::Class_Neutral, this));
 		SetClassTraitFormattedText(FText::GetEmpty());
 		SetHasClassTrait(false);
 		SetExhaustsOnPlay(false);

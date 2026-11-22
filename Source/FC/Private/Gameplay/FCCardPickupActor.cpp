@@ -164,7 +164,7 @@ UFCCardRewardWidget* AFCCardPickupActor::GetActiveRewardWidget() const
 	return ActiveRewardWidget;
 }
 
-bool AFCCardPickupActor::ClaimPickup(APawn* ClaimerPawn, EFCCardAddDestination Destination)
+bool AFCCardPickupActor::ClaimPickup(APawn* ClaimerPawn, EFCCardZone Destination)
 {
 	if (!HasAuthority() || bIsClaimed || !ClaimerPawn || DropCardId.IsNone())
 	{

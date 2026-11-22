@@ -87,6 +87,12 @@ void UFCStatusToggleContainerWidget::HandleStatusListUpdated()
 
 void UFCStatusToggleContainerWidget::RefreshWidgets()
 {
+	if (!StatusPanel)
+	{
+		// Graceful fallback: If root widget is a panel (e.g. HorizontalBox or WrapBox), use it
+		StatusPanel = Cast<UPanelWidget>(GetRootWidget());
+	}
+
 	if (!StatusPanel || !ContainerViewModel)
 	{
 		return;

@@ -1,14 +1,18 @@
 #include "Card/FCCardDeckComponent.h"
+#include "Card/FCCardExecutionContext.h"
+#include "Card/Policies/FCCardTargetPolicyBase.h"
+#include "Card/Conditions/FCCardConditionBase.h"
+#include "Card/Effects/FCCardEffectBase.h"
+#include "Card/Keywords/FCCardKeywordRuleBase.h"
 #include "Data/Card/FCCardDataAsset.h"
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Class/FCClassSubsystem.h"
+#include "Data/FCGameplayTags.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystem/FCAttributeSet.h"
-#include "AbilitySystem/Abilities/FCGA_SpawnProjectile.h"
-#include "Combat/FCCombatUtils.h"
-#include "Combat/Element/FCElementComponent.h"
 #include "Character/FCCharacterBase.h"
+#include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
@@ -19,17 +23,21 @@ UFCCardDeckComponent::UFCCardDeckComponent()
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 	HandContainer.OwnerComponent = this;
+	DrawPileSummary.OwnerComponent = this;
+	DiscardPileSummary.OwnerComponent = this;
 
 	CycleInterval = 30.0f;
 	CycleDrawCount = 5;
 	bAutoCycleEnabled = true;
-	CycleEndTime = 0.0f;
+	CycleEndTime = 0.0;
 }
 
 void UFCCardDeckComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	HandContainer.OwnerComponent = this;
+	DrawPileSummary.OwnerComponent = this;
+	DiscardPileSummary.OwnerComponent = this;
 
 	if (GetOwner() && GetOwner()->HasAuthority() && bAutoCycleEnabled && ServerDrawPile.Num() > 0)
 	{
@@ -52,6 +60,8 @@ void UFCCardDeckComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, DrawPileCount, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, DiscardPileCount, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, ExhaustPileCount, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, DrawPileSummary, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, DiscardPileSummary, COND_OwnerOnly);
 
 	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, CycleInterval, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(UFCCardDeckComponent, CycleDrawCount, COND_OwnerOnly);
@@ -75,13 +85,56 @@ void UFCCardDeckComponent::InitializeDeck(const TArray<FName>& StartingDeck)
 	const int32 NumCards = ServerDrawPile.Num();
 	for (int32 i = 0; i < NumCards; ++i)
 	{
-		int32 SwapIdx = FMath::RandRange(0, NumCards - 1);
+		const int32 SwapIdx = FMath::RandRange(0, NumCards - 1);
 		ServerDrawPile.Swap(i, SwapIdx);
+	}
+
+	// Prioritize cards with Innate-like keyword rules at the top (end) of ServerDrawPile for opening draw
+	if (UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this))
+	{
+		TArray<FName> NormalCards;
+		TArray<FName> PrioritizedCards;
+		NormalCards.Reserve(ServerDrawPile.Num());
+
+		for (const FName& CardId : ServerDrawPile)
+		{
+			bool bPrioritize = false;
+			if (const FFCCardTableRow* Row = Subsystem->FindCardRowPtr(CardId))
+			{
+				for (const FGameplayTag& Tag : Row->GameplayData.CardTags)
+				{
+					if (const FFCCardKeywordRuleBase* Rule = Subsystem->FindKeywordRule(Tag))
+					{
+						if (Rule->ShouldPrioritizeInStartingHand())
+						{
+							bPrioritize = true;
+							break;
+						}
+					}
+				}
+			}
+
+			if (bPrioritize)
+			{
+				PrioritizedCards.Add(CardId);
+			}
+			else
+			{
+				NormalCards.Add(CardId);
+			}
+		}
+
+		if (PrioritizedCards.Num() > 0)
+		{
+			ServerDrawPile = MoveTemp(NormalCards);
+			ServerDrawPile.Append(PrioritizedCards);
+		}
 	}
 
 	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = 0;
 	ExhaustPileCount = 0;
+	SyncReplicatedPileSummaries();
 
 	if (bAutoCycleEnabled)
 	{
@@ -96,7 +149,7 @@ void UFCCardDeckComponent::InitializeDeck(const TArray<FName>& StartingDeck)
 	}
 }
 
-void UFCCardDeckComponent::InitializeDeckForClass(EFCCharacterClass InClass)
+void UFCCardDeckComponent::InitializeDeckForClass(FGameplayTag InClassTag)
 {
 	if (!GetOwner()->HasAuthority())
 	{
@@ -106,22 +159,11 @@ void UFCCardDeckComponent::InitializeDeckForClass(EFCCharacterClass InClass)
 	TArray<FName> ClassStarterDeck;
 	if (UFCClassSubsystem* ClassSubsystem = UFCClassSubsystem::GetClassSubsystem(this))
 	{
-		ClassStarterDeck = ClassSubsystem->GetStartingDeckForClass(InClass);
+		ClassStarterDeck = ClassSubsystem->GetStartingDeckForClass(InClassTag);
 	}
-	else
+	else if (const FFCCharacterClassData* BuiltinRow = UFCClassSubsystem::FindBuiltinClassDefault(InClassTag))
 	{
-		ClassStarterDeck = {
-			FName("Card_Fireball"),
-			FName("Card_Fireball"),
-			FName("Card_Fireball"),
-			FName("Card_Fireball"),
-			FName("Card_Fireball"),
-			FName("Card_AttackBuff"),
-			FName("Card_AttackBuff"),
-			FName("Card_AttackBuff"),
-			FName("Card_AttackBuff"),
-			FName("Card_AttackBuff")
-		};
+		ClassStarterDeck = BuiltinRow->StartingDeck;
 	}
 
 	InitializeDeck(ClassStarterDeck);
@@ -158,6 +200,7 @@ void UFCCardDeckComponent::DrawCards(int32 Count)
 	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = ServerDiscardPile.Num();
 	ExhaustPileCount = ServerExhaustPile.Num();
+	SyncReplicatedPileSummaries();
 
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
@@ -180,6 +223,7 @@ bool UFCCardDeckComponent::DiscardCard(const FGuid& CardGuid)
 	HandContainer.RemoveCard(CardGuid);
 
 	DiscardPileCount = ServerDiscardPile.Num();
+	SyncReplicatedPileSummaries();
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 	return true;
@@ -207,7 +251,7 @@ bool UFCCardDeckComponent::ExhaustCard(const FGuid& CardGuid)
 	return true;
 }
 
-bool UFCCardDeckComponent::RetrieveCardFromExhaust(FName CardId, EFCCardAddDestination Destination)
+bool UFCCardDeckComponent::RetrieveCardFromExhaust(FName CardId, EFCCardZone Destination)
 {
 	if (!GetOwner()->HasAuthority() || CardId.IsNone())
 	{
@@ -284,6 +328,7 @@ void UFCCardDeckComponent::ReshuffleDiscardIntoDraw()
 
 	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = ServerDiscardPile.Num();
+	SyncReplicatedPileSummaries();
 }
 
 void UFCCardDeckComponent::DiscardEntireHand()
@@ -300,12 +345,13 @@ void UFCCardDeckComponent::DiscardEntireHand()
 
 	HandContainer.ClearCards();
 	DiscardPileCount = ServerDiscardPile.Num();
+	SyncReplicatedPileSummaries();
 
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 }
 
-bool UFCCardDeckComponent::AddCardToDeck(FName CardId, EFCCardAddDestination Destination, bool bShuffleIfDrawPile)
+bool UFCCardDeckComponent::AddCardToDeck(FName CardId, EFCCardZone Destination, bool bShuffleIfDrawPile)
 {
 	if (!GetOwner()->HasAuthority() || CardId.IsNone())
 	{
@@ -313,47 +359,48 @@ bool UFCCardDeckComponent::AddCardToDeck(FName CardId, EFCCardAddDestination Des
 	}
 
 	UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
-	if (!Subsystem || !Subsystem->GetCardDataAsset(CardId))
+	if (!Subsystem || !Subsystem->HasCard(CardId))
 	{
 		return false;
 	}
 
 	switch (Destination)
 	{
-	case EFCCardAddDestination::DrawPile:
+	case EFCCardZone::DrawPile:
 		ServerDrawPile.Add(CardId);
 		if (bShuffleIfDrawPile)
 		{
 			const int32 NumCards = ServerDrawPile.Num();
 			for (int32 i = 0; i < NumCards; ++i)
 			{
-				int32 SwapIdx = FMath::RandRange(0, NumCards - 1);
+				const int32 SwapIdx = FMath::RandRange(0, NumCards - 1);
 				ServerDrawPile.Swap(i, SwapIdx);
 			}
 		}
 		DrawPileCount = ServerDrawPile.Num();
 		break;
 
-	case EFCCardAddDestination::DiscardPile:
+	case EFCCardZone::DiscardPile:
 		ServerDiscardPile.Add(CardId);
 		DiscardPileCount = ServerDiscardPile.Num();
 		break;
 
-	case EFCCardAddDestination::Hand:
+	case EFCCardZone::Hand:
 		if (HandContainer.Num() >= MaxHandSize)
 		{
-			return false; // Hand is full
+			return false;
 		}
 		HandContainer.AddCard(CardId);
 		OnCardHandUpdated.Broadcast();
 		break;
 
-	case EFCCardAddDestination::ExhaustPile:
+	case EFCCardZone::ExhaustPile:
 		ServerExhaustPile.Add(CardId);
 		ExhaustPileCount = ServerExhaustPile.Num();
 		break;
 	}
 
+	SyncReplicatedPileSummaries();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 
 	if (Subsystem)
@@ -391,6 +438,7 @@ void UFCCardDeckComponent::RestoreFromDeckSaveData(const FFCCardDeckSaveData& Sa
 	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = ServerDiscardPile.Num();
 	ExhaustPileCount = ServerExhaustPile.Num();
+	SyncReplicatedPileSummaries();
 
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
@@ -398,28 +446,46 @@ void UFCCardDeckComponent::RestoreFromDeckSaveData(const FFCCardDeckSaveData& Sa
 
 bool UFCCardDeckComponent::Server_PlayCard_Validate(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	if (!CardGuid.IsValid())
-	{
-		return false;
-	}
-
-	const FFCCardItem* Item = HandContainer.FindCard(CardGuid);
-	if (!Item)
-	{
-		return false;
-	}
-
-	if (Item->bIsLocked)
-	{
-		return false;
-	}
-
-	return true;
+	return CardGuid.IsValid() && !TargetInfo.TargetLocation.ContainsNaN();
 }
 
 void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid, const FFCCardTargetInfo& TargetInfo)
 {
-	if (!GetOwner()->HasAuthority())
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	if (TargetInfo.TargetLocation.ContainsNaN())
+	{
+		return;
+	}
+
+	if (const UWorld* World = GetWorld())
+	{
+		const double Now = World->GetTimeSeconds();
+		if (Now - LastPlayCardServerTime < 0.05)
+		{
+			return;
+		}
+		LastPlayCardServerTime = Now;
+	}
+
+	// 1. Resolve and validate caster Pawn before mutating mana/hand state
+	AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
+	if (!Char)
+	{
+		if (const APlayerState* PS = Cast<APlayerState>(GetOwner()))
+		{
+			Char = Cast<AFCCharacterBase>(PS->GetPawn());
+		}
+		else if (const AController* Ctrl = Cast<AController>(GetOwner()))
+		{
+			Char = Cast<AFCCharacterBase>(Ctrl->GetPawn());
+		}
+	}
+
+	if (!Char || Char->IsDead())
 	{
 		return;
 	}
@@ -430,160 +496,177 @@ void UFCCardDeckComponent::Server_PlayCard_Implementation(const FGuid& CardGuid,
 		return;
 	}
 
-	FName CardId = Item->CardId;
+	const FName CardId = Item->CardId;
+	const int32 UpgradeLevel = Item->UpgradeLevel;
 	UFCCardSubsystem* Subsystem = UFCCardSubsystem::GetCardSubsystem(this);
+	const FFCCardTableRow* CardRow = Subsystem ? Subsystem->FindCardRowPtr(CardId) : nullptr;
 	UFCCardDataAsset* DataAsset = Subsystem ? Subsystem->GetCardDataAsset(CardId) : nullptr;
+	const FFCCardGameplayData* CardData = CardRow ? &CardRow->GameplayData : (DataAsset ? &DataAsset->GameplayData : nullptr);
 
-	int32 ManaCost = DataAsset ? DataAsset->GameplayData.BaseManaCost : 1;
-
-	// Check & deduct mana from ASC AttributeSet if available
+	// 2. Build immutable per-invocation execution context
 	UAbilitySystemComponent* ASC = GetOwnerAbilitySystemComponent();
-	if (ASC)
+	FFCCardExecutionContext Context;
+	Context.CasterActor = Char;
+	Context.CasterASC = ASC;
+	Context.DeckComponent = this;
+	Context.CardDataAsset = DataAsset;
+	Context.CardData = CardData;
+	Context.CardGuid = CardGuid;
+	Context.CardId = CardId;
+	Context.UpgradeLevel = UpgradeLevel;
+	Context.RawTargetInfo = TargetInfo;
+
+	// 3. Keyword playability gate (e.g. Card.Keyword.Unplayable)
+	if (CardData && Subsystem)
 	{
-		const UFCAttributeSet* AttributeSet = ASC->GetSet<UFCAttributeSet>();
-		if (AttributeSet && AttributeSet->GetMana() < ManaCost)
+		for (const FGameplayTag& Tag : CardData->CardTags)
 		{
-			return; // Insufficient mana
-		}
-
-		// Deduct mana (unconditionally, even if element condition fails)
-		if (AttributeSet)
-		{
-			const_cast<UFCAttributeSet*>(AttributeSet)->SetMana(AttributeSet->GetMana() - ManaCost);
-		}
-
-		// Handle target element consumption for conditional cards:
-		// If the card requires consuming elements, check & consume from TargetActor.
-		// If condition is not met, card is still played and mana deducted, but effect is skipped.
-		bool bCanApplyConditionalEffects = true;
-		if (DataAsset && DataAsset->GameplayData.RequiresElementConsumption())
-		{
-			if (TargetInfo.TargetActor.IsValid())
+			if (const FFCCardKeywordRuleBase* Rule = Subsystem->FindKeywordRule(Tag))
 			{
-				bCanApplyConditionalEffects = UFCCombatUtils::TryConsumeTargetElements(TargetInfo.TargetActor.Get(), DataAsset->GameplayData.ConsumedElements);
-			}
-			else
-			{
-				bCanApplyConditionalEffects = false;
-			}
-		}
-
-		// If this is a projectile card or targeted card, set target and rotate character towards target on server
-		if (DataAsset && (DataAsset->GameplayData.SpawnsProjectile() || 
-			DataAsset->GameplayData.TargetType == EFCCardTargetType::DirectionalAoE || 
-			DataAsset->GameplayData.TargetType == EFCCardTargetType::SingleTarget))
-		{
-			AFCCharacterBase* Char = Cast<AFCCharacterBase>(GetOwner());
-			if (!Char)
-			{
-				if (const APlayerState* PS = Cast<APlayerState>(GetOwner()))
+				if (!Rule->CanPlayCard(Context))
 				{
-					Char = Cast<AFCCharacterBase>(PS->GetPawn());
-				}
-				else if (const AController* Ctrl = Cast<AController>(GetOwner()))
-				{
-					Char = Cast<AFCCharacterBase>(Ctrl->GetPawn());
+					return;
 				}
 			}
-
-			if (Char)
-			{
-				AActor* ValidTarget = TargetInfo.TargetActor.Get();
-				if (ValidTarget && !UFCCombatUtils::IsAttackableTarget(Char, ValidTarget))
-				{
-					ValidTarget = nullptr;
-				}
-
-				Char->SetCombatTarget(ValidTarget);
-				Char->SetTargetAimLocation(TargetInfo.TargetLocation);
-
-				// Rotate character towards target actor or target location
-				const FVector AimPos = ValidTarget ? ValidTarget->GetActorLocation() : (FVector)TargetInfo.TargetLocation;
-				if (!AimPos.IsZero())
-				{
-					Char->RotateTowardsTarget(AimPos);
-				}
-			}
-		}
-
-		// Trigger GameplayAbility if assigned or if projectile data asset is specified
-		TSubclassOf<UGameplayAbility> AbilityToActivate = DataAsset ? DataAsset->GameplayData.GetCardAbilityClass() : nullptr;
-		if (!AbilityToActivate && DataAsset && DataAsset->GameplayData.SpawnsProjectile() && DataAsset->GameplayData.GetProjectileDataAsset())
-		{
-			AbilityToActivate = UFCGA_SpawnProjectile::StaticClass();
-		}
-
-		if (AbilityToActivate && bCanApplyConditionalEffects)
-		{
-			FGameplayAbilitySpec Spec(AbilityToActivate, Item->UpgradeLevel + 1);
-			Spec.SourceObject = DataAsset;
-			FGameplayAbilitySpecHandle Handle = ASC->GiveAbility(Spec);
-			ASC->TryActivateAbility(Handle);
-		}
-
-		// Apply direct Gameplay Effects if assigned and condition met
-		if (DataAsset && bCanApplyConditionalEffects)
-		{
-			for (const TSubclassOf<UGameplayEffect>& EffectClass : DataAsset->GameplayData.GetCardEffectClasses())
-			{
-				if (EffectClass)
-				{
-					FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
-					Context.AddInstigator(GetOwner(), GetOwner());
-					FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(EffectClass, Item->UpgradeLevel + 1, Context);
-					if (SpecHandle.IsValid())
-					{
-						if (DataAsset->GameplayData.TargetType == EFCCardTargetType::Self || !TargetInfo.TargetActor.IsValid())
-						{
-							ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-						}
-						else if (const IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetInfo.TargetActor.Get()))
-						{
-							if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
-							{
-								TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// If this is a direct single-target attack card with elements, apply element stacks to target
-		if (DataAsset && DataAsset->GameplayData.CardType == EFCCardType::Attack && DataAsset->GameplayData.Elements.Num() > 0 && TargetInfo.TargetActor.IsValid())
-		{
-			UFCCombatUtils::ApplyAttackCardHitTraits(GetOwner(), TargetInfo.TargetActor.Get(), DataAsset->GameplayData.RequiredClass, DataAsset->GameplayData.CardType, DataAsset->GameplayData.Elements);
 		}
 	}
 
-	// Move played card to Exhaust Pile or Discard Pile based on card exhaust keyword/property
-	const bool bShouldExhaust = DataAsset && DataAsset->GameplayData.DoesExhaustOnPlay();
-	if (bShouldExhaust)
+	// 4. Authoritative target resolution via modular TargetPolicy (TInstancedStruct)
+	const FFCCardTargetPolicyBase* TargetPolicy = CardData ? CardData->TargetPolicy.GetPtr() : nullptr;
+	if (TargetPolicy)
 	{
-		ServerExhaustPile.Add(CardId);
-		ExhaustPileCount = ServerExhaustPile.Num();
+		if (!TargetPolicy->VerifyServerTargets(Context, Context.VerifiedTargets, Context.VerifiedAimLocation))
+		{
+			return;
+		}
 	}
-	else
+
+	// 5. Validate mana & hard preconditions before mutating state
+	const int32 ManaCost = CardData ? CardData->BaseManaCost : 1;
+	const UFCAttributeSet* AttributeSet = ASC ? ASC->GetSet<UFCAttributeSet>() : nullptr;
+	if (AttributeSet && AttributeSet->GetMana() < ManaCost)
 	{
-		ServerDiscardPile.Add(CardId);
-		DiscardPileCount = ServerDiscardPile.Num();
+		return;
+	}
+
+	if (CardData)
+	{
+		for (const TInstancedStruct<FFCCardConditionBase>& CondStruct : CardData->Conditions)
+		{
+			if (const FFCCardConditionBase* Cond = CondStruct.GetPtr())
+			{
+				if (Cond->BlocksCardPlayWhenUnmet() && !Cond->CanExecute(Context))
+				{
+					return;
+				}
+			}
+		}
+	}
+
+	// 6. Commit costs (mana + hard/soft conditions) and remove card from hand
+	if (AttributeSet && ManaCost > 0)
+	{
+		const float NewMana = FMath::Max(0.0f, AttributeSet->GetMana() - static_cast<float>(ManaCost));
+		if (ASC && ASC->GetOwnerActor())
+		{
+			const_cast<UFCAttributeSet*>(AttributeSet)->SetMana(NewMana);
+		}
+		else
+		{
+			const_cast<UFCAttributeSet*>(AttributeSet)->InitMana(NewMana);
+		}
 	}
 
 	HandContainer.RemoveCard(CardGuid);
 
+	if (CardData)
+	{
+		for (const TInstancedStruct<FFCCardConditionBase>& CondStruct : CardData->Conditions)
+		{
+			if (const FFCCardConditionBase* Cond = CondStruct.GetPtr())
+			{
+				if (!Cond->ConsumeCost(Context))
+				{
+					Context.bConditionalEffectsAllowed = false;
+				}
+			}
+		}
+	}
+
+	// 7. Orient caster if requested by TargetPolicy
+	if (TargetPolicy && TargetPolicy->ShouldRotateCasterOnPlay())
+	{
+		const AActor* PrimaryTarget = Context.GetPrimaryTarget();
+		const FVector AimPos = PrimaryTarget ? PrimaryTarget->GetActorLocation() : Context.VerifiedAimLocation;
+		if (!AimPos.IsZero())
+		{
+			Char->RotateTowardsTarget(AimPos);
+		}
+	}
+
+	// 8. Execute composite effect fragments sequentially
+	if (CardData && Context.bConditionalEffectsAllowed)
+	{
+		for (const TInstancedStruct<FFCCardEffectBase>& EffectStruct : CardData->PlayEffects)
+		{
+			if (const FFCCardEffectBase* Effect = EffectStruct.GetPtr())
+			{
+				if (Effect->Execute(Context))
+				{
+					Context.bExecutedAnyEffect = true;
+				}
+			}
+		}
+	}
+
+	// 9. Route played card to destination zone determined by KeywordRules (default: DiscardPile)
+	EFCCardZone PostPlayZone = EFCCardZone::DiscardPile;
+	if (CardData && Subsystem)
+	{
+		for (const FGameplayTag& Tag : CardData->CardTags)
+		{
+			if (const FFCCardKeywordRuleBase* Rule = Subsystem->FindKeywordRule(Tag))
+			{
+				if (Rule->OverridePostPlayZone(Context, PostPlayZone))
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	switch (PostPlayZone)
+	{
+	case EFCCardZone::ExhaustPile:
+		ServerExhaustPile.Add(CardId);
+		break;
+	case EFCCardZone::DrawPile:
+		ServerDrawPile.Add(CardId);
+		break;
+	case EFCCardZone::Hand:
+		if (HandContainer.Num() < MaxHandSize)
+		{
+			HandContainer.AddCard(CardId, UpgradeLevel);
+		}
+		else
+		{
+			ServerDiscardPile.Add(CardId);
+		}
+		break;
+	case EFCCardZone::DiscardPile:
+	default:
+		ServerDiscardPile.Add(CardId);
+		break;
+	}
+
+	DrawPileCount = ServerDrawPile.Num();
+	DiscardPileCount = ServerDiscardPile.Num();
+	ExhaustPileCount = ServerExhaustPile.Num();
+	SyncReplicatedPileSummaries();
+
 	OnCardPlayed.Broadcast(CardGuid, CardId);
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
-}
-
-bool UFCCardDeckComponent::Server_DrawCards_Validate(int32 Count)
-{
-	return Count > 0 && Count <= 10;
-}
-
-void UFCCardDeckComponent::Server_DrawCards_Implementation(int32 Count)
-{
-	DrawCards(Count);
 }
 
 void UFCCardDeckComponent::NotifyHandChanged()
@@ -596,6 +679,11 @@ void UFCCardDeckComponent::NotifyItemChanged(const FFCCardItem& Item)
 	OnCardItemChanged.Broadcast(Item);
 }
 
+void UFCCardDeckComponent::NotifyPileSummariesChanged()
+{
+	OnPileSummariesUpdated.Broadcast();
+}
+
 void UFCCardDeckComponent::OnRep_HandContainer()
 {
 	OnCardHandUpdated.Broadcast();
@@ -604,6 +692,27 @@ void UFCCardDeckComponent::OnRep_HandContainer()
 void UFCCardDeckComponent::OnRep_PileCounts()
 {
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
+}
+
+void UFCCardDeckComponent::OnRep_PileSummaries()
+{
+	OnPileSummariesUpdated.Broadcast();
+}
+
+void UFCCardDeckComponent::SyncReplicatedPileSummaries()
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
+	const bool bDrawChanged = DrawPileSummary.SyncFromCardIds(ServerDrawPile);
+	const bool bDiscardChanged = DiscardPileSummary.SyncFromCardIds(ServerDiscardPile);
+
+	if (bDrawChanged || bDiscardChanged)
+	{
+		OnPileSummariesUpdated.Broadcast();
+	}
 }
 
 UAbilitySystemComponent* UFCCardDeckComponent::GetOwnerAbilitySystemComponent() const
@@ -699,22 +808,35 @@ void UFCCardDeckComponent::StartCycleTimer()
 
 	if (UWorld* World = GetWorld())
 	{
-		CycleEndTime = World->GetTimeSeconds() + CycleInterval;
+		const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+		CycleEndTime = ServerTime + static_cast<double>(CycleInterval);
 		World->GetTimerManager().SetTimer(CycleTimerHandle, this, &UFCCardDeckComponent::ExecuteHandCycle, CycleInterval, true);
+		OnCycleTimerUpdated.Broadcast();
 	}
 }
 
 void UFCCardDeckComponent::StopCycleTimer()
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(CycleTimerHandle);
 	}
-	CycleEndTime = 0.0f;
+	CycleEndTime = 0.0;
+	OnCycleTimerUpdated.Broadcast();
 }
 
 void UFCCardDeckComponent::ResetCycleTimer()
 {
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+
 	StopCycleTimer();
 	StartCycleTimer();
 }
@@ -744,46 +866,59 @@ void UFCCardDeckComponent::ExecuteHandCycle()
 
 	UFCCardSubsystem* CardSubsystem = UFCCardSubsystem::GetCardSubsystem(this);
 
-	// 1. Process hand cards: Retain stays in hand, Ethereal exhausts, others discard
-	TArray<FGuid> CardsToExhaust;
-	TArray<FGuid> CardsToDiscard;
+	// 1. Process hand cards through DataTable-driven KeywordRules (default: DiscardPile)
+	TArray<TPair<FGuid, EFCCardZone>> Transitions;
+	Transitions.Reserve(HandContainer.Items.Num());
 
 	for (const FFCCardItem& Item : HandContainer.Items)
 	{
-		const UFCCardDataAsset* DataAsset = CardSubsystem ? CardSubsystem->GetCardDataAsset(Item.CardId) : nullptr;
-		if (DataAsset && DataAsset->GameplayData.DoesRetain())
+		EFCCardZone DestZone = EFCCardZone::DiscardPile;
+		if (CardSubsystem)
 		{
-			// Preserve in hand
-			continue;
+			if (const FFCCardTableRow* CardRow = CardSubsystem->FindCardRowPtr(Item.CardId))
+			{
+				for (const FGameplayTag& Tag : CardRow->GameplayData.CardTags)
+				{
+					if (const FFCCardKeywordRuleBase* Rule = CardSubsystem->FindKeywordRule(Tag))
+					{
+						if (Rule->OverrideCycleEndZone(this, Item, DestZone))
+						{
+							break;
+						}
+					}
+				}
+			}
 		}
-		else if (DataAsset && DataAsset->GameplayData.IsEthereal())
+
+		if (DestZone != EFCCardZone::Hand)
 		{
-			CardsToExhaust.Add(Item.CardGuid);
-		}
-		else
-		{
-			CardsToDiscard.Add(Item.CardGuid);
+			Transitions.Emplace(Item.CardGuid, DestZone);
 		}
 	}
 
-	for (const FGuid& Guid : CardsToExhaust)
+	for (const TPair<FGuid, EFCCardZone>& Transition : Transitions)
 	{
-		if (const FFCCardItem* Item = HandContainer.FindCard(Guid))
+		if (const FFCCardItem* Item = HandContainer.FindCard(Transition.Key))
 		{
-			ServerExhaustPile.Add(Item->CardId);
-			HandContainer.RemoveCard(Guid);
+			const FName MovingCardId = Item->CardId;
+			switch (Transition.Value)
+			{
+			case EFCCardZone::ExhaustPile:
+				ServerExhaustPile.Add(MovingCardId);
+				break;
+			case EFCCardZone::DrawPile:
+				ServerDrawPile.Add(MovingCardId);
+				break;
+			case EFCCardZone::DiscardPile:
+			default:
+				ServerDiscardPile.Add(MovingCardId);
+				break;
+			}
+			HandContainer.RemoveCard(Transition.Key);
 		}
 	}
 
-	for (const FGuid& Guid : CardsToDiscard)
-	{
-		if (const FFCCardItem* Item = HandContainer.FindCard(Guid))
-		{
-			ServerDiscardPile.Add(Item->CardId);
-			HandContainer.RemoveCard(Guid);
-		}
-	}
-
+	DrawPileCount = ServerDrawPile.Num();
 	DiscardPileCount = ServerDiscardPile.Num();
 	ExhaustPileCount = ServerExhaustPile.Num();
 
@@ -792,55 +927,93 @@ void UFCCardDeckComponent::ExecuteHandCycle()
 
 	// 3. Draw configured cards from deck
 	DrawCards(CycleDrawCount);
+	SyncReplicatedPileSummaries();
 
-	// 4. Update cycle timestamp for next interval
-	if (UWorld* World = GetWorld())
+	// 4. Update cycle timestamp for next interval using synchronized server time
+	if (bAutoCycleEnabled && CycleInterval > 0.0f)
 	{
-		CycleEndTime = World->GetTimeSeconds() + CycleInterval;
+		if (UWorld* World = GetWorld())
+		{
+			const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+			CycleEndTime = ServerTime + static_cast<double>(CycleInterval);
+		}
+	}
+	else
+	{
+		CycleEndTime = 0.0;
 	}
 
 	OnCardHandUpdated.Broadcast();
 	OnPileCountsChanged.Broadcast(DrawPileCount, DiscardPileCount, ExhaustPileCount);
 	OnCardCycleTriggered.Broadcast();
-	Client_OnCycleTriggered();
+	OnCycleTimerUpdated.Broadcast();
+	Client_OnCycleTriggered(CycleEndTime);
 }
 
-void UFCCardDeckComponent::Client_OnCycleTriggered_Implementation()
+void UFCCardDeckComponent::Client_OnCycleTriggered_Implementation(double InNextCycleEndTime)
 {
-	OnCardCycleTriggered.Broadcast();
+	if (!GetOwner() || !GetOwner()->HasAuthority())
+	{
+		CycleEndTime = InNextCycleEndTime;
+		OnCardCycleTriggered.Broadcast();
+		OnCycleTimerUpdated.Broadcast();
+	}
 }
 
 float UFCCardDeckComponent::GetCycleRemainingTime() const
 {
-	if (!bAutoCycleEnabled)
+	if (!bAutoCycleEnabled || CycleInterval <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
 		return 0.0f;
 	}
 
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
-		if (const UWorld* World = GetWorld())
+		if (World->GetTimerManager().IsTimerActive(CycleTimerHandle))
 		{
-			if (World->GetTimerManager().IsTimerActive(CycleTimerHandle))
+			const float TimerRemaining = World->GetTimerManager().GetTimerRemaining(CycleTimerHandle);
+			if (TimerRemaining > KINDA_SMALL_NUMBER)
 			{
-				return World->GetTimerManager().GetTimerRemaining(CycleTimerHandle);
+				return FMath::Clamp(TimerRemaining, 0.0f, CycleInterval);
 			}
 		}
 	}
-
-	if (const UWorld* World = GetWorld())
+	else if (!World->GetGameState())
 	{
-		return FMath::Max(0.0f, CycleEndTime - World->GetTimeSeconds());
+		return 0.0f;
 	}
-	return 0.0f;
+
+	if (CycleEndTime <= 0.0)
+	{
+		return 0.0f;
+	}
+
+	const double ServerTime = World->GetGameState() ? World->GetGameState()->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
+	return FMath::Clamp(static_cast<float>(CycleEndTime - ServerTime), 0.0f, CycleInterval);
 }
 
 float UFCCardDeckComponent::GetCycleProgress() const
 {
-	if (CycleInterval <= 0.0f || !bAutoCycleEnabled)
+	if (CycleInterval <= 0.0f || !bAutoCycleEnabled || CycleEndTime <= 0.0)
 	{
 		return 0.0f;
 	}
+
+	if (GetOwner() && !GetOwner()->HasAuthority())
+	{
+		const UWorld* World = GetWorld();
+		if (!World || !World->GetGameState())
+		{
+			return 0.0f;
+		}
+	}
+
 	const float Remaining = GetCycleRemainingTime();
 	return FMath::Clamp(1.0f - (Remaining / CycleInterval), 0.0f, 1.0f);
 }
@@ -848,9 +1021,11 @@ float UFCCardDeckComponent::GetCycleProgress() const
 void UFCCardDeckComponent::OnRep_CycleSettings()
 {
 	OnCycleSettingsChanged.Broadcast(CycleInterval, CycleDrawCount);
+	OnCycleTimerUpdated.Broadcast();
 }
 
 void UFCCardDeckComponent::OnRep_CycleEndTime()
 {
+	OnCycleTimerUpdated.Broadcast();
 }
 

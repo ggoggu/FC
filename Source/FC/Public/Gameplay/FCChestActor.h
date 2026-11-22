@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "AbilitySystemInterface.h"
+#include "Combat/Interfaces/FCCombatTargetInterface.h"
+#include "Data/FCGameplayTags.h"
 #include "Data/Card/FCCardTypes.h"
 #include "Data/Class/FCClassTypes.h"
 #include "FCChestActor.generated.h"
@@ -24,12 +26,18 @@ class UNiagaraSystem;
  * Spawns collectible AFCCardPickupActor drops in the world.
  */
 UCLASS()
-class FC_API AFCChestActor : public AActor, public IAbilitySystemInterface
+class FC_API AFCChestActor : public AActor, public IAbilitySystemInterface, public IFCCombatTargetInterface
 {
 	GENERATED_BODY()
 
 public:
 	AFCChestActor();
+
+	// --- IFCCombatTargetInterface ---
+	virtual FGameplayTag GetCombatTeamTag() const override { return FCGameplayTags::Combat_Target_Destructible; }
+	virtual bool IsCombatTargetAlive() const override { return !bIsOpened; }
+	virtual bool CanBeTargetedBy(const AActor* SourceActor) const override { return !bIsOpened && SourceActor != this; }
+	virtual FVector GetCombatAimLocation() const override { return GetActorLocation(); }
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual class UAbilitySystemComponent* GetAbilitySystemComponent() const override;
@@ -46,7 +54,14 @@ public:
 	float GetDestroyDelay() const { return DestroyDelay; }
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
-	void SetDestroyDelay(float InDelay) { DestroyDelay = FMath::Max(0.0f, InDelay); }
+	void SetDestroyDelay(float InDelay)
+	{
+		if (!HasAuthority())
+		{
+			return;
+		}
+		DestroyDelay = FMath::Max(0.0f, InDelay);
+	}
 
 	/** Manually triggers chest destruction and card drop spawning (Server-Only) */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Chest")
@@ -65,33 +80,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
 	bool bAllowNeutralCards = false;
 
-	/** Specific other classes individually allowed to drop (e.g. Warrior, Rogue) */
+	/** Specific other classes individually allowed to drop (Class.*) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
-	TArray<EFCCharacterClass> AllowedOtherClasses;
+	TArray<FGameplayTag> AllowedOtherClasses;
 
 	/** If true, all other classes are allowed regardless of AllowedOtherClasses (Default: false) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
 	bool bAllowAllOtherClasses = false;
 
-	/** Fallback class used if no player instigator can be resolved */
+	/** Fallback class tag used if no player instigator can be resolved (Class.*) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chest|Drops")
-	EFCCharacterClass FallbackClass = EFCCharacterClass::Mage;
+	FGameplayTag FallbackClass;
 
 	/** Class of the collectible card drop actor to spawn */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chest|Drops")
 	TSubclassOf<AFCCardPickupActor> CardPickupClass;
 
-	/** Resolves the character class of the actor/controller that opened/damaged this chest */
+	/** Resolves the character class GameplayTag of the actor/controller that opened/damaged this chest */
 	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
-	EFCCharacterClass GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const;
+	FGameplayTag GetOpenerClass(AController* InstigatorController, AActor* DamageCauser) const;
 
 	/** Checks whether a specific card is allowed to drop based on opener class and filter settings */
 	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
-	bool IsCardAllowedToDrop(FName CardId, EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
+	bool IsCardAllowedToDrop(FName CardId, FGameplayTag OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
 
 	/** Returns filtered reward cards matching opener class and drop filter settings */
 	UFUNCTION(BlueprintPure, Category = "Chest|Drops")
-	TArray<FName> GetFilteredRewardCardIds(EFCCharacterClass OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
+	TArray<FName> GetFilteredRewardCardIds(FGameplayTag OpenerClass, const UFCCardSubsystem* InCardSubsystem = nullptr) const;
 
 protected:
 	virtual void BeginPlay() override;

@@ -2,10 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "Character/FCCharacterBase.h"
+#include "Data/FCGameplayTags.h"
 #include "FCPlayerCharacter.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
+class UFCCameraComponent;
+class UFCCameraModeDataAsset;
 class UInputAction;
 class UAnimSequence;
 class UAnimMontage;
@@ -20,6 +23,8 @@ class FC_API AFCPlayerCharacter : public AFCCharacterBase
 public:
 	AFCPlayerCharacter();
 
+	virtual FGameplayTag GetCombatTeamTag() const override { return FCGameplayTags::Combat_Team_Player; }
+
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
@@ -27,10 +32,21 @@ public:
 	virtual void OnRep_PlayerState() override;
 
 	virtual void Die(AActor* Killer = nullptr) override;
-	virtual void HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult) override;
 
 	virtual void Jump() override;
 	virtual void StopJumping() override;
+
+	/** Toggles between 1st Person and Shoulder view */
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void ToggleCameraView();
+
+	/** Sets active camera mode data asset */
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void SetCameraMode(UFCCameraModeDataAsset* NewMode);
+
+	/** Camera mode component getter */
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	UFCCameraComponent* GetCameraModeComponent() const { return CameraModeComponent; }
 
 	/** Jump Input Action getter */
 	UFUNCTION(BlueprintPure, Category = "FC|Player|Input")
@@ -67,16 +83,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "FC|Player|Combat")
 	void SetHealOnKillAmount(float InAmount) { HealOnKillAmount = FMath::Max(0.0f, InAmount); }
 
-	/** Plays directional death animation on local mesh */
-	virtual void PlayDeathAnimation(EFCDeathDirection Direction) override;
-
-	UAnimSequence* GetDeathAnimationForDirection(EFCDeathDirection Direction) const;
-
-	/** Plays directional hit reaction animation on local mesh */
-	virtual void PlayHitAnimation(EFCDeathDirection Direction) override;
-
-	UAnimSequence* GetHitAnimationForDirection(EFCDeathDirection Direction) const;
-
 protected:
 	virtual void BeginPlay() override;
 	virtual void InitAbilityActorInfo();
@@ -92,6 +98,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UCameraComponent> CameraComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UFCCameraComponent> CameraModeComponent;
+
 	/** Move Input Action (WASD) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> MoveAction;
@@ -104,52 +113,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> JumpAction;
 
-	/** Directional death animations from Character/Mannequins/Anims/Death */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front_02;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front_03;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Back;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Left;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Right;
-
-	/** Optional hit animation montage override */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimMontage> HitMontage;
-
-	/** Directional hit animations (defaults to animations in Character/Mannequins/Anims/Death) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Front;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Back;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Left;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Right;
-
-	/** Play rate for hit animation */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Animation", meta = (ClampMin = "0.1"))
-	float HitPlayRate = 1.5f;
-
-	/** Minimum time in seconds between playing hit reaction animations */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Player|Combat", meta = (ClampMin = "0.0"))
-	float HitReactionCooldown = 0.25f;
-
-	/** Timestamp of last played hit reaction */
-	float LastHitReactTime = -100.0f;
+	/** Toggle Camera View Input Action (V) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> ToggleCameraAction;
 
 	/** Handler for health drain timer tick */
 	void HandleHealthDrainTick();

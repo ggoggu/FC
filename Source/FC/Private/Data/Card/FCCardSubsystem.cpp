@@ -1,7 +1,7 @@
 #include "Data/Card/FCCardSubsystem.h"
 #include "Data/Card/FCCardDataAsset.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
+#include "Data/FCDataTableSettings.h"
+#include "Data/FCGameplayTags.h"
 #include "Engine/AssetManager.h"
 #include "Engine/DataTable.h"
 #include "Engine/GameInstance.h"
@@ -9,6 +9,57 @@
 #include "Kismet/GameplayStatics.h"
 
 static TWeakObjectPtr<UFCCardSubsystem> GLastActiveCardSubsystem = nullptr;
+
+namespace
+{
+	const TMap<FGameplayTag, FFCCardKeywordRow>& GetBuiltinKeywordDefaults()
+	{
+		static TMap<FGameplayTag, FFCCardKeywordRow> Defaults;
+		if (Defaults.Num() == 0)
+		{
+			auto AddDefault = [&](FGameplayTag Tag, const FText& Name, const FText& Desc, TInstancedStruct<FFCCardKeywordRuleBase> Rule)
+			{
+				FFCCardKeywordRow Row;
+				Row.KeywordTag = Tag;
+				Row.DisplayName = Name;
+				Row.Description = Desc;
+				Row.Rule = MoveTemp(Rule);
+				Defaults.Add(Tag, MoveTemp(Row));
+			};
+
+			AddDefault(
+				FCGameplayTags::Card_Keyword_Exhaust,
+				NSLOCTEXT("FC_Card", "Keyword_Exhaust", "소멸"),
+				NSLOCTEXT("FC_Card", "Keyword_Exhaust_Desc", "사용 후 소멸 더미로 이동합니다."),
+				TInstancedStruct<FFCCardKeywordRuleBase>::Make<FFCCardKeywordRule_Exhaust>());
+
+			AddDefault(
+				FCGameplayTags::Card_Keyword_Retain,
+				NSLOCTEXT("FC_Card", "Keyword_Retain", "보존"),
+				NSLOCTEXT("FC_Card", "Keyword_Retain_Desc", "턴 사이클 종료 시 버리지 않고 손패에 유지됩니다."),
+				TInstancedStruct<FFCCardKeywordRuleBase>::Make<FFCCardKeywordRule_Retain>());
+
+			AddDefault(
+				FCGameplayTags::Card_Keyword_Innate,
+				NSLOCTEXT("FC_Card", "Keyword_Innate", "선천성"),
+				NSLOCTEXT("FC_Card", "Keyword_Innate_Desc", "전투 시작 시 우선적으로 손패에 들어옵니다."),
+				TInstancedStruct<FFCCardKeywordRuleBase>::Make<FFCCardKeywordRule_Innate>());
+
+			AddDefault(
+				FCGameplayTags::Card_Keyword_Ethereal,
+				NSLOCTEXT("FC_Card", "Keyword_Ethereal", "휘발성"),
+				NSLOCTEXT("FC_Card", "Keyword_Ethereal_Desc", "턴 사이클 종료 시 손패에 남아있으면 소멸합니다."),
+				TInstancedStruct<FFCCardKeywordRuleBase>::Make<FFCCardKeywordRule_Ethereal>());
+
+			AddDefault(
+				FCGameplayTags::Card_Keyword_Unplayable,
+				NSLOCTEXT("FC_Card", "Keyword_Unplayable", "사용 불가"),
+				NSLOCTEXT("FC_Card", "Keyword_Unplayable_Desc", "직접 사용할 수 없는 카드입니다."),
+				TInstancedStruct<FFCCardKeywordRuleBase>::Make<FFCCardKeywordRule_Unplayable>());
+		}
+		return Defaults;
+	}
+}
 
 void UFCCardSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -25,7 +76,10 @@ void UFCCardSubsystem::Deinitialize()
 	}
 	CardCatalog.Empty();
 	CachedCardRows.Empty();
-	CardDataTable = nullptr;
+	AliasToCardIdMap.Empty();
+	KeywordCatalog.Empty();
+	CardDataTables.Empty();
+	KeywordDataTables.Empty();
 	bCatalogLoaded = false;
 	Super::Deinitialize();
 }
@@ -55,6 +109,11 @@ UFCCardSubsystem* UFCCardSubsystem::GetCardSubsystem(const UObject* WorldContext
 			}
 		}
 
+		if (GLastActiveCardSubsystem.IsValid())
+		{
+			return GLastActiveCardSubsystem.Get();
+		}
+
 		if (GEngine)
 		{
 			for (const FWorldContext& Context : GEngine->GetWorldContexts())
@@ -79,11 +138,11 @@ UFCCardSubsystem* UFCCardSubsystem::GetCardSubsystem(const UObject* WorldContext
 	return GLastActiveCardSubsystem.Get();
 }
 
-bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
+FName UFCCardSubsystem::ResolveCanonicalCardId(FName CardIdOrAlias) const
 {
-	if (CardId.IsNone())
+	if (CardIdOrAlias.IsNone())
 	{
-		return false;
+		return NAME_None;
 	}
 
 	if (!bCatalogLoaded)
@@ -91,62 +150,76 @@ bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
 		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
-	// Explicit alias redirects for Korean localized identifiers (supports both wide TEXT and narrow string literals)
-	if (CardId == FName(TEXT("Card_점화")) || CardId == FName("Card_점화") || CardId == FName(TEXT("점화")) || CardId == FName("점화"))
+	if (CachedCardRows.Contains(CardIdOrAlias))
 	{
-		return FindCardRow(FName(TEXT("Card_Ignite")), OutRow);
-	}
-	if (CardId == FName(TEXT("Card_센드워")) || CardId == FName("Card_센드워") || CardId == FName(TEXT("센드워")) || CardId == FName("센드워") || CardId == FName(TEXT("센드 워")) || CardId == FName("센드 워"))
-	{
-		return FindCardRow(FName(TEXT("Card_SandWall")), OutRow);
+		return CardIdOrAlias;
 	}
 
-	// 1. Fast in-memory struct lookup
-	if (const FFCCardTableRow* FoundRow = CachedCardRows.Find(CardId))
+	if (const FName* Resolved = AliasToCardIdMap.Find(CardIdOrAlias))
+	{
+		return *Resolved;
+	}
+
+	const FString CardStr = CardIdOrAlias.ToString();
+	if (CardStr.StartsWith(TEXT("DA_")))
+	{
+		const FName StrippedId(*CardStr.RightChop(3));
+		if (CachedCardRows.Contains(StrippedId))
+		{
+			return StrippedId;
+		}
+		if (const FName* Resolved = AliasToCardIdMap.Find(StrippedId))
+		{
+			return *Resolved;
+		}
+	}
+
+	if (CardStr.StartsWith(TEXT("Card_")))
+	{
+		const FName StrippedCard(*CardStr.RightChop(5));
+		if (const FName* Resolved = AliasToCardIdMap.Find(StrippedCard))
+		{
+			return *Resolved;
+		}
+	}
+
+	return NAME_None;
+}
+
+const FFCCardTableRow* UFCCardSubsystem::FindCardRowPtr(FName CardId) const
+{
+	if (CardId.IsNone())
+	{
+		return nullptr;
+	}
+
+	if (!bCatalogLoaded)
+	{
+		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
+	}
+
+	if (const FFCCardTableRow* DirectRow = CachedCardRows.Find(CardId))
+	{
+		return DirectRow;
+	}
+
+	const FName CanonicalId = ResolveCanonicalCardId(CardId);
+	if (!CanonicalId.IsNone())
+	{
+		return CachedCardRows.Find(CanonicalId);
+	}
+
+	return nullptr;
+}
+
+bool UFCCardSubsystem::FindCardRow(FName CardId, FFCCardTableRow& OutRow) const
+{
+	if (const FFCCardTableRow* FoundRow = FindCardRowPtr(CardId))
 	{
 		OutRow = *FoundRow;
 		return true;
 	}
 
-	// Also check without or with DA_ prefix
-	FString CardStr = CardId.ToString();
-	if (CardStr.StartsWith(TEXT("DA_")))
-	{
-		FName StrippedId(*(CardStr.RightChop(3)));
-		if (const FFCCardTableRow* FoundRow = CachedCardRows.Find(StrippedId))
-		{
-			OutRow = *FoundRow;
-			return true;
-		}
-	}
-	else
-	{
-		FName PrefixedId(*(TEXT("DA_") + CardStr));
-		if (const FFCCardTableRow* FoundRow = CachedCardRows.Find(PrefixedId))
-		{
-			OutRow = *FoundRow;
-			return true;
-		}
-	}
-
-	// Check by localized / display name alias (e.g. Card_점화 -> 점화, Card_센드워 -> 센드 워)
-	FString SearchName = CardStr;
-	if (SearchName.StartsWith(TEXT("Card_")))
-	{
-		SearchName = SearchName.RightChop(5);
-	}
-	for (const auto& Pair : CachedCardRows)
-	{
-		FString DisplayNameNoSpaces = Pair.Value.DisplayData.CardName.ToString().Replace(TEXT(" "), TEXT(""));
-		if (DisplayNameNoSpaces.Equals(SearchName, ESearchCase::IgnoreCase) ||
-			Pair.Value.DisplayData.CardName.ToString().Equals(SearchName, ESearchCase::IgnoreCase))
-		{
-			OutRow = Pair.Value;
-			return true;
-		}
-	}
-
-	// 2. Check in-memory PrimaryDataAsset catalog
 	if (const TObjectPtr<UFCCardDataAsset>* FoundAsset = CardCatalog.Find(CardId))
 	{
 		if (FoundAsset->Get())
@@ -172,7 +245,14 @@ void UFCCardSubsystem::GetAllCardIds(TArray<FName>& OutCardIds) const
 	CachedCardRows.GetKeys(UniqueKeys);
 	for (const auto& Pair : CardCatalog)
 	{
-		UniqueKeys.Add(Pair.Key);
+		if (Pair.Value && !Pair.Value->GetCardId().IsNone())
+		{
+			UniqueKeys.Add(Pair.Value->GetCardId());
+		}
+		else
+		{
+			UniqueKeys.Add(Pair.Key);
+		}
 	}
 	OutCardIds = UniqueKeys.Array();
 }
@@ -183,8 +263,7 @@ bool UFCCardSubsystem::HasCard(FName CardId) const
 	{
 		return false;
 	}
-	FFCCardTableRow DummyRow;
-	return FindCardRow(CardId, DummyRow);
+	return FindCardRowPtr(CardId) != nullptr || CardCatalog.Contains(CardId);
 }
 
 UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
@@ -199,18 +278,10 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
 	}
 
-	// Explicit alias redirects for Korean localized identifiers (supports both wide TEXT and narrow string literals)
-	if (CardId == FName(TEXT("Card_점화")) || CardId == FName("Card_점화") || CardId == FName(TEXT("점화")) || CardId == FName("점화"))
-	{
-		return GetCardDataAsset(FName(TEXT("Card_Ignite")));
-	}
-	if (CardId == FName(TEXT("Card_센드워")) || CardId == FName("Card_센드워") || CardId == FName(TEXT("센드워")) || CardId == FName("센드워") || CardId == FName(TEXT("센드 워")) || CardId == FName("센드 워"))
-	{
-		return GetCardDataAsset(FName(TEXT("Card_SandWall")));
-	}
+	const FName CanonicalId = ResolveCanonicalCardId(CardId);
+	const FName LookupKey = CanonicalId.IsNone() ? CardId : CanonicalId;
 
-	// 1. Return already instantiated/cached DataAsset wrapper
-	if (const TObjectPtr<UFCCardDataAsset>* Found = CardCatalog.Find(CardId))
+	if (const TObjectPtr<UFCCardDataAsset>* Found = CardCatalog.Find(LookupKey))
 	{
 		if (Found->Get())
 		{
@@ -218,31 +289,31 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		}
 	}
 
-	// 2. On-demand instantiation from cached row (Zero-Hitch adapter)
-	FFCCardTableRow FoundRow;
-	if (FindCardRow(CardId, FoundRow))
+	if (const FFCCardTableRow* FoundRow = FindCardRowPtr(LookupKey))
 	{
 		UFCCardDataAsset* NewAsset = NewObject<UFCCardDataAsset>(const_cast<UFCCardSubsystem*>(this));
-		NewAsset->GameplayData = FoundRow.GameplayData;
-		NewAsset->DisplayData = FoundRow.DisplayData;
+		NewAsset->GameplayData = FoundRow->GameplayData;
+		NewAsset->DisplayData = FoundRow->DisplayData;
 		if (NewAsset->GameplayData.CardId.IsNone())
 		{
-			NewAsset->GameplayData.CardId = CardId;
+			NewAsset->GameplayData.CardId = LookupKey;
 		}
 
-		const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(NewAsset);
-		const_cast<UFCCardSubsystem*>(this)->CardCatalog.Add(CardId, NewAsset);
+		const_cast<UFCCardSubsystem*>(this)->CardCatalog.Add(LookupKey, NewAsset);
+		if (CardId != LookupKey)
+		{
+			const_cast<UFCCardSubsystem*>(this)->CardCatalog.Add(CardId, NewAsset);
+		}
 		return NewAsset;
 	}
 
-	// 3. Fallback: Standalone PrimaryDataAsset via AssetManager if exists
 	if (UAssetManager* AssetManager = UAssetManager::GetIfInitialized())
 	{
-		FPrimaryAssetId AssetId(FPrimaryAssetType("Card"), CardId);
+		FPrimaryAssetId AssetId(FPrimaryAssetType("Card"), LookupKey);
 		UObject* LoadedObj = AssetManager->GetPrimaryAssetObject(AssetId);
 		if (!LoadedObj)
 		{
-			FSoftObjectPath AssetPath = AssetManager->GetPrimaryAssetPath(AssetId);
+			const FSoftObjectPath AssetPath = AssetManager->GetPrimaryAssetPath(AssetId);
 			if (AssetPath.IsValid())
 			{
 				LoadedObj = AssetPath.TryLoad();
@@ -253,28 +324,6 @@ UFCCardDataAsset* UFCCardSubsystem::GetCardDataAsset(FName CardId) const
 		{
 			const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(CardAsset);
 			return CardAsset;
-		}
-
-		// Also try DA_ prefix if queried without prefix (e.g. Card_Fireball -> DA_Card_Fireball)
-		FString CardStr = CardId.ToString();
-		if (!CardStr.StartsWith(TEXT("DA_")))
-		{
-			FPrimaryAssetId PrefixedAssetId(FPrimaryAssetType("Card"), FName(*(TEXT("DA_") + CardStr)));
-			UObject* PrefixedObj = AssetManager->GetPrimaryAssetObject(PrefixedAssetId);
-			if (!PrefixedObj)
-			{
-				FSoftObjectPath PrefixedPath = AssetManager->GetPrimaryAssetPath(PrefixedAssetId);
-				if (PrefixedPath.IsValid())
-				{
-					PrefixedObj = PrefixedPath.TryLoad();
-				}
-			}
-
-			if (UFCCardDataAsset* CardAsset = Cast<UFCCardDataAsset>(PrefixedObj))
-			{
-				const_cast<UFCCardSubsystem*>(this)->RegisterCardDataAsset(CardAsset);
-				return CardAsset;
-			}
 		}
 	}
 
@@ -295,27 +344,24 @@ void UFCCardSubsystem::RegisterCardDataAsset(UFCCardDataAsset* DataAsset)
 
 	GLastActiveCardSubsystem = this;
 
-	FName CardId = DataAsset->GetCardId();
-	if (!CardId.IsNone())
+	DataAsset->GameplayData.EnsureNormalizedPipeline();
+	const FName CanonicalId = !DataAsset->GetCardId().IsNone() ? DataAsset->GetCardId() : DataAsset->GetFName();
+	CardCatalog.Add(CanonicalId, DataAsset);
+	if (DataAsset->GetFName() != CanonicalId)
 	{
-		CardCatalog.Add(CardId, DataAsset);
+		AliasToCardIdMap.Add(DataAsset->GetFName(), CanonicalId);
 	}
-	CardCatalog.Add(DataAsset->GetFName(), DataAsset);
 
-	// Also sync into CachedCardRows
 	FFCCardTableRow Row;
 	Row.GameplayData = DataAsset->GameplayData;
 	Row.DisplayData = DataAsset->DisplayData;
-	if (!CardId.IsNone())
+	if (Row.GameplayData.CardId.IsNone())
 	{
-		CachedCardRows.Add(CardId, Row);
-		FString CardStr = CardId.ToString();
-		if (CardStr.StartsWith(TEXT("Card_")))
-		{
-			CachedCardRows.Add(FName(*(TEXT("DA_") + CardStr)), Row);
-		}
+		Row.GameplayData.CardId = CanonicalId;
 	}
-	CachedCardRows.Add(DataAsset->GetFName(), Row);
+
+	CachedCardRows.Add(CanonicalId, Row);
+	IndexCardAliases(CanonicalId, Row);
 }
 
 void UFCCardSubsystem::RegisterCardRow(FName CardId, const FFCCardTableRow& InRow)
@@ -325,21 +371,126 @@ void UFCCardSubsystem::RegisterCardRow(FName CardId, const FFCCardTableRow& InRo
 		return;
 	}
 
-	CachedCardRows.Add(CardId, InRow);
-	FString CardStr = CardId.ToString();
-	if (CardStr.StartsWith(TEXT("Card_")))
-	{
-		CachedCardRows.Add(FName(*(TEXT("DA_") + CardStr)), InRow);
-	}
+	GLastActiveCardSubsystem = this;
 
-	// If a cached wrapper already exists, update its payload
+	FFCCardTableRow RowCopy = InRow;
+	if (RowCopy.GameplayData.CardId.IsNone())
+	{
+		RowCopy.GameplayData.CardId = CardId;
+	}
+	RowCopy.GameplayData.EnsureNormalizedPipeline();
+
+	CachedCardRows.Add(CardId, RowCopy);
+	IndexCardAliases(CardId, RowCopy);
+
 	if (TObjectPtr<UFCCardDataAsset>* Found = CardCatalog.Find(CardId))
 	{
 		if (Found->Get())
 		{
-			(*Found)->GameplayData = InRow.GameplayData;
-			(*Found)->DisplayData = InRow.DisplayData;
+			(*Found)->GameplayData = RowCopy.GameplayData;
+			(*Found)->DisplayData = RowCopy.DisplayData;
 		}
+	}
+}
+
+void UFCCardSubsystem::RegisterKeywordRow(const FFCCardKeywordRow& InKeywordRow)
+{
+	if (!InKeywordRow.KeywordTag.IsValid())
+	{
+		return;
+	}
+	KeywordCatalog.Add(InKeywordRow.KeywordTag, InKeywordRow);
+}
+
+const FFCCardKeywordRow* UFCCardSubsystem::FindKeywordRowPtr(FGameplayTag KeywordTag) const
+{
+	if (!KeywordTag.IsValid())
+	{
+		return nullptr;
+	}
+
+	if (!bCatalogLoaded)
+	{
+		const_cast<UFCCardSubsystem*>(this)->LoadCardCatalog();
+	}
+
+	if (const FFCCardKeywordRow* Found = KeywordCatalog.Find(KeywordTag))
+	{
+		return Found;
+	}
+
+	return GetBuiltinKeywordDefaults().Find(KeywordTag);
+}
+
+const FFCCardKeywordRuleBase* UFCCardSubsystem::FindKeywordRule(FGameplayTag KeywordTag) const
+{
+	if (const FFCCardKeywordRow* Row = FindKeywordRowPtr(KeywordTag))
+	{
+		return Row->Rule.GetPtr();
+	}
+	return nullptr;
+}
+
+FText UFCCardSubsystem::FormatKeywordTagsText(const FGameplayTagContainer& InCardTags, const UObject* WorldContextObject)
+{
+	if (InCardTags.IsEmpty())
+	{
+		return FText::GetEmpty();
+	}
+
+	const UFCCardSubsystem* Subsystem = GetCardSubsystem(WorldContextObject);
+	TArray<FText> KeywordTexts;
+
+	for (const FGameplayTag& Tag : InCardTags)
+	{
+		if (!Tag.MatchesTag(FCGameplayTags::Card_Keyword_Root) || Tag == FCGameplayTags::Card_Keyword_Root)
+		{
+			continue;
+		}
+
+		const FFCCardKeywordRow* Row = Subsystem ? Subsystem->FindKeywordRowPtr(Tag) : GetBuiltinKeywordDefaults().Find(Tag);
+		if (Row && !Row->DisplayName.IsEmpty())
+		{
+			KeywordTexts.Add(Row->DisplayName);
+		}
+		else
+		{
+			KeywordTexts.Add(FText::FromName(Tag.GetTagName()));
+		}
+	}
+
+	if (KeywordTexts.Num() == 0)
+	{
+		return FText::GetEmpty();
+	}
+
+	return FText::Join(FText::FromString(TEXT(", ")), KeywordTexts);
+}
+
+void UFCCardSubsystem::IndexCardAliases(FName CanonicalId, const FFCCardTableRow& Row)
+{
+	const FString CanonicalStr = CanonicalId.ToString();
+	if (CanonicalStr.StartsWith(TEXT("Card_")))
+	{
+		AliasToCardIdMap.Add(FName(*(TEXT("DA_") + CanonicalStr)), CanonicalId);
+	}
+
+	for (const FName& Alias : Row.GameplayData.LegacyAliases)
+	{
+		if (!Alias.IsNone() && Alias != CanonicalId)
+		{
+			AliasToCardIdMap.Add(Alias, CanonicalId);
+		}
+	}
+
+	const FString DisplayStr = Row.DisplayData.CardName.ToString();
+	if (!DisplayStr.IsEmpty())
+	{
+		const FString DisplayNoSpaces = DisplayStr.Replace(TEXT(" "), TEXT(""));
+		AliasToCardIdMap.Add(FName(*DisplayStr), CanonicalId);
+		AliasToCardIdMap.Add(FName(*DisplayNoSpaces), CanonicalId);
+		AliasToCardIdMap.Add(FName(*(TEXT("Card_") + DisplayStr)), CanonicalId);
+		AliasToCardIdMap.Add(FName(*(TEXT("Card_") + DisplayNoSpaces)), CanonicalId);
 	}
 }
 
@@ -349,39 +500,25 @@ TSharedPtr<FStreamableHandle> UFCCardSubsystem::PreloadCardAssetsAsync(const TAr
 
 	for (const FName& CardId : CardIds)
 	{
-		FFCCardTableRow Row;
-		if (FindCardRow(CardId, Row))
+		if (const FFCCardTableRow* Row = FindCardRowPtr(CardId))
 		{
-			if (!Row.GameplayData.CardAbilityClass.IsNull())
+			Row->GameplayData.GatherSoftAssetPaths(AssetsToStream);
+
+			if (!Row->DisplayData.CardIcon.IsNull())
 			{
-				AssetsToStream.AddUnique(Row.GameplayData.CardAbilityClass.ToSoftObjectPath());
+				AssetsToStream.AddUnique(Row->DisplayData.CardIcon.ToSoftObjectPath());
 			}
-			for (const TSoftClassPtr<UGameplayEffect>& EffectClass : Row.GameplayData.CardEffectClasses)
+			if (!Row->DisplayData.CardFrame.IsNull())
 			{
-				if (!EffectClass.IsNull())
-				{
-					AssetsToStream.AddUnique(EffectClass.ToSoftObjectPath());
-				}
+				AssetsToStream.AddUnique(Row->DisplayData.CardFrame.ToSoftObjectPath());
 			}
-			if (!Row.GameplayData.ProjectileDataAsset.IsNull())
+			if (!Row->DisplayData.PlaySound.IsNull())
 			{
-				AssetsToStream.AddUnique(Row.GameplayData.ProjectileDataAsset.ToSoftObjectPath());
+				AssetsToStream.AddUnique(Row->DisplayData.PlaySound.ToSoftObjectPath());
 			}
-			if (!Row.DisplayData.CardIcon.IsNull())
+			if (!Row->DisplayData.PlayVFX.IsNull())
 			{
-				AssetsToStream.AddUnique(Row.DisplayData.CardIcon.ToSoftObjectPath());
-			}
-			if (!Row.DisplayData.CardFrame.IsNull())
-			{
-				AssetsToStream.AddUnique(Row.DisplayData.CardFrame.ToSoftObjectPath());
-			}
-			if (!Row.DisplayData.PlaySound.IsNull())
-			{
-				AssetsToStream.AddUnique(Row.DisplayData.PlaySound.ToSoftObjectPath());
-			}
-			if (!Row.DisplayData.PlayVFX.IsNull())
-			{
-				AssetsToStream.AddUnique(Row.DisplayData.PlayVFX.ToSoftObjectPath());
+				AssetsToStream.AddUnique(Row->DisplayData.PlayVFX.ToSoftObjectPath());
 			}
 		}
 	}
@@ -401,17 +538,203 @@ TSharedPtr<FStreamableHandle> UFCCardSubsystem::PreloadCardAssetsAsync(const TAr
 
 void UFCCardSubsystem::SetCardDataTable(UDataTable* InDataTable)
 {
-	CardDataTable = InDataTable;
-	bCatalogLoaded = false;
-	LoadCardCatalog();
+	GLastActiveCardSubsystem = this;
+	CardDataTables.Reset();
+	CachedCardRows.Empty();
+	AliasToCardIdMap.Empty();
+	CardCatalog.Empty();
+
+	if (InDataTable)
+	{
+		CardDataTables.Add(InDataTable);
+	}
+
+	bCatalogLoaded = true;
+	RegisterDefaultCoreKeywords();
+	IngestDataTable(InDataTable);
+}
+
+void UFCCardSubsystem::AddCardDataTable(UDataTable* InDataTable)
+{
+	if (!InDataTable)
+	{
+		return;
+	}
+
+	if (!bCatalogLoaded)
+	{
+		LoadCardCatalog();
+	}
+
+	if (!CardDataTables.Contains(InDataTable))
+	{
+		CardDataTables.Add(InDataTable);
+	}
+
+	IngestDataTable(InDataTable);
+}
+
+void UFCCardSubsystem::AddKeywordDataTable(UDataTable* InKeywordTable)
+{
+	if (!InKeywordTable)
+	{
+		return;
+	}
+
+	if (!bCatalogLoaded)
+	{
+		LoadCardCatalog();
+	}
+
+	if (!KeywordDataTables.Contains(InKeywordTable))
+	{
+		KeywordDataTables.Add(InKeywordTable);
+	}
+
+	IngestKeywordDataTable(InKeywordTable);
+}
+
+void UFCCardSubsystem::IngestDataTable(UDataTable* Table)
+{
+	if (!Table || !Table->GetRowStruct() || !Table->GetRowStruct()->IsChildOf(FFCCardTableRow::StaticStruct()))
+	{
+		return;
+	}
+
+	for (const auto& RowPair : Table->GetRowMap())
+	{
+		const FName RowName = RowPair.Key;
+		const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
+		if (!TableRow)
+		{
+			continue;
+		}
+
+		if (CachedCardRows.Contains(RowName))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[UFCCardSubsystem] Duplicate CardId '%s' detected while loading DataTable '%s'; overriding previous row."),
+				*RowName.ToString(), *Table->GetName());
+		}
+
+		RegisterCardRow(RowName, *TableRow);
+	}
+}
+
+void UFCCardSubsystem::IngestKeywordDataTable(UDataTable* Table)
+{
+	if (!Table || !Table->GetRowStruct() || !Table->GetRowStruct()->IsChildOf(FFCCardKeywordRow::StaticStruct()))
+	{
+		return;
+	}
+
+	for (const auto& RowPair : Table->GetRowMap())
+	{
+		if (const FFCCardKeywordRow* KeywordRow = reinterpret_cast<const FFCCardKeywordRow*>(RowPair.Value))
+		{
+			RegisterKeywordRow(*KeywordRow);
+		}
+	}
+}
+
+void UFCCardSubsystem::RegisterDefaultCoreKeywords()
+{
+	for (const auto& Pair : GetBuiltinKeywordDefaults())
+	{
+		if (!KeywordCatalog.Contains(Pair.Key))
+		{
+			KeywordCatalog.Add(Pair.Key, Pair.Value);
+		}
+	}
+}
+
+bool UFCCardSubsystem::CompareCardDisplayOrder(
+	EFCCardType LeftType, int32 LeftCost, const FText& LeftName, FName LeftId,
+	EFCCardType RightType, int32 RightCost, const FText& RightName, FName RightId)
+{
+	if (LeftType != RightType)
+	{
+		return static_cast<uint8>(LeftType) < static_cast<uint8>(RightType);
+	}
+
+	if (LeftCost != RightCost)
+	{
+		return LeftCost < RightCost;
+	}
+
+	const FString LeftStr = LeftName.ToString();
+	const FString RightStr = RightName.ToString();
+	const int32 NameCmp = LeftStr.Compare(RightStr, ESearchCase::IgnoreCase);
+	if (NameCmp != 0)
+	{
+		return NameCmp < 0;
+	}
+
+	return LeftId.LexicalLess(RightId);
+}
+
+void UFCCardSubsystem::SortCardIdsForDisplay(TArray<FName>& InOutCardIds) const
+{
+	InOutCardIds.Sort([this](const FName& A, const FName& B)
+	{
+		const FFCCardTableRow* RowA = FindCardRowPtr(A);
+		const FFCCardTableRow* RowB = FindCardRowPtr(B);
+
+		if (RowA && RowB)
+		{
+			const FText NameA = !RowA->DisplayData.CardName.IsEmpty() ? RowA->DisplayData.CardName : FText::FromName(A);
+			const FText NameB = !RowB->DisplayData.CardName.IsEmpty() ? RowB->DisplayData.CardName : FText::FromName(B);
+			return CompareCardDisplayOrder(
+				RowA->GameplayData.CardType, RowA->GameplayData.BaseManaCost, NameA, A,
+				RowB->GameplayData.CardType, RowB->GameplayData.BaseManaCost, NameB, B);
+		}
+
+		if ((RowA != nullptr) != (RowB != nullptr))
+		{
+			return RowA != nullptr;
+		}
+
+		return A.LexicalLess(B);
+	});
 }
 
 void UFCCardSubsystem::LoadCardCatalog()
 {
 	bCatalogLoaded = true;
+	RegisterDefaultCoreKeywords();
 
-	// 1. Load DataTable if not already bound
-	if (!CardDataTable)
+	// 1. Load configured split DataTables from UFCDataTableSettings
+	if (const UFCDataTableSettings* Settings = GetDefault<UFCDataTableSettings>())
+	{
+		if (CardDataTables.Num() == 0)
+		{
+			for (const TSoftObjectPtr<UDataTable>& SoftTable : Settings->CardDataTables)
+			{
+				if (!SoftTable.IsNull())
+				{
+					if (UDataTable* LoadedTable = SoftTable.LoadSynchronous())
+					{
+						CardDataTables.AddUnique(LoadedTable);
+					}
+				}
+			}
+		}
+
+		if (KeywordDataTables.Num() == 0)
+		{
+			for (const TSoftObjectPtr<UDataTable>& SoftKeywordTable : Settings->CardKeywordTables)
+			{
+				if (!SoftKeywordTable.IsNull())
+				{
+					if (UDataTable* LoadedTable = SoftKeywordTable.LoadSynchronous())
+					{
+						KeywordDataTables.AddUnique(LoadedTable);
+					}
+				}
+			}
+		}
+	}
+
+	if (CardDataTables.Num() == 0)
 	{
 		const TArray<FString> DataTableCandidatePaths = {
 			TEXT("/Game/Data/Card/DT_CardCatalog.DT_CardCatalog"),
@@ -422,26 +745,23 @@ void UFCCardSubsystem::LoadCardCatalog()
 		{
 			if (UDataTable* LoadedTable = Cast<UDataTable>(StaticLoadObject(UDataTable::StaticClass(), nullptr, *PathStr)))
 			{
-				CardDataTable = LoadedTable;
+				CardDataTables.AddUnique(LoadedTable);
 				break;
-			}
-		}
-
-		if (CardDataTable)
-		{
-			for (const auto& RowPair : CardDataTable->GetRowMap())
-			{
-				const FName RowName = RowPair.Key;
-				const FFCCardTableRow* TableRow = reinterpret_cast<const FFCCardTableRow*>(RowPair.Value);
-				if (TableRow)
-				{
-					RegisterCardRow(RowName, *TableRow);
-				}
 			}
 		}
 	}
 
-	// 4. AssetManager metadata scan: Only register already-in-memory PrimaryDataAssets without blocking disk loads
+	for (UDataTable* KeywordTable : KeywordDataTables)
+	{
+		IngestKeywordDataTable(KeywordTable);
+	}
+
+	for (UDataTable* Table : CardDataTables)
+	{
+		IngestDataTable(Table);
+	}
+
+	// 2. AssetManager metadata scan
 	if (UAssetManager* AssetManager = UAssetManager::GetIfInitialized())
 	{
 		TArray<FPrimaryAssetId> AssetIdList;
@@ -459,4 +779,3 @@ void UFCCardSubsystem::LoadCardCatalog()
 		}
 	}
 }
-

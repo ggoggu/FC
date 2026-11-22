@@ -5,7 +5,7 @@ void FFCElementStackItem::PostReplicatedAdd(const FFCElementStackContainer& InAr
 {
 	if (InArraySerializer.OwnerComponent)
 	{
-		InArraySerializer.OwnerComponent->NotifyStackItemAdded(Element);
+		InArraySerializer.OwnerComponent->NotifyStackItemAdded(ElementTag);
 	}
 }
 
@@ -21,6 +21,6 @@ void FFCElementStackItem::PreReplicatedRemove(const FFCElementStackContainer& In
 {
 	if (InArraySerializer.OwnerComponent)
 	{
-		InArraySerializer.OwnerComponent->NotifyStackItemRemoved(Element);
+		InArraySerializer.OwnerComponent->NotifyStackItemRemoved(ElementTag);
 	}
 }

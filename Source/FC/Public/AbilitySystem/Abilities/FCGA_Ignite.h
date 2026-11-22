@@ -31,7 +31,11 @@ public:
 		const FGameplayEventData* TriggerEventData
 	) override;
 
-	/** Base damage multiplier dealt per 1 Fire stack on the target (Default: 10.0) */
+	/** Element GameplayTag whose stacks scale damage (defaults to Element.Fire; supports any Element.*) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ignite|Combat")
+	FGameplayTag TargetElementTag;
+
+	/** Base damage multiplier dealt per 1 element stack on the target (Default: 10.0) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Ignite|Combat", meta = (ClampMin = "0.0"))
 	float DamagePerStack = 10.0f;
 
@@ -64,8 +68,8 @@ public:
 
 	/**
 	 * Static modular combat helper:
-	 * Deals (FireStacks * InDamagePerStack) to TargetActor from InstigatorActor.
-	 * Returns the calculated damage applied, or 0 if no Fire stacks or invalid target.
+	 * Deals (ElementStacks * InDamagePerStack) to TargetActor from InstigatorActor.
+	 * Defaults to Element.Fire when InElementTag is omitted/invalid.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "FC|Combat|Ignite")
 	static float ApplyIgniteToTarget(
@@ -73,7 +77,8 @@ public:
 		AActor* TargetActor,
 		float InDamagePerStack = 10.0f,
 		bool bInConsumeStacks = false,
-		TSubclassOf<UGameplayEffect> InDamageEffectClass = nullptr
+		TSubclassOf<UGameplayEffect> InDamageEffectClass = nullptr,
+		FGameplayTag InElementTag = FGameplayTag()
 	);
 
 	/** Finds all viable nearby enemy actors around CenterActor within InRadius */

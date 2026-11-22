@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Character/FCCharacterBase.h"
+#include "Combat/Interfaces/FCProjectileProviderInterface.h"
+#include "Data/FCGameplayTags.h"
 #include "AI/FCAITypes.h"
 class AFCMobCharacter;
 class AFCMobAIController;
@@ -18,26 +20,22 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFCOnChestDroppedSignature, AFCMobC
  * Humanoid Mob Character with automated AI navigation and replication
  */
 UCLASS()
-class FC_API AFCMobCharacter : public AFCCharacterBase
+class FC_API AFCMobCharacter : public AFCCharacterBase, public IFCProjectileProviderInterface
 {
 	GENERATED_BODY()
 
 public:
 	AFCMobCharacter();
 
+	// --- IFCCombatTargetInterface ---
+	virtual FGameplayTag GetCombatTeamTag() const override { return FCGameplayTags::Combat_Team_Enemy; }
+
+	// --- IFCProjectileProviderInterface ---
+	virtual TSubclassOf<AFCProjectileBase> GetProjectileClassOverrideForAbility() const override { return ProjectileClassOverride; }
+	virtual const UFCProjectileDataAsset* GetProjectileDataAssetOverrideForAbility() const override { return ProjectileDataAssetOverride.Get(); }
+
 	virtual void Die(AActor* Killer = nullptr) override;
-
-	virtual void HandleDamageTaken(float DamageAmount, AActor* DamageCauser, const FHitResult& HitResult) override;
-
-	/** Plays directional death animation on local mesh */
 	virtual void PlayDeathAnimation(EFCDeathDirection Direction) override;
-
-	UAnimSequence* GetDeathAnimationForDirection(EFCDeathDirection Direction) const;
-
-	/** Plays directional hit reaction animation on local mesh */
-	virtual void PlayHitAnimation(EFCDeathDirection Direction) override;
-
-	UAnimSequence* GetHitAnimationForDirection(EFCDeathDirection Direction) const;
 
 	/** Sets movement speed to arbitrary value */
 	UFUNCTION(BlueprintCallable, Category = "FC|Mob|Movement")
@@ -178,53 +176,6 @@ protected:
 	/** If true, snaps chest spawn location to the ground beneath the mob */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FC|Mob|Drop")
 	bool bSnapChestToGround = true;
-
-	/** Directional death animations from Character/Mannequins/Anims/Death */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front_02;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Front_03;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Back;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Left;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> DeathAnim_Right;
-
-	/** Optional hit animation montage override */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimMontage> HitMontage;
-
-	/** Directional hit animations (defaults to Death animations from Character/Mannequins/Anims/Death) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Front;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Back;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Left;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation")
-	TObjectPtr<UAnimSequence> HitAnim_Right;
-
-	/** Play rate for hit animation */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Animation", meta = (ClampMin = "0.1"))
-	float HitPlayRate = 1.5f;
-
-	/** Minimum time in seconds between playing hit reaction animations */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "FC|Mob|Combat", meta = (ClampMin = "0.0"))
-	float HitReactionCooldown = 0.25f;
-
-	/** Timestamp of last played hit reaction */
-	float LastHitReactTime = -100.0f;
 
 	/** Overhead Widget Component for displaying health, name, or elemental stacks */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FC|Mob|UI", meta = (AllowPrivateAccess = "true"))
