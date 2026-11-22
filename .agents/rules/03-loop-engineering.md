@@ -29,11 +29,9 @@
 ```
 - **Harness Self-Test**: Whenever harness scripts or hooks are legitimately updated, run `python Scripts/tests/test_linters.py`.
 
-## 3. Error Triage Quick Reference
-| Error Pattern | Root Cause | Resolution |
+## 3. Project Linter Triage Quick Reference
+| Rule ID | Root Cause | Resolution |
 | :--- | :--- | :--- |
-| `C2065` | Missing include / forward decl | Add `#include` in `.cpp` or forward declare in `.h`. |
-| `LNK2019 / LNK2001` | Missing module in `FC.Build.cs` or undefined symbol | Add module dependency or implement body. |
 | `CODE_UNSAFE_RAW_THIS_LAMBDA` | `.AddLambda([this])` / `.BindLambda([this])` | Switch to `.AddWeakLambda(this, ...)` / `.BindWeakLambda(this, ...)`. |
 | `CODE_HARDCODED_ASSET_PATH` | New `ConstructorHelpers::FObjectFinder`/`FClassFinder` | Use `TSoftObjectPtr`, `UPrimaryDataAsset`, or BP Class Defaults. |
 | `REPL_BYPASSED_AUTHORITY_SETTER` | `Replicated` + `BlueprintReadWrite` missing `BlueprintSetter` | Add `BlueprintSetter = Set<Prop>` or use `BlueprintReadOnly`. |

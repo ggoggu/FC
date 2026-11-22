@@ -58,6 +58,53 @@ def get_dirty_cpp_files(repo_root: Path) -> list[str]:
     return sorted(set(dirty))
 
 
+def get_dirty_harness_files(repo_root: Path) -> list[str]:
+    """Detects modified/untracked protected harness files (catches run_command edits that bypass PreToolUse)."""
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--", "Scripts", ".agents", "AGENTS.md"],
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        if proc.returncode != 0:
+            return []
+    except Exception:
+        return []
+
+    protected_exact = {
+        "agents.md",
+        "scripts/verify_replication.py",
+        "scripts/verify_gas.py",
+        "scripts/audit_bandwidth.py",
+        "scripts/pipeline.py",
+        "scripts/build_harness.py",
+        "scripts/run_tests.py",
+        "scripts/simulate_net_pie.py",
+        "scripts/ue_env.py",
+        "scripts/linter_baseline.json",
+        ".agents/hooks.json",
+    }
+    protected_prefixes = ("scripts/tests/", ".agents/hooks/", ".agents/rules/")
+
+    dirty = []
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        path_part = line[3:].strip()
+        if " -> " in path_part:
+            path_part = path_part.split(" -> ", 1)[1].strip()
+        norm = path_part.strip('"').replace("\\", "/")
+        low = norm.lower()
+        if low in protected_exact or any(low.startswith(p) for p in protected_prefixes):
+            dirty.append(norm)
+    return sorted(set(dirty))
+
+
 def evaluate_stop(payload: dict) -> dict:
     # Never trap non-normal termination or re-trigger infinitely after a Stop continuation
     if payload.get("continuationActive"):
@@ -72,46 +119,63 @@ def evaluate_stop(payload: dict) -> dict:
     if not pipeline_script.is_file():
         return {"decision": "allow"}
 
-    dirty_cpp = get_dirty_cpp_files(repo_root)
-    if not dirty_cpp:
-        return {"decision": "allow"}
-
     failures = []
-    if len(dirty_cpp) <= 5:
-        for rel_file in dirty_cpp:
-            proc = subprocess.run(
-                [sys.executable, str(pipeline_script), "static", "--file", rel_file],
-                cwd=str(repo_root),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=20,
-            )
-            if proc.returncode != 0:
-                failures.append(f"[{rel_file}]\n{proc.stdout.strip()}")
-    else:
+
+    # 1. If any harness/rule/hook files were modified, enforce harness meta-tests (including Doc Drift & Stale Baseline)
+    dirty_harness = get_dirty_harness_files(repo_root)
+    meta_test_script = repo_root / "Scripts" / "tests" / "test_linters.py"
+    if dirty_harness and meta_test_script.is_file():
         proc = subprocess.run(
-            [sys.executable, str(pipeline_script), "static"],
+            [sys.executable, str(meta_test_script)],
             cwd=str(repo_root),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=25,
+            timeout=20,
         )
         if proc.returncode != 0:
-            failures.append(proc.stdout.strip())
+            failures.append(f"[Harness Meta-Tests ({', '.join(dirty_harness[:3])})]\n{proc.stdout.strip()}")
+
+    # 2. If C++ files under Source/ were modified, enforce deterministic static gate
+    dirty_cpp = get_dirty_cpp_files(repo_root)
+    if dirty_cpp:
+        if len(dirty_cpp) <= 5:
+            for rel_file in dirty_cpp:
+                proc = subprocess.run(
+                    [sys.executable, str(pipeline_script), "static", "--file", rel_file],
+                    cwd=str(repo_root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=20,
+                )
+                if proc.returncode != 0:
+                    failures.append(f"[{rel_file}]\n{proc.stdout.strip()}")
+        else:
+            proc = subprocess.run(
+                [sys.executable, str(pipeline_script), "static"],
+                cwd=str(repo_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=25,
+            )
+            if proc.returncode != 0:
+                failures.append(proc.stdout.strip())
 
     if failures:
         joined = "\n\n".join(failures)[:2500]
         return {
             "decision": "continue",
             "reason": (
-                "Pre-Completion Static Gate FAILED on modified C++ files.\n"
-                "Fix all deterministic linter errors and verify with `python Scripts/pipeline.py static`:\n\n"
+                "Pre-Completion Gate FAILED on modified C++ or harness files.\n"
+                "Fix all deterministic errors and verify with `python Scripts/pipeline.py static` / `python Scripts/tests/test_linters.py`:\n\n"
                 f"{joined}"
             ),
         }

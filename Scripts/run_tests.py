@@ -13,75 +13,12 @@ import subprocess
 import argparse
 from pathlib import Path
 
-DEFAULT_ENGINE_CANDIDATES = [
-    r"C:\Program Files\Epic Games\UE_5.8",
-    r"C:\Program Files\Epic Games\UE_5.7",
-    r"C:\Program Files\Epic Games\UE_5.6",
-    r"C:\Program Files\Epic Games\UE_5.5",
-]
-
-def find_uproject_file(start_dir: Path) -> Path | None:
-    current = start_dir.resolve()
-    for _ in range(5):
-        uprojects = list(current.glob("*.uproject"))
-        if uprojects:
-            return uprojects[0]
-        if current.parent == current:
-            break
-        current = current.parent
-    return None
-
-def query_registry_engine_paths() -> list[str]:
-    paths = []
-    if sys.platform != "win32":
-        return paths
-    try:
-        import winreg
-        for root_key in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-            try:
-                with winreg.OpenKey(root_key, r"SOFTWARE\EpicGames\Unreal Engine") as key:
-                    num_subkeys = winreg.QueryInfoKey(key)[0]
-                    for i in range(num_subkeys):
-                        subkey_name = winreg.EnumKey(key, i)
-                        with winreg.OpenKey(key, subkey_name) as subkey:
-                            try:
-                                installed_dir, _ = winreg.QueryValueEx(subkey, "InstalledDirectory")
-                                if installed_dir and os.path.exists(installed_dir):
-                                    paths.append(installed_dir)
-                            except OSError:
-                                pass
-            except OSError:
-                pass
-    except Exception:
-        pass
-    return paths
-
-def locate_editor_cmd(explicit_engine_dir: str | None = None) -> tuple[Path | None, Path | None]:
-    search_dirs = []
-    
-    if explicit_engine_dir:
-        search_dirs.append(Path(explicit_engine_dir))
-
-    for env_var in ["UE_5_8_PATH", "UNREAL_ENGINE_PATH", "UE_ROOT", "ENGINE_PATH", "UE_ENGINE_DIR"]:
-        val = os.environ.get(env_var)
-        if val and os.path.exists(val):
-            search_dirs.append(Path(val))
-
-    for candidate in DEFAULT_ENGINE_CANDIDATES:
-        if os.path.exists(candidate):
-            search_dirs.append(Path(candidate))
-
-    for reg_path in query_registry_engine_paths():
-        p = Path(reg_path)
-        if p.exists() and p not in search_dirs:
-            search_dirs.append(p)
-
-    for engine_dir in search_dirs:
-        editor_cmd = engine_dir / "Engine" / "Binaries" / ("Win64" if sys.platform == "win32" else "Linux") / ("UnrealEditor-Cmd.exe" if sys.platform == "win32" else "UnrealEditor-Cmd")
-        if editor_cmd.is_file():
-            return editor_cmd, engine_dir
-
-    return None, None
+from ue_env import (
+    DEFAULT_ENGINE_CANDIDATES,
+    find_uproject_file,
+    locate_editor_cmd,
+    query_registry_engine_paths,
+)
 
 def parse_automation_output(raw_output: str) -> tuple[list[dict], int, int, int]:
     tests = []

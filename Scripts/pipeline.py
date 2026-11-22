@@ -6,7 +6,6 @@ A token-efficient, fail-fast master runner for FC project verification and autom
 Modes:
   - static  : Runs GAS verification, bandwidth audit, and replication analysis (Ultra fast, ~0.4s full / ~0.03s with --file).
   - build   : Runs UBT build harness, parses compilation diagnostics, and tracks Oscillation Circuit Breaker state.
-  - balance : Runs mathematical TTK and weapon balance simulation.
   - test    : Runs headless automation tests.
   - net     : Runs multiplayer network degradation PIE simulation.
   - inspect : Extracts Ground Truth JSON metadata for BP/WBP/Anim (.uasset) with mtime schema caching.
@@ -17,7 +16,6 @@ Usage:
   python Scripts/pipeline.py static
   python Scripts/pipeline.py static --file Source/FC/Public/Map/FCDoorBase.h
   python Scripts/pipeline.py build
-  python Scripts/pipeline.py balance
   python Scripts/pipeline.py inspect --asset Content/UI/BP/WBP_HUD.uasset
   python Scripts/pipeline.py full
   python Scripts/pipeline.py full --auto-commit -m "feat(combat): implement stamina ability"
@@ -245,22 +243,6 @@ def run_build_check(clean: bool = False) -> tuple[bool, dict]:
     }
     return is_ok, summary
 
-def run_balance_check() -> tuple[bool, dict]:
-    """Runs TTK and weapon balance simulation."""
-    retcode, data, _ = run_script_json("simulate_ttk_balance.py", ["--benchmark"])
-    status = data.get("status", "PASS").upper()
-    is_ok = (status == "PASS" and retcode == 0)
-    duration = data.get("_duration", 0.0)
-
-    summary = {
-        "mode": "balance",
-        "passed": is_ok,
-        "status": status,
-        "duration": duration,
-        "details": data
-    }
-    return is_ok, summary
-
 def run_test_check() -> tuple[bool, dict]:
     """Runs headless automation tests."""
     retcode, data, _ = run_script_json("run_tests.py")
@@ -312,8 +294,7 @@ def run_inspect_check(asset: str, deep: bool = False, no_cache: bool = False) ->
     return is_ok, summary
 
 def run_audit_check() -> tuple[bool, dict]:
-    """Packages C++ git diff and runs replication/bandwidth static checks for SubAgent audit."""
-    subprocess.run(["git", "add", "-N", "."], cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Packages C++ git diff (tracked + untracked, without mutating git index) and runs static checks for SubAgent audit."""
     proc_files = subprocess.run(
         ["git", "diff", "--name-only", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
         cwd=str(PROJECT_ROOT),
@@ -322,7 +303,18 @@ def run_audit_check() -> tuple[bool, dict]:
         encoding="utf-8",
         errors="replace"
     )
-    changed_files = [f.strip() for f in proc_files.stdout.splitlines() if f.strip()]
+    proc_untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.h", "*.cpp", "*.cs"],
+        cwd=str(PROJECT_ROOT),
+        stdout=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace"
+    )
+    tracked_files = [f.strip() for f in proc_files.stdout.splitlines() if f.strip()]
+    untracked_files = [f.strip() for f in proc_untracked.stdout.splitlines() if f.strip()]
+    changed_files = sorted(set(tracked_files + untracked_files))
+
     proc_diff = subprocess.run(
         ["git", "diff", "HEAD", "--", "*.h", "*.cpp", "*.cs"],
         cwd=str(PROJECT_ROOT),
@@ -331,8 +323,14 @@ def run_audit_check() -> tuple[bool, dict]:
         encoding="utf-8",
         errors="replace"
     )
-    diff_text = proc_diff.stdout
-    diff_lines = len(diff_text.splitlines())
+    diff_lines = len(proc_diff.stdout.splitlines())
+    for uf in untracked_files:
+        uf_path = PROJECT_ROOT / uf
+        if uf_path.is_file():
+            try:
+                diff_lines += len(uf_path.read_text(encoding="utf-8", errors="replace").splitlines())
+            except Exception:
+                pass
 
     passed_static, static_data = run_static_checks(json_output=True)
     summary = {
@@ -426,16 +424,6 @@ def print_compact_summary(summary: dict):
             if cb.get("oscillation_detected"):
                 print(f"[CIRCUIT BREAKER] Identical build error fingerprint ({cb.get('error_fingerprint')}) repeated {cb.get('consecutive_identical_failures')}x! Halt blind retries and perform Reflexion.")
 
-    elif mode == "balance":
-        duration = summary.get("duration", 0)
-        print(f"[{badge}] TTK / Balance Simulation ({duration}s):")
-        archetypes = summary.get("details", {}).get("archetypes", {})
-        for arch, data in list(archetypes.items())[:4]:
-            tiers = data.get("tiers", {})
-            unarmored_dps = tiers.get("Unarmored", {}).get("effective_dps", 0)
-            heavy_dps = tiers.get("Heavy", {}).get("effective_dps", 0)
-            print(f"  - {arch:<14} | Unarmored DPS: {unarmored_dps:>6.1f} | Heavy DPS: {heavy_dps:>6.1f}")
-
     elif mode in ["test", "net"]:
         duration = summary.get("duration", 0)
         print(f"[{badge}] {mode.upper()} Simulation ({duration}s): status={summary.get('status')}")
@@ -495,13 +483,12 @@ def main():
         "mode",
         nargs="?",
         default="static",
-        choices=["static", "gas", "replication", "build", "balance", "test", "net", "inspect", "audit", "full"],
+        choices=["static", "gas", "replication", "build", "test", "net", "inspect", "audit", "full"],
         help="Pipeline mode to execute:\n"
              "  static      : Fast static checks (Bandwidth, Replication, GAS)\n"
              "  gas         : Focused GAS static verification (verify_gas.py)\n"
              "  replication : Focused Replication & Bandwidth audit\n"
              "  build       : UBT compile harness with diagnostic extraction\n"
-             "  balance     : Mathematical TTK and balance benchmark simulation\n"
              "  test        : Automation test execution\n"
              "  net         : Headless PIE multiplayer network degradation simulation\n"
              "  inspect     : Inspect and dump JSON metadata for BP, WBP, Anim (.uasset)\n"
@@ -540,9 +527,6 @@ def main():
 
     elif args.mode == "build":
         overall_passed, aggregated_report = run_build_check(clean=args.clean)
-
-    elif args.mode == "balance":
-        overall_passed, aggregated_report = run_balance_check()
 
     elif args.mode == "test":
         overall_passed, aggregated_report = run_test_check()

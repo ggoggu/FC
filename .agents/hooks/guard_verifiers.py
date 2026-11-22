@@ -14,8 +14,10 @@ PROTECTED_EXACT = {
     "scripts/verify_gas.py",
     "scripts/audit_bandwidth.py",
     "scripts/pipeline.py",
+    "scripts/build_harness.py",
     "scripts/run_tests.py",
     "scripts/simulate_net_pie.py",
+    "scripts/ue_env.py",
     "scripts/linter_baseline.json",
     ".agents/hooks.json",
 }

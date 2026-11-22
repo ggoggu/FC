@@ -7,6 +7,7 @@ Zero external dependencies (Python stdlib unittest).
 """
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -446,6 +447,84 @@ class TestAntigravityHooks(unittest.TestCase):
             {"cwd": str(PROJECT_ROOT), "continuationActive": False, "terminationReason": "USER_CANCELED"}
         )
         self.assertEqual(res_cancel["decision"], "allow")
+
+
+class TestHarnessIntegrityAndDocDrift(unittest.TestCase):
+    def test_linter_baseline_has_no_stale_entries(self):
+        baseline_path = SCRIPTS_DIR / "linter_baseline.json"
+        data = json.loads(baseline_path.read_text(encoding="utf-8"))
+        stale = []
+        for rule_id, entries in data.items():
+            if rule_id.startswith("_") or not isinstance(entries, list):
+                continue
+            for entry in entries:
+                rel_file = entry.get("file", "")
+                symbol = entry.get("symbol", "")
+                full_path = PROJECT_ROOT / rel_file
+                if not full_path.is_file():
+                    stale.append(f"{rule_id}:{rel_file}:{symbol} (file missing)")
+                    continue
+                content = full_path.read_text(encoding="utf-8", errors="ignore")
+                if symbol and symbol not in content:
+                    stale.append(f"{rule_id}:{rel_file}:{symbol} (symbol migrated/removed)")
+        self.assertEqual(stale, [], f"Stale linter_baseline.json entries found: {stale}")
+
+    def test_agents_md_and_rules_have_no_doc_drift(self):
+        missing = []
+        backtick_pat = re.compile(r"`([^`\r\n]+)`")
+
+        # 1. Check AGENTS.md explicit paths and §4 Public header map
+        agents_md = PROJECT_ROOT / "AGENTS.md"
+        agents_text = agents_md.read_text(encoding="utf-8")
+        in_arch_map = False
+        for line in agents_text.splitlines():
+            if line.startswith("## 4."):
+                in_arch_map = True
+            elif line.startswith("## ") and in_arch_map:
+                in_arch_map = False
+
+            for token in backtick_pat.findall(line):
+                tok = token.strip()
+                if "*" in tok or "<" in tok or ">" in tok or " " in tok:
+                    continue
+                if tok.startswith(("Source/", "Scripts/", "Tools/", "Content/", ".agents/", ".git/hooks/")):
+                    target = PROJECT_ROOT / tok.rstrip("/")
+                    if not target.exists():
+                        missing.append(f"AGENTS.md -> `{tok}`")
+                elif in_arch_map and tok.endswith(".h"):
+                    # Entries in §4 are relative to Source/FC/Public/ (or top-level Public files)
+                    if not (PROJECT_ROOT / "Source" / "FC" / "Public" / tok).is_file():
+                        # Allow bare filename if it exists anywhere under Source/FC/Public
+                        matches = list((PROJECT_ROOT / "Source" / "FC" / "Public").rglob(tok))
+                        if not matches:
+                            missing.append(f"AGENTS.md §4 -> `{tok}`")
+
+        # 2. Check .agents/rules/*.md explicit repo paths
+        rules_dir = PROJECT_ROOT / ".agents" / "rules"
+        for rule_file in sorted(rules_dir.glob("*.md")):
+            text = rule_file.read_text(encoding="utf-8")
+            for token in backtick_pat.findall(text):
+                tok = token.strip()
+                if "*" in tok or "<" in tok or ">" in tok or " " in tok:
+                    continue
+                if tok.startswith(("Source/", "Scripts/", "Tools/", "Content/", ".agents/", ".git/hooks/")):
+                    target = PROJECT_ROOT / tok.rstrip("/")
+                    if not target.exists():
+                        missing.append(f"{rule_file.name} -> `{tok}`")
+
+        self.assertEqual(missing, [], f"Doc Drift detected (missing referenced paths): {missing}")
+
+    def test_ue_env_is_protected_by_guard_hook(self):
+        res = guard_verifiers.evaluate_pre_tool_use(
+            {
+                "cwd": str(PROJECT_ROOT),
+                "toolCall": {
+                    "name": "edit_file",
+                    "args": {"Path": str(PROJECT_ROOT / "Scripts" / "ue_env.py")},
+                },
+            }
+        )
+        self.assertEqual(res["decision"], "force_ask")
 
 
 if __name__ == "__main__":

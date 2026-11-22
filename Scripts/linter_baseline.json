@@ -77,16 +77,6 @@
       "reason": "Legacy /Game/ InputAction default"
     },
     {
-      "file": "Source/FC/Private/Combat/Projectile/FCFireballProjectile.cpp",
-      "symbol": "SphereMeshFinder",
-      "reason": "Legacy /Engine/ fallback mesh"
-    },
-    {
-      "file": "Source/FC/Private/Combat/Projectile/FCFireballProjectile.cpp",
-      "symbol": "EmissiveMatFinder",
-      "reason": "Legacy /Engine/ fallback material"
-    },
-    {
       "file": "Source/FC/Private/Combat/Wall/FCSandWall.cpp",
       "symbol": "CubeMeshFinder",
       "reason": "Legacy /Engine/ fallback mesh"
